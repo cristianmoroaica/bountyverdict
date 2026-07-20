@@ -20,6 +20,17 @@ import { diagnoseGithubRun } from "./run.ts";
 import { runDiscoveryExtension, runExample } from "./run-discovery.ts";
 import { diagnoseGithubFlake, FlakeError } from "./flake.ts";
 import { flakeDiscoveryExtension, flakeExample } from "./flake-discovery.ts";
+import {
+  MCP_DRIFT_MAX_BODY_BYTES,
+  McpDriftError,
+  parseAndAnalyzeMcpDrift,
+  type McpDriftResult,
+} from "./mcp-drift.ts";
+import {
+  mcpDriftDiscoveryExtension,
+  mcpDriftExample,
+  mcpDriftExampleInput,
+} from "./mcp-drift-discovery.ts";
 import { PRODUCT_CATALOG } from "./product-catalog.ts";
 import {
   canaryErrorCode,
@@ -40,7 +51,10 @@ interface Env {
   FLAKE_RATE_LIMITER?: RateLimit;
 }
 
-type AppBindings = { Bindings: Env };
+type AppBindings = {
+  Bindings: Env;
+  Variables: { mcpDriftResult: McpDriftResult };
+};
 
 const SINGLE_PRICE_USD = PRODUCT_CATALOG.single.priceUsd;
 const PORTFOLIO_PRICE_USD = PRODUCT_CATALOG.portfolio.priceUsd;
@@ -48,12 +62,14 @@ const HARNESS_PRICE_USD = PRODUCT_CATALOG.harness.priceUsd;
 const SKILL_PRICE_USD = PRODUCT_CATALOG.skill.priceUsd;
 const RUN_PRICE_USD = PRODUCT_CATALOG.run.priceUsd;
 const FLAKE_PRICE_USD = PRODUCT_CATALOG.flake.priceUsd;
+const MCP_DRIFT_PRICE_USD = PRODUCT_CATALOG.mcpdrift.priceUsd;
 const SINGLE_ENDPOINT = PRODUCT_CATALOG.single.path;
 const PORTFOLIO_ENDPOINT = PRODUCT_CATALOG.portfolio.path;
 const HARNESS_ENDPOINT = PRODUCT_CATALOG.harness.path;
 const SKILL_ENDPOINT = PRODUCT_CATALOG.skill.path;
 const RUN_ENDPOINT = PRODUCT_CATALOG.run.path;
 const FLAKE_ENDPOINT = PRODUCT_CATALOG.flake.path;
+const MCP_DRIFT_ENDPOINT = PRODUCT_CATALOG.mcpdrift.path;
 const TESTNET_NETWORK = "eip155:84532";
 const TESTNET_FACILITATOR = "https://x402.org/facilitator";
 const CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402";
@@ -243,6 +259,31 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       },
     }),
   };
+  const mcpDriftRouteConfig: RouteConfig = {
+    accepts: {
+      scheme: "exact",
+      price: MCP_DRIFT_PRICE_USD,
+      network: network as `${string}:${string}`,
+      payTo,
+    },
+    description: "Compare two complete caller-supplied MCP 2025-11-25 tools/list snapshots before accepting a server upgrade. Deterministically hashes normalized contracts, proves a conservative JSON Schema compatibility subset, flags model-facing metadata and security-hint regressions, and never fetches, installs, invokes, or follows anything in the catalogs. The entire bounded verdict is computed before payment.",
+    mimeType: "application/json",
+    serviceName: "MCPDriftVerdict",
+    tags: ["mcp", "tool-schema", "compatibility", "security", "agent-ops", "upgrade-gate"],
+    iconUrl: ICON_URL,
+    unpaidResponseBody: () => ({
+      contentType: "application/json",
+      body: {
+        error: "PAYMENT_REQUIRED",
+        product: "MCPDriftVerdict",
+        price: MCP_DRIFT_PRICE_USD,
+        currency: "USDC",
+        description: "Pay once to receive the already-computed compatibility and security verdict for this exact snapshot pair.",
+        free_sample: PRODUCT_CATALOG.mcpdrift.samplePath,
+        documentation: PRODUCT_URL,
+      },
+    }),
+  };
   const middleware = paymentMiddleware(
     {
       [`GET ${SINGLE_ENDPOINT}`]: routeConfig,
@@ -251,6 +292,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       [`GET ${SKILL_ENDPOINT}`]: skillRouteConfig,
       [`GET ${RUN_ENDPOINT}`]: runRouteConfig,
       [`GET ${FLAKE_ENDPOINT}`]: flakeRouteConfig,
+      [`POST ${MCP_DRIFT_ENDPOINT}`]: mcpDriftRouteConfig,
     },
     resourceServer,
   );
@@ -263,6 +305,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
   skillRouteConfig.extensions = skillDiscoveryExtension;
   runRouteConfig.extensions = runDiscoveryExtension;
   flakeRouteConfig.extensions = flakeDiscoveryExtension;
+  mcpDriftRouteConfig.extensions = mcpDriftDiscoveryExtension;
   middlewareCache.set(key, middleware);
   return middleware;
 }
@@ -273,7 +316,7 @@ app.get("/", (c) =>
   c.json({
     product: "BountyVerdict",
     status: "available",
-    purpose: "Six bounded GitHub decision APIs for coding agents: bounty due diligence, instruction and skill audits, CI diagnosis, and flake retry gates.",
+    purpose: "Seven bounded decision APIs for coding agents: GitHub due diligence and diagnostics plus deterministic MCP tool-catalog upgrade gates.",
     currency: "USDC",
     products: [
       {
@@ -330,6 +373,15 @@ app.get("/", (c) =>
         skill: `${SKILLS_URL}classify-github-flakes/SKILL.md`,
         input: { run_url: "https://github.com/owner/repository/actions/runs/123456789", attempt: 1 },
       },
+      {
+        name: "MCPDriftVerdict",
+        price: MCP_DRIFT_PRICE_USD,
+        endpoint: MCP_DRIFT_ENDPOINT,
+        method: "POST",
+        use_when: "Gate an MCP server tool-catalog change before an agent accepts or pins it.",
+        skill: `${SKILLS_URL}check-mcp-tool-drift/SKILL.md`,
+        input: mcpDriftExampleInput,
+      },
     ],
     sample: "/api/sample",
     openapi: "/openapi.json",
@@ -347,6 +399,7 @@ app.get("/api/harness/sample", (c) => c.json(harnessExample));
 app.get("/api/skill/sample", (c) => c.json(skillExample));
 app.get("/api/run/sample", (c) => c.json(runExample));
 app.get("/api/flake/sample", (c) => c.json(flakeExample));
+app.get("/api/mcp-drift/sample", (c) => c.json(mcpDriftExample));
 
 app.get("/openapi.json", (c) => {
   const origin = new URL(c.req.url).origin;
@@ -357,6 +410,7 @@ app.get("/openapi.json", (c) => {
     skill: SKILL_PRICE_USD,
     run: RUN_PRICE_USD,
     flake: FLAKE_PRICE_USD,
+    mcpdrift: MCP_DRIFT_PRICE_USD,
   }));
 });
 
@@ -423,6 +477,35 @@ app.use(HARNESS_ENDPOINT, paymentGate);
 app.use(SKILL_ENDPOINT, paymentGate);
 app.use(RUN_ENDPOINT, paymentGate);
 app.use(FLAKE_ENDPOINT, paymentGate);
+
+const mcpDriftPreflight: MiddlewareHandler<AppBindings> = async (c, next) => {
+  const contentType = c.req.header("Content-Type") || "";
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    return c.json({ error: "INVALID_INPUT", message: "Content-Type must be application/json.", path: "" }, 400);
+  }
+  const declaredLength = c.req.header("Content-Length");
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > MCP_DRIFT_MAX_BODY_BYTES) {
+    return c.json({ error: "INPUT_TOO_LARGE", message: "Request body exceeds 524,288 bytes.", path: "" }, 413);
+  }
+  try {
+    const result = await parseAndAnalyzeMcpDrift(await c.req.text());
+    c.set("mcpDriftResult", result);
+    c.header("X-MCP-Drift-Baseline-Snapshot", result.hashes.baseline_snapshot);
+    c.header("X-MCP-Drift-Current-Snapshot", result.hashes.current_snapshot);
+    c.header("X-MCP-Drift-Ruleset-Version", result.ruleset_version);
+    return await next();
+  } catch (error) {
+    if (error instanceof McpDriftError) {
+      return c.json({ error: error.code, message: error.message, path: error.path }, error.status);
+    }
+    console.error("MCPDriftVerdict preflight failed", error instanceof Error ? { name: error.name, message: error.message } : { name: "unknown" });
+    return c.json({ error: "INTERNAL_ERROR", message: "The MCP drift verdict could not be produced before payment." }, 500);
+  }
+};
+
+// The verdict is fully validated and computed before any x402 verification or settlement.
+app.use(MCP_DRIFT_ENDPOINT, mcpDriftPreflight);
+app.use(MCP_DRIFT_ENDPOINT, paymentGate);
 
 app.get(SINGLE_ENDPOINT, async (c) => {
   const issueUrl = c.req.query("issue_url") || "";
@@ -537,6 +620,8 @@ app.get(FLAKE_ENDPOINT, async (c) => {
     return c.json({ error: "INTERNAL_ERROR", message: "The workflow flake classification could not be produced." }, 500);
   }
 });
+
+app.post(MCP_DRIFT_ENDPOINT, (c) => c.json(c.get("mcpDriftResult")));
 
 app.notFound((c) => c.json({ error: "NOT_FOUND" }, 404));
 

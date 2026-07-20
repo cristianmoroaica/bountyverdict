@@ -1,0 +1,63 @@
+{
+  "service": "MCPDriftVerdict",
+  "contract_version": "mcp-drift/1",
+  "ruleset_version": "2026-07-20.1",
+  "subject": {
+    "server_id": "acme/tasks@production",
+    "identity": "caller_asserted"
+  },
+  "verdict": "SAFE_ADDITIVE",
+  "action": "ACCEPT_CURRENT",
+  "trust": {
+    "annotation_source": "untrusted",
+    "server_identity": "not_verified",
+    "runtime_behavior": "not_verified",
+    "completeness": "caller_asserted"
+  },
+  "hashes": {
+    "baseline_snapshot": "sha256:b536998673d7f19804f5717d8df56676da32dfc1689e81c44068412d794e51b9",
+    "current_snapshot": "sha256:fc3ad219f6b9bb68b3d9e96ab5920a90eb7c0d90be99a2aa509e69c7fad66820",
+    "baseline_contract": "sha256:e029e97109ad519fd93e6a30e07e5bb3f3a223803bf14147dac3ee539c2220bc",
+    "current_contract": "sha256:4f89f9c01a44ad6e96663d51bd957470acd36b27c524d9d15e2525ee94e127cc"
+  },
+  "summary": {
+    "baseline_tools": 1,
+    "current_tools": 1,
+    "added": 0,
+    "removed": 0,
+    "changed": 1,
+    "compatible_changes": 1,
+    "review_findings": 0,
+    "breaking_findings": 0,
+    "security_findings": 0,
+    "unknown_relations": 0
+  },
+  "findings": [
+    {
+      "id": "sha256:780ee0561d117f4d78f34eac6ae51dcdea37359efc93ac193b046f40bc863e18",
+      "category": "INPUT_CONTRACT_RELAXED",
+      "severity": "info",
+      "tool": "lookup_task",
+      "path": "/tools/lookup_task/inputSchema",
+      "relation": "PROVEN_SUBSET",
+      "reason": "Every baseline-valid input remains valid under the current declared schema."
+    }
+  ],
+  "coverage": {
+    "compared_tools": 1,
+    "schema_nodes": 9,
+    "relation_checks": 1,
+    "proven_subset": 1,
+    "proven_not_subset": 0,
+    "unknown": 0,
+    "returned_findings": 1,
+    "total_findings": 1,
+    "truncated": false
+  },
+  "limitations": [
+    "MCPDriftVerdict compares caller-supplied declared contracts only; it does not verify server identity, pagination, runtime behavior, authorization, or annotation truthfulness.",
+    "Catalog text, icon URLs, and opaque metadata are treated as untrusted data and are never fetched, executed, or followed.",
+    "MCP clients must not make tool-use decisions from untrusted annotations."
+  ],
+  "service_reuse": "Call MCPDriftVerdict after every notifications/tools/list_changed, at agent startup when the current tools/list snapshot hash differs from the pinned baseline, and before accepting an MCP server upgrade. Reuse only for the exact baseline_snapshot hash, current_snapshot hash, and ruleset_version tuple."
+}

@@ -10,9 +10,10 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
     skill: "$0.06",
     run: "$0.04",
     flake: "$0.07",
+    mcpdrift: "$0.02",
   });
-  assert.match(spec.info.title, /GitHub Agent Decision APIs/);
-  assert.match(spec.info.description, /Six bounded/);
+  assert.match(spec.info.title, /Agent Decision APIs/);
+  assert.match(spec.info.description, /Seven bounded/);
   const operation = spec.paths["/api/verdict"].get;
   assert.equal(operation["x-x402"].price, "$0.05");
   assert.equal(operation["x-x402"].network, "eip155:8453");
@@ -24,6 +25,7 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
     spec.paths["/api/skill"].get,
     spec.paths["/api/run"].get,
     spec.paths["/api/flake"].get,
+    spec.paths["/api/mcp-drift"].post,
   ];
   for (const paid of paidOperations) {
     assert.ok(paid.responses["200"].content["application/json"].schema.required.includes("service_reuse"));
@@ -39,6 +41,9 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.equal(spec.paths["/api/flake"].get["x-x402"].price, "$0.07");
   assert.deepEqual(spec.paths["/api/flake"].get.parameters.map((parameter) => parameter.name), ["run_url", "attempt"]);
   assert.equal(spec.paths["/api/flake"].get.responses["429"].description.includes("not settled"), true);
+  assert.equal(spec.paths["/api/mcp-drift"].post["x-x402"].price, "$0.02");
+  assert.equal(spec.paths["/api/mcp-drift"].post.requestBody.content["application/json"].schema.additionalProperties, false);
+  assert.equal(spec.paths["/api/mcp-drift"].post.responses["422"].description.includes("no payment challenge"), true);
   assert.match(spec.externalDocs.url, /agent-manifest\.json$/);
 
   const llms = createLlmsText("https://agent.example");
@@ -53,6 +58,8 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.match(llms, /RunVerdict/);
   assert.match(llms, /\$0\.07 USDC/);
   assert.match(llms, /FlakeVerdict/);
+  assert.match(llms, /\$0\.02 USDC/);
+  assert.match(llms, /MCPDriftVerdict/);
   assert.match(llms, /RECURRING_FAILURE/);
   assert.match(llms, /service_reuse guidance/);
   assert.match(llms, /route-github-agent-checks\/SKILL\.md/);

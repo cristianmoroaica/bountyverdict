@@ -14,12 +14,13 @@ test("product catalog has unique service, route, sample, and accounting price", 
 });
 
 test("product catalog preserves all public payment contracts", () => {
-  assert.deepEqual(PRODUCT_KEYS, ["single", "portfolio", "harness", "skill", "run", "flake"]);
+  assert.deepEqual(PRODUCT_KEYS, ["single", "portfolio", "harness", "skill", "run", "flake", "mcpdrift"]);
   assert.equal(productForAtomicAmount(50_000n), "single");
   assert.equal(productForAtomicAmount(400_000n), "portfolio");
   assert.equal(productForAtomicAmount(30_000n), "harness");
   assert.equal(productForAtomicAmount(60_000n), "skill");
   assert.equal(productForAtomicAmount(40_000n), "run");
   assert.equal(productForAtomicAmount(70_000n), "flake");
+  assert.equal(productForAtomicAmount(20_000n), "mcpdrift");
   assert.equal(productForAtomicAmount(1n), null);
 });

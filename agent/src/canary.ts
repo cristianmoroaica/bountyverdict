@@ -9,8 +9,15 @@ import {
   type FlakeResult,
   type FlakeVerdict,
 } from "./flake.ts";
+import {
+  MCP_DRIFT_RULESET_VERSION,
+  MCP_DRIFT_SERVICE_REUSE,
+  analyzeMcpDrift,
+  type McpDriftResult,
+} from "./mcp-drift.ts";
+import { mcpDriftExampleInput } from "./mcp-drift-discovery.ts";
 
-export const CANARY_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "flake"] as const;
+export const CANARY_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "flake", "mcpdrift"] as const;
 export type CanaryProduct = typeof CANARY_PRODUCTS[number];
 
 export const CANARY_FIXTURES = {
@@ -29,6 +36,7 @@ export const CANARY_FIXTURES = {
     run: "https://github.com/actions/runner/actions/runs/29423388605",
     attempt: 1,
   },
+  mcpdrift: mcpDriftExampleInput,
 } as const;
 
 export interface CanaryEnvironment {
@@ -52,6 +60,7 @@ interface CanaryDependencies {
   checkSkill: (url: string, path: string, env: CanaryEnvironment) => Promise<SkillAudit>;
   diagnoseRun: (url: string, env: CanaryEnvironment) => Promise<RunDiagnosis>;
   diagnoseFlake: (url: string, attempt: number, env: CanaryEnvironment) => Promise<FlakeResult>;
+  analyzeMcpDrift: (input: unknown) => Promise<McpDriftResult>;
   now: () => Date;
   monotonic: () => number;
 }
@@ -63,6 +72,7 @@ const DEFAULT_DEPENDENCIES: CanaryDependencies = {
   checkSkill: (url, path, env) => checkGithubSkill(url, path, env),
   diagnoseRun: (url, env) => diagnoseGithubRun(url, env),
   diagnoseFlake: (url, attempt, env) => diagnoseGithubFlake(url, attempt, env),
+  analyzeMcpDrift,
   now: () => new Date(),
   monotonic: () => performance.now(),
 };
@@ -256,7 +266,7 @@ export async function runFunctionalCanary(
       github_rate_limit_remaining: diagnosis.coverage.github_rate_limit_remaining,
       reuse_guidance: diagnosis.service_reuse.guidance,
     };
-  } else {
+  } else if (product === "flake") {
     const fixture = CANARY_FIXTURES.flake;
     const classification = await dependencies.diagnoseFlake(fixture.run, fixture.attempt, env);
     requireCondition(classification.product === "FlakeVerdict" && classification.version === "1.0", "Flake product contract changed.");
@@ -319,6 +329,27 @@ export async function runFunctionalCanary(
       partial_failures: classification.coverage.partial_failures.length,
       github_rate_limit_remaining: classification.coverage.github_rate_limit_remaining,
       reuse_guidance: classification.service_reuse.guidance,
+    };
+  } else {
+    const verdict = await dependencies.analyzeMcpDrift(CANARY_FIXTURES.mcpdrift);
+    requireCondition(verdict.service === "MCPDriftVerdict" && verdict.contract_version === "mcp-drift/1", "MCP drift product contract changed.");
+    requireCondition(verdict.ruleset_version === MCP_DRIFT_RULESET_VERSION, "MCP drift ruleset changed without a canary update.");
+    requireCondition(verdict.verdict === "SAFE_ADDITIVE" && verdict.action === "ACCEPT_CURRENT", "MCP drift fixture no longer proves safe additive compatibility.");
+    requireCondition(verdict.summary.baseline_tools === 1 && verdict.summary.current_tools === 1 && verdict.summary.changed === 1, "MCP drift fixture tool coverage changed.");
+    requireCondition(verdict.coverage.relation_checks === 1 && verdict.coverage.proven_subset === 1 && verdict.coverage.unknown === 0 && !verdict.coverage.truncated, "MCP drift proof coverage is incomplete or uncertain.");
+    requireCondition(verdict.hashes.baseline_snapshot !== verdict.hashes.current_snapshot, "MCP drift fixture hashes do not bind distinct snapshots.");
+    requireCondition(verdict.service_reuse === MCP_DRIFT_SERVICE_REUSE, "MCP drift reuse guidance changed.");
+    source = CANARY_FIXTURES.mcpdrift.subject.server_id;
+    result = {
+      verdict: verdict.verdict,
+      action: verdict.action,
+      ruleset_version: verdict.ruleset_version,
+      baseline_snapshot: verdict.hashes.baseline_snapshot,
+      current_snapshot: verdict.hashes.current_snapshot,
+      relation_checks: verdict.coverage.relation_checks,
+      proven_subset: verdict.coverage.proven_subset,
+      truncated: verdict.coverage.truncated,
+      reuse_guidance: verdict.service_reuse,
     };
   }
 

@@ -10,6 +10,7 @@ import {
 import app from "../src/index.ts";
 import { SERVICE_REUSE } from "../src/reuse.ts";
 import { FLAKE_SERVICE_REUSE, type FlakeResult } from "../src/flake.ts";
+import { MCP_DRIFT_SERVICE_REUSE, analyzeMcpDrift } from "../src/mcp-drift.ts";
 
 const now = new Date("2026-07-20T12:00:00.000Z");
 const base = {
@@ -271,4 +272,22 @@ test("flake canary rejects incomplete attempt coverage, altered reuse guidance, 
       },
     }),
   }), /no-retry safety invariant/);
+});
+
+test("MCP drift canary proves exact hashes, full coverage, and immutable reuse guidance", async () => {
+  const result = await runFunctionalCanary("mcpdrift", {}, base);
+  assert.equal(result.source, CANARY_FIXTURES.mcpdrift.subject.server_id);
+  assert.equal(result.result.verdict, "SAFE_ADDITIVE");
+  assert.equal(result.result.proven_subset, 1);
+  assert.equal(result.result.truncated, false);
+  assert.equal(result.result.reuse_guidance, MCP_DRIFT_SERVICE_REUSE);
+  assert.notEqual(result.result.baseline_snapshot, result.result.current_snapshot);
+
+  await assert.rejects(() => runFunctionalCanary("mcpdrift", {}, {
+    ...base,
+    analyzeMcpDrift: async input => ({
+      ...await analyzeMcpDrift(input),
+      service_reuse: `${MCP_DRIFT_SERVICE_REUSE} changed` as typeof MCP_DRIFT_SERVICE_REUSE,
+    }),
+  }), /reuse guidance changed/);
 });

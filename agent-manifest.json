@@ -23,7 +23,7 @@
     "scheduled_functional_canaries": true,
     "canary_interval_hours": 6,
     "result_guidance_field": "service_reuse",
-    "promise": "Every successful result states when agents should reuse the bounded live check."
+    "promise": "Every successful result states exactly when and for which evidence or snapshot tuple agents may reuse the bounded decision check."
   },
   "products": [
     {
@@ -113,6 +113,37 @@
       },
       "reuse_guidance": "Call FlakeVerdict for every completed public GitHub Actions failure before spending a retry; each successful call re-reads the selected attempt, other attempts of the same run, same-SHA outcomes, and up to 12 earlier comparable runs. Reuse a result only for its exact run ID and attempt, and call again after a new attempt appears.",
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/flake.json"
+    },
+    {
+      "name": "MCPDriftVerdict",
+      "method": "POST",
+      "path": "/api/mcp-drift",
+      "price_usdc": "0.02",
+      "reusable": true,
+      "use_when": "Gate a complete MCP 2025-11-25 tools/list snapshot change before accepting or pinning it.",
+      "skill_url": "https://cristianmoroaica.github.io/bountyverdict/skills/check-mcp-tool-drift/SKILL.md",
+      "install_command": "npx skills add cristianmoroaica/bountyverdict --skill check-mcp-tool-drift -y",
+      "verdicts": [
+        "UNCHANGED",
+        "SAFE_ADDITIVE",
+        "REVIEW",
+        "INCONCLUSIVE",
+        "BREAKING",
+        "SECURITY_REGRESSION"
+      ],
+      "bounds": {
+        "maximum_body_bytes": 524288,
+        "maximum_tools_per_snapshot": 128,
+        "maximum_combined_schema_nodes": 8192,
+        "maximum_schema_depth": 32,
+        "maximum_returned_findings": 256,
+        "protocol_version": "2025-11-25",
+        "fetches_catalog_urls": false,
+        "invokes_tools": false,
+        "validation_completes_before_payment": true
+      },
+      "reuse_guidance": "Call MCPDriftVerdict after every notifications/tools/list_changed, at agent startup when the current tools/list snapshot hash differs from the pinned baseline, and before accepting an MCP server upgrade. Reuse only for the exact baseline_snapshot hash, current_snapshot hash, and ruleset_version tuple.",
+      "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/mcp-drift.json"
     }
   ],
   "skill": "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md",
@@ -126,8 +157,9 @@
     "audit_agent_harness": "https://cristianmoroaica.github.io/bountyverdict/skills/audit-agent-harness/SKILL.md",
     "preflight_agent_skills": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-agent-skills/SKILL.md",
     "diagnose_github_actions": "https://cristianmoroaica.github.io/bountyverdict/skills/diagnose-github-actions/SKILL.md",
-    "classify_github_flakes": "https://cristianmoroaica.github.io/bountyverdict/skills/classify-github-flakes/SKILL.md"
+    "classify_github_flakes": "https://cristianmoroaica.github.io/bountyverdict/skills/classify-github-flakes/SKILL.md",
+    "check_mcp_tool_drift": "https://cristianmoroaica.github.io/bountyverdict/skills/check-mcp-tool-drift/SKILL.md"
   },
   "source": "https://github.com/cristianmoroaica/bountyverdict",
-  "updated_at": "2026-07-20T13:45:00.000Z"
+  "updated_at": "2026-07-20T14:26:21.862Z"
 }

@@ -9,6 +9,7 @@ import {
   PORTFOLIO_PAYMENT_ATOMIC,
   SINGLE_PAYMENT_ATOMIC,
   RUN_PAYMENT_ATOMIC,
+  MCP_DRIFT_PAYMENT_ATOMIC,
   summarizeRevenue,
 } from "../src/revenue.ts";
 
@@ -22,13 +23,14 @@ test("revenue summary recognizes only exact product settlements", () => {
     { from: CUSTOMER_PAYER, amount: SKILL_PAYMENT_ATOMIC, transaction_hash: "0x5", log_index: 0 },
     { from: CUSTOMER_PAYER, amount: RUN_PAYMENT_ATOMIC, transaction_hash: "0x6", log_index: 0 },
     { from: CUSTOMER_PAYER, amount: FLAKE_PAYMENT_ATOMIC, transaction_hash: "0x7", log_index: 0 },
+    { from: CUSTOMER_PAYER, amount: MCP_DRIFT_PAYMENT_ATOMIC, transaction_hash: "0x8", log_index: 0 },
     { from: CUSTOMER_PAYER, amount: 10_000_000n, transaction_hash: "0x3", log_index: 0 },
   ]);
 
-  assert.equal(summary.recognized_usdc, "0.65");
-  assert.equal(summary.remaining_usdc, "999.35");
-  assert.equal(summary.progress_percent, 0.065);
-  assert.deepEqual(summary.purchases, { single: 1, portfolio: 1, harness: 1, skill: 1, run: 1, flake: 1, total: 6 });
+  assert.equal(summary.recognized_usdc, "0.67");
+  assert.equal(summary.remaining_usdc, "999.33");
+  assert.equal(summary.progress_percent, 0.067);
+  assert.deepEqual(summary.purchases, { single: 1, portfolio: 1, harness: 1, skill: 1, run: 1, flake: 1, mcpdrift: 1, total: 7 });
   assert.equal(summary.unrecognized_transfers.length, 1);
   assert.equal(summary.canary_transfers.length, 0);
   assert.equal(summary.canary_usdc, "0");
@@ -52,7 +54,7 @@ test("revenue summary excludes the owner-funded production proofs", () => {
   const summary = summarizeRevenue([...proofs, customer]);
 
   assert.equal(summary.recognized_usdc, "0.05");
-  assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, harness: 0, skill: 0, run: 0, flake: 0, total: 1 });
+  assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, harness: 0, skill: 0, run: 0, flake: 0, mcpdrift: 0, total: 1 });
   assert.deepEqual(summary.excluded_transfers, proofs);
   assert.deepEqual(summary.recognized_transfers, [customer]);
   assert.deepEqual(summary.canary_transfers, []);
@@ -93,7 +95,7 @@ test("owner-controlled canary payer is excluded case-insensitively without hidin
 
   assert.equal(summary.recognized_usdc, "0.05");
   assert.equal(summary.remaining_usdc, "999.95");
-  assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, harness: 0, skill: 0, run: 0, flake: 0, total: 1 });
+  assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, harness: 0, skill: 0, run: 0, flake: 0, mcpdrift: 0, total: 1 });
   assert.equal(summary.canary_usdc, "1.284567");
   assert.deepEqual(summary.canary_transfers, [ownerCanary, ownerCanaryUnrelatedAmount]);
   assert.deepEqual(summary.recognized_transfers, [customerAtSamePrice]);

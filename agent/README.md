@@ -1,6 +1,6 @@
 # BountyVerdict Agent API
 
-A paid, deterministic preflight suite for autonomous coding agents. It checks public GitHub bounty issues and repository instruction stacks before an agent commits implementation time, API spend, or repository reputation.
+A paid, deterministic decision suite for autonomous coding agents. It checks public GitHub engineering evidence and MCP tool-catalog changes before an agent commits implementation time, API spend, repository reputation, or new capabilities.
 
 ## Product contracts
 
@@ -10,17 +10,20 @@ A paid, deterministic preflight suite for autonomous coding agents. It checks pu
 - Skill security audit: `GET /api/skill?repo_url=<public GitHub repository URL>&skill_path=<skill directory>` for **$0.06 USDC**
 - CI run diagnosis: `GET /api/run?run_url=<public GitHub Actions run URL>` for **$0.04 USDC**
 - CI flake classification: `GET /api/flake?run_url=<public GitHub Actions run URL>&attempt=<optional positive integer>` for **$0.07 Base USDC**
+- MCP tool-catalog drift: `POST /api/mcp-drift` with complete baseline/current MCP 2025-11-25 snapshots for **$0.02 Base USDC**
 - Portfolio size: 2–10 unique public GitHub issue URLs; at 10 candidates the effective price is $0.04 each
 - Payment: x402 v2, exact scheme
-- Output: structured bounty `AVOID`, `CAUTION`, or `VIABLE`; harness `READY`, `REVIEW`, or `REPAIR`; skill-security `LOW_RISK`, `REVIEW`, or `BLOCK`; CI-run `PASS`, `WAIT`, `RETRY`, `FIX`, or `INVESTIGATE`; and CI-flake `CONFIRMED_FLAKE`, `LIKELY_FLAKE`, `RECURRING_FAILURE`, `NEW_FAILURE`, `INCONCLUSIVE`, or `NOT_FAILED` verdicts with evidence and explicit coverage
+- Output: typed GitHub verdicts plus MCP `UNCHANGED`, `SAFE_ADDITIVE`, `REVIEW`, `INCONCLUSIVE`, `BREAKING`, or `SECURITY_REGRESSION`, always with explicit coverage and reuse guidance
 - Discovery: x402 Bazaar extension with a strict input schema and realistic output example
 - Failure behavior: invalid inputs, GitHub failures, and handler errors are not settled
 
-`GET /` returns all product contracts without payment. Free representative results are available from `/api/sample`, `/api/portfolio/sample`, `/api/harness/sample`, `/api/skill/sample`, `/api/run/sample`, and `/api/flake/sample`.
+`GET /` returns all product contracts without payment. Free representative results are available from every product sample route, including `/api/mcp-drift/sample`.
 
 FlakeVerdict is a read-only retry gate for completed public GitHub Actions failures. It compares the selected attempt with other attempts of the same run, same-SHA outcomes, and up to 12 earlier comparable workflow runs, scanning no more than 8 selected failed-job logs or 4 MiB of log data. It never executes repository code and never triggers, reruns, cancels, approves, or otherwise mutates CI. Only a current `CONFIRMED_FLAKE` may recommend one retry; all other failed outcomes require investigation or repair rather than an automatic retry.
 
 Every successful FlakeVerdict result carries the exact reuse contract: "Call FlakeVerdict for every completed public GitHub Actions failure before spending a retry; each successful call re-reads the selected attempt, other attempts of the same run, same-SHA outcomes, and up to 12 earlier comparable runs. Reuse a result only for its exact run ID and attempt, and call again after a new attempt appears." The free [sample](../samples/flake.json) and hosted [classify-github-flakes workflow](../skills/classify-github-flakes/SKILL.md) are inspectable before payment.
+
+MCPDriftVerdict validates, bounds, canonicalizes, hashes, and classifies the exact POST body before the payment middleware runs. Invalid or unsupported catalogs return 400, 413, or 422 without a payment challenge. The paid continuation only returns the precomputed result. It never fetches schema/icon URLs, executes catalog content, connects to an MCP server, or invokes tools. The free [sample](../samples/mcp-drift.json) and hosted [check-mcp-tool-drift workflow](../skills/check-mcp-tool-drift/SKILL.md) are inspectable before payment.
 
 ## Local verification
 
@@ -57,6 +60,7 @@ PRODUCT=harness RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspec
 PRODUCT=skill RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 PRODUCT=run RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 PRODUCT=flake RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
+PRODUCT=mcpdrift RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 ```
 
 To execute a Base Sepolia payment, the preferred buyer is Coinbase Agentic Wallet. It authenticates once through email/OTP, keeps signing keys outside this repository, and supports strict per-request caps:
@@ -92,11 +96,11 @@ START_BLOCK=PRODUCTION_DEPLOYMENT_BLOCK \
 npm run revenue
 ```
 
-Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.03, $0.04, $0.05, $0.06, $0.07, and $0.40 product settlements, separates unrelated incoming transfers, and shows purchase counts and progress toward $1,000.
+Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.02, $0.03, $0.04, $0.05, $0.06, $0.07, and $0.40 product settlements, separates unrelated incoming transfers, and shows purchase counts and progress toward $1,000.
 
 ## Continuous distribution monitoring
 
-The credential-free production monitor verifies all free routes, all six exact mainnet payment challenges, Coinbase Bazaar merchant and semantic-search visibility, on-chain Base USDC revenue, and the freshness of the latest authenticated functional-canary pass in one run:
+The credential-free production monitor verifies all free routes, all seven exact mainnet payment challenges, Coinbase Bazaar merchant and semantic-search visibility, on-chain Base USDC revenue, and the freshness of the latest authenticated functional-canary pass in one run:
 
 ```bash
 npm run distribution:monitor
@@ -106,7 +110,7 @@ It atomically writes the latest machine-readable snapshot to `~/.local/state/bou
 
 Successful buyer provisioning atomically writes only its public address to `~/.config/bountyverdict/settlement-buyer.env` as `SETTLEMENT_BUYER_ADDRESS=0x...`, with settlement disabled by default. The distribution service reads that file so canary purchases remain excluded from customer revenue. Before enabling a settlement timer, set `SETTLEMENT_CANARY_ENABLED=YES` in that file; accounting then fails closed if the address is absent. Keep policy credentials and wallet secrets out of this file.
 
-The separate six-hour functional canary invokes each real paid handler against a hard-coded public fixture without creating a settlement or accepting a customer-controlled target. It validates commit pinning, coverage, structured output, failed-job log retrieval, and bounded flake classification—not just HTTP availability. Its bearer token lives only in the Worker secret store, the repository Actions secret store, and a mode-0600 local token file:
+The separate six-hour functional canary invokes each real paid handler against a hard-coded fixture without creating a settlement or accepting a customer-controlled target. It validates commit pinning, coverage, structured output, failed-job log retrieval, bounded flake classification, and deterministic MCP hash/proof behavior—not just HTTP availability. Its bearer token lives only in the Worker secret store, the repository Actions secret store, and a mode-0600 local token file:
 
 ```bash
 CANARY_TOKEN=... npm run canary:production
@@ -151,7 +155,7 @@ The receiving address is public on-chain, but storing it as a binding keeps depl
 
 ### One-action release
 
-The manual `Deploy paid Worker` GitHub Actions workflow performs the same production deployment, verifies every free route, all six x402 challenges, and every real handler canary, then activates the public agent manifest only after the live checks pass. Configure these repository Actions secrets before running it:
+The manual `Deploy paid Worker` GitHub Actions workflow performs the same production deployment, verifies every free route, all seven x402 challenges, and every real handler canary, then activates the public agent manifest only after the live checks pass. Configure these repository Actions secrets before running it:
 
 - `CLOUDFLARE_API_TOKEN`
 - `PAY_TO_ADDRESS`

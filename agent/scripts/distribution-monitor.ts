@@ -9,7 +9,8 @@ import {
   summarizeRevenue,
   type SettlementTransfer,
 } from "../src/revenue.ts";
-import { PRODUCT_CATALOG } from "../src/product-catalog.ts";
+import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
+import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
 
 const DEFAULT_API = "https://bountyverdict-agent-production.mimirslab.workers.dev";
 const DEFAULT_WALLET = "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
@@ -32,7 +33,7 @@ const historicalTestGasEth = process.env.HISTORICAL_TEST_GAS_ETH || "0.00000525"
 const settlementBuyer = process.env.SETTLEMENT_BUYER_ADDRESS;
 const settlementCanaryEnabled = process.env.SETTLEMENT_CANARY_ENABLED === "YES";
 const MAX_CANARY_AGE_MS = 8 * 60 * 60 * 1000;
-const EXPECTED_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "flake"] as const;
+const EXPECTED_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "flake", "mcpdrift"] as const;
 
 if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
   throw new Error("REVENUE_WALLET must be a public 20-byte EVM address.");
@@ -77,7 +78,7 @@ function decodeChallenge(header: string): any {
 }
 
 async function inspectChallenge(
-  product: "single" | "portfolio" | "harness" | "skill" | "run" | "flake",
+  product: ProductKey,
 ): Promise<Record<string, unknown>> {
   const url = product === "single"
     ? `${api}/api/verdict?issue_url=${encodeURIComponent("https://github.com/typeorm/typeorm/issues/3357")}`
@@ -89,7 +90,9 @@ async function inspectChallenge(
           ? `${api}/api/run?run_url=${encodeURIComponent("https://github.com/openai/codex/actions/runs/29728148711")}`
           : product === "flake"
             ? `${api}/api/flake?run_url=${encodeURIComponent("https://github.com/actions/runner/actions/runs/29423388605")}&attempt=1`
-            : `${api}/api/portfolio`;
+            : product === "mcpdrift"
+              ? `${api}/api/mcp-drift`
+              : `${api}/api/portfolio`;
   const response = await monitoredFetch(url, product === "portfolio"
     ? {
         method: "POST",
@@ -101,6 +104,12 @@ async function inspectChallenge(
           ],
         }),
       }
+    : product === "mcpdrift"
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(mcpDriftExampleInput),
+        }
     : undefined);
   if (response.status !== 402) {
     throw new Error(`${product} endpoint returned HTTP ${response.status}; expected 402.`);
@@ -123,10 +132,13 @@ async function inspectChallenge(
   if (requirement.payTo.toLowerCase() !== wallet.toLowerCase()) {
     throw new Error(`${product} endpoint recipient does not match the revenue wallet.`);
   }
-  const expectedMethod = product === "portfolio" ? "POST" : "GET";
+  const expectedMethod = PRODUCT_CATALOG[product].method;
   const method = challenge.extensions?.bazaar?.info?.input?.method;
   if (method !== expectedMethod) {
     throw new Error(`${product} Bazaar method is ${method || "missing"}; expected ${expectedMethod}.`);
+  }
+  if (product === "mcpdrift" && challenge.extensions?.bazaar?.info?.input?.bodyType !== "json") {
+    throw new Error("mcpdrift Bazaar bodyType is missing or not json.");
   }
   return {
     status: response.status,
@@ -155,6 +167,7 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
     "agent SKILL.md security supply chain pre-install audit credential exfiltration",
     "GitHub Actions failed run job logs root cause diagnosis retry",
     "GitHub Actions flaky test historical runs same commit retry decision regression",
+    "MCP tools list schema compatibility security regression server upgrade gate",
   ].map(async (query) => {
     const searchUrl = new URL(`${CDP_DISCOVERY}/search`);
     searchUrl.searchParams.set("query", query);
@@ -179,6 +192,7 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
     skill: `${api}/api/skill`,
     run: `${api}/api/run`,
     flake: `${api}/api/flake`,
+    mcpdrift: `${api}/api/mcp-drift`,
   };
   const indexedProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
     [name, merchantResources.has(resource)]
@@ -369,14 +383,14 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The six-product suite now has one installable routing skill, per-product install commands and use-case triggers, and umbrella API/OpenAPI positioning. An agent can install one router, select exactly one bounded GitHub decision check, validate its unpaid x402 challenge, and follow the product-specific result contract. Five products are indexed and currently rank near the top of their measured intent queries; FlakeVerdict remains live but awaits its first policy-bound catalog settlement before Bazaar indexing.
+The seven-product suite now includes MCPDriftVerdict, a deterministic MCP tools/list upgrade gate that validates and computes before payment. An agent can install one router, select exactly one bounded GitHub or MCP decision check, validate its unpaid x402 challenge, and follow the product-specific result contract. Existing indexed products remain measurable; FlakeVerdict and MCPDriftVerdict stay marked pending until each has a genuine policy-bound indexing settlement.
 
 ## What is next
 
 1. Replace both broad CDP typed-data policies with the prepared seller-and-$0.40-bound rule in the dashboard, then provision and fund the policy-bound buyer before enabling the once-weekly real-settlement canary.
-2. Use the policy-bound buyer once to index FlakeVerdict and refresh the five stale catalog schemas; exclude every owner operation from revenue and verify cache propagation and unbranded rank.
+2. Use the policy-bound buyer once per pending resource to index FlakeVerdict and MCPDriftVerdict and refresh stale catalog schemas; exclude every owner operation from revenue and verify cache propagation and unbranded rank.
 3. Verify the public router install from GitHub, measure registry/search presence, and keep the per-product install paths current.
-4. Re-evaluate the two research-backed next-product candidates after distribution is complete: MergeVerdict for public PR merge gates or MCPDriftVerdict for semantic tools/list compatibility.
+4. Re-evaluate the next research-backed product only after MCPDriftVerdict distribution data exists; MergeVerdict remains the leading public-PR gate candidate.
 5. Reach the first genuine paying agent, then optimize from observed calls rather than owner-funded proofs.
 
 ## Production health
@@ -399,6 +413,7 @@ ${errors}
 | SkillVerdict | $0.06 | ${ranks.skill ?? "not found"} | ${indexed.skill ? "indexed" : "pending"} |
 | RunVerdict | $0.04 | ${ranks.run ?? "not found"} | ${indexed.run ? "indexed" : "pending"} |
 | FlakeVerdict | $0.07 | ${ranks.flake ?? "not found"} | ${indexed.flake ? "indexed" : "pending"} |
+| MCPDriftVerdict | $0.02 | ${ranks.mcpdrift ?? "not found"} | ${indexed.mcpdrift ? "indexed" : "pending"} |
 
 ## Revenue detail
 
@@ -408,6 +423,7 @@ ${errors}
 - Skill purchases: ${Number(purchases.skill || 0)}
 - Run purchases: ${Number(purchases.run || 0)}
 - Flake purchases: ${Number(purchases.flake || 0)}
+- MCP drift purchases: ${Number(purchases.mcpdrift || 0)}
 - Owner canary settlement volume excluded: ${money(report.revenue?.canary_usdc || 0)} across ${Number(report.revenue?.canary_transfer_count || 0)} transfers
 - Unrelated incoming transfers: ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
 - Remaining to first goal: ${money(report.revenue?.remaining_usdc)}
@@ -424,7 +440,7 @@ let revenue: Record<string, unknown> = {};
 let functional: Record<string, unknown> = {};
 
 try {
-  const [root, sample, portfolioSample, harnessSample, skillSample, runSample, flakeSample, openapi, llms, single, portfolio, harness, skill, run, flake] = await Promise.all([
+  const [root, sample, portfolioSample, harnessSample, skillSample, runSample, flakeSample, mcpDriftSample, openapi, llms, single, portfolio, harness, skill, run, flake, mcpdrift] = await Promise.all([
     requireStatus("/"),
     requireStatus("/api/sample"),
     requireStatus("/api/portfolio/sample"),
@@ -432,6 +448,7 @@ try {
     requireStatus("/api/skill/sample"),
     requireStatus("/api/run/sample"),
     requireStatus("/api/flake/sample"),
+    requireStatus("/api/mcp-drift/sample"),
     requireStatus("/openapi.json"),
     requireStatus("/llms.txt"),
     inspectChallenge("single"),
@@ -440,8 +457,9 @@ try {
     inspectChallenge("skill"),
     inspectChallenge("run"),
     inspectChallenge("flake"),
+    inspectChallenge("mcpdrift"),
   ]);
-  health = { root, sample, portfolio_sample: portfolioSample, harness_sample: harnessSample, skill_sample: skillSample, run_sample: runSample, flake_sample: flakeSample, openapi, llms, single, portfolio, harness, skill, run, flake };
+  health = { root, sample, portfolio_sample: portfolioSample, harness_sample: harnessSample, skill_sample: skillSample, run_sample: runSample, flake_sample: flakeSample, mcp_drift_sample: mcpDriftSample, openapi, llms, single, portfolio, harness, skill, run, flake, mcpdrift };
 } catch (error) {
   errors.push(error instanceof Error ? error.message : String(error));
 }

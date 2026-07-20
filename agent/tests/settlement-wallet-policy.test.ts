@@ -10,6 +10,7 @@ import {
   assertStrictSettlementWalletPolicyPair,
   createStrictSettlementPolicyUpdate,
 } from "../src/settlement-wallet-policy.ts";
+import { PRODUCT_CATALOG } from "../src/product-catalog.ts";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const ACCOUNT_ID = "22222222-2222-4222-8222-222222222222";
@@ -33,6 +34,7 @@ test("strict rule is SDK-valid and pins canonical USDC, seller, and 0.40 USDC", 
   assert.equal(SETTLEMENT_POLICY_USDC, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
   assert.equal(SETTLEMENT_POLICY_PAYEE, "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614");
   assert.equal(SETTLEMENT_POLICY_MAX_ATOMIC, "400000");
+  assert.ok(PRODUCT_CATALOG.mcpdrift.amountAtomic <= BigInt(SETTLEMENT_POLICY_MAX_ATOMIC));
   assert.ok(Object.isFrozen(SETTLEMENT_WALLET_POLICY_RULE));
   assert.ok(Object.isFrozen(SETTLEMENT_WALLET_POLICY_RULE.criteria));
 });

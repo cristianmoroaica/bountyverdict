@@ -1,4 +1,6 @@
 import { FLAKE_SERVICE_REUSE } from "./flake.ts";
+import { MCP_DRIFT_RULESET_VERSION, MCP_DRIFT_SERVICE_REUSE } from "./mcp-drift.ts";
+import { mcpDriftExampleInput } from "./mcp-drift-discovery.ts";
 
 export const SETTLEMENT_CANARY_ORIGIN =
   "https://bountyverdict-agent-production.mimirslab.workers.dev";
@@ -15,6 +17,7 @@ export const SETTLEMENT_CANARY_PRODUCTS = [
   "skill",
   "run",
   "flake",
+  "mcpdrift",
 ] as const;
 
 export type SettlementCanaryProduct = typeof SETTLEMENT_CANARY_PRODUCTS[number];
@@ -158,6 +161,14 @@ const FIXTURES: Readonly<Record<SettlementCanaryProduct, SettlementCanaryFixture
         ["run_url", "https://github.com/actions/runner/actions/runs/29423388605"],
         ["attempt", "1"],
       ]),
+    }),
+    mcpdrift: Object.freeze({
+      product: "mcpdrift",
+      service: "MCPDriftVerdict",
+      amountAtomic: "20000",
+      method: "POST",
+      url: fixtureUrl("/api/mcp-drift"),
+      body: JSON.stringify(mcpDriftExampleInput),
     }),
   });
 
@@ -352,6 +363,29 @@ export function validatePaidProductContract(
 ): Record<string, string | number | boolean | null> {
   if (!isRecord(body)) fail("PRODUCT_BODY_INVALID");
   const fixture = getSettlementCanaryFixture(product);
+  if (product === "mcpdrift") {
+    exactValue(body.service, fixture.service, "PRODUCT_CHANGED");
+    exactValue(body.contract_version, "mcp-drift/1", "PRODUCT_VERSION_CHANGED");
+    exactValue(body.ruleset_version, MCP_DRIFT_RULESET_VERSION, "MCP_RULESET_CHANGED");
+    exactValue(body.verdict, "SAFE_ADDITIVE", "VERDICT_INVALID");
+    exactValue(body.action, "ACCEPT_CURRENT", "MCP_ACTION_INVALID");
+    exactValue(body.service_reuse, MCP_DRIFT_SERVICE_REUSE, "SERVICE_REUSE_INVALID");
+    if (!isRecord(body.hashes) || !isRecord(body.summary) || !isRecord(body.coverage)) fail("MCP_RESULT_INVALID");
+    if (!/^sha256:[a-f0-9]{64}$/.test(String(body.hashes.baseline_snapshot)) || !/^sha256:[a-f0-9]{64}$/.test(String(body.hashes.current_snapshot))) fail("MCP_HASH_INVALID");
+    if (body.hashes.baseline_snapshot === body.hashes.current_snapshot) fail("MCP_FIXTURE_UNCHANGED");
+    exactValue(body.summary.baseline_tools, 1, "MCP_COVERAGE_INVALID");
+    exactValue(body.summary.current_tools, 1, "MCP_COVERAGE_INVALID");
+    exactValue(body.coverage.relation_checks, 1, "MCP_COVERAGE_INVALID");
+    exactValue(body.coverage.proven_subset, 1, "MCP_COVERAGE_INVALID");
+    exactValue(body.coverage.unknown, 0, "MCP_COVERAGE_INVALID");
+    exactValue(body.coverage.truncated, false, "MCP_COVERAGE_INVALID");
+    return {
+      verdict: String(body.verdict),
+      action: String(body.action),
+      relation_checks: 1,
+      proven_subset: 1,
+    };
+  }
   exactValue(body.product, fixture.service, "PRODUCT_CHANGED");
   exactValue(body.version, "1.0", "PRODUCT_VERSION_CHANGED");
   requireServiceReuse(body.service_reuse, fixture.service);
@@ -467,7 +501,7 @@ export function validatePaidProductContract(
       same_run_attempts_checked: attemptsChecked,
     };
   }
-  if (!isRecord(body.run) || !isRecord(body.coverage)) {
+  if (product !== "run" || !isRecord(body.run) || !isRecord(body.coverage)) {
     fail("RUN_RESULT_INVALID");
   }
   exactValue(body.run.id, "29728148711", "RUN_FIXTURE_CHANGED");

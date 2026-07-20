@@ -6,6 +6,7 @@ export const HARNESS_PAYMENT_ATOMIC = PRODUCT_CATALOG.harness.amountAtomic;
 export const SKILL_PAYMENT_ATOMIC = PRODUCT_CATALOG.skill.amountAtomic;
 export const RUN_PAYMENT_ATOMIC = PRODUCT_CATALOG.run.amountAtomic;
 export const FLAKE_PAYMENT_ATOMIC = PRODUCT_CATALOG.flake.amountAtomic;
+export const MCP_DRIFT_PAYMENT_ATOMIC = PRODUCT_CATALOG.mcpdrift.amountAtomic;
 export const REVENUE_TARGET_ATOMIC = 1_000_000_000n;
 export const OWNER_CONTROLLED_CANARY_PAYER = "0xA72C5EAc41CC69c7F0662bE25D040AdF8692fE63";
 export const KNOWN_NON_REVENUE_TX_HASHES = [
@@ -37,6 +38,7 @@ export interface RevenueSummary {
     skill: number;
     run: number;
     flake: number;
+    mcpdrift: number;
     total: number;
   };
   recognized_transfers: SettlementTransfer[];
@@ -79,6 +81,7 @@ export function summarizeRevenue(
   const skill = recognized.filter(({ amount }) => amount === SKILL_PAYMENT_ATOMIC).length;
   const run = recognized.filter(({ amount }) => amount === RUN_PAYMENT_ATOMIC).length;
   const flake = recognized.filter(({ amount }) => amount === FLAKE_PAYMENT_ATOMIC).length;
+  const mcpdrift = recognized.filter(({ amount }) => amount === MCP_DRIFT_PAYMENT_ATOMIC).length;
 
   return {
     target_usdc: formatUsdc(REVENUE_TARGET_ATOMIC),
@@ -86,7 +89,7 @@ export function summarizeRevenue(
     remaining_usdc: formatUsdc(remainingAtomic),
     progress_percent: Number((recognizedAtomic * 1_000_000n) / REVENUE_TARGET_ATOMIC) / 10_000,
     canary_usdc: formatUsdc(canaryAtomic),
-    purchases: { single, portfolio, harness, skill, run, flake, total: recognized.length },
+    purchases: { single, portfolio, harness, skill, run, flake, mcpdrift, total: recognized.length },
     recognized_transfers: recognized,
     canary_transfers: canary,
     unrecognized_transfers: unrecognized,

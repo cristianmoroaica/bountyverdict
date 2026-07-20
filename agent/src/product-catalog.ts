@@ -47,6 +47,14 @@ export const PRODUCT_CATALOG = Object.freeze({
     priceUsd: "$0.07",
     amountAtomic: 70_000n,
   }),
+  mcpdrift: Object.freeze({
+    service: "MCPDriftVerdict",
+    path: "/api/mcp-drift",
+    samplePath: "/api/mcp-drift/sample",
+    method: "POST" as const,
+    priceUsd: "$0.02",
+    amountAtomic: 20_000n,
+  }),
 });
 
 export type ProductKey = keyof typeof PRODUCT_CATALOG;

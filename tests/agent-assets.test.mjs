@@ -10,6 +10,7 @@ const assertReusable = (value) => {
   assert.match(value?.guidance || "", /^Call /);
 };
 const flakeReuseGuidance = "Call FlakeVerdict for every completed public GitHub Actions failure before spending a retry; each successful call re-reads the selected attempt, other attempts of the same run, same-SHA outcomes, and up to 12 earlier comparable runs. Reuse a result only for its exact run ID and attempt, and call again after a new attempt appears.";
+const mcpReuseGuidance = "Call MCPDriftVerdict after every notifications/tools/list_changed, at agent startup when the current tools/list snapshot hash differs from the pinned baseline, and before accepting an MCP server upgrade. Reuse only for the exact baseline_snapshot hash, current_snapshot hash, and ruleset_version tuple.";
 
 test("agent manifest is honest and links inspectable products", async () => {
   const manifest = await readJson("../agent-manifest.json");
@@ -18,8 +19,8 @@ test("agent manifest is honest and links inspectable products", async () => {
   if (manifest.status === "active") assert.match(manifest.production_api, /^https:\/\//);
   assert.match(manifest.test_api, /^https:\/\//);
   assert.equal(manifest.test_network, "eip155:84532");
-  assert.equal(manifest.products.length, 6);
-  assert.deepEqual(manifest.products.map((product) => product.price_usdc), ["0.05", "0.40", "0.03", "0.06", "0.04", "0.07"]);
+  assert.equal(manifest.products.length, 7);
+  assert.deepEqual(manifest.products.map((product) => product.price_usdc), ["0.05", "0.40", "0.03", "0.06", "0.04", "0.07", "0.02"]);
   assert.ok(manifest.products.every((product) => product.reusable === true));
   assert.equal(manifest.reliability.result_guidance_field, "service_reuse");
   assert.equal(manifest.reliability.scheduled_functional_canaries, true);
@@ -34,6 +35,7 @@ test("agent manifest is honest and links inspectable products", async () => {
   assert.match(manifest.skills.preflight_agent_skills, /preflight-agent-skills\/SKILL\.md$/);
   assert.match(manifest.skills.diagnose_github_actions, /diagnose-github-actions\/SKILL\.md$/);
   assert.match(manifest.skills.classify_github_flakes, /classify-github-flakes\/SKILL\.md$/);
+  assert.match(manifest.skills.check_mcp_tool_drift, /check-mcp-tool-drift\/SKILL\.md$/);
   for (const product of manifest.products) {
     assert.match(product.use_when, /\.$/);
     assert.match(product.skill_url, /^https:\/\/.+\/SKILL\.md$/);
@@ -46,6 +48,13 @@ test("agent manifest is honest and links inspectable products", async () => {
   assert.equal(flake.bounds.maximum_earlier_comparable_runs, 12);
   assert.equal(flake.reuse_guidance, flakeReuseGuidance);
   assert.deepEqual(flake.verdicts, ["CONFIRMED_FLAKE", "LIKELY_FLAKE", "RECURRING_FAILURE", "NEW_FAILURE", "INCONCLUSIVE", "NOT_FAILED"]);
+  const mcp = manifest.products.find((product) => product.name === "MCPDriftVerdict");
+  assert.equal(mcp.method, "POST");
+  assert.equal(mcp.path, "/api/mcp-drift");
+  assert.equal(mcp.bounds.validation_completes_before_payment, true);
+  assert.equal(mcp.bounds.invokes_tools, false);
+  assert.equal(mcp.reuse_guidance, mcpReuseGuidance);
+  assert.deepEqual(mcp.verdicts, ["UNCHANGED", "SAFE_ADDITIVE", "REVIEW", "INCONCLUSIVE", "BREAKING", "SECURITY_REGRESSION"]);
 });
 
 test("umbrella routing skill selects one product and preserves payment safety", async () => {
@@ -54,10 +63,10 @@ test("umbrella routing skill selects one product and preserves payment safety", 
     "utf8",
   );
   assert.match(skill, /^---\nname: route-github-agent-checks\ndescription: .+\n---/);
-  for (const product of ["BountyVerdict", "BountyVerdict Portfolio", "HarnessVerdict", "SkillVerdict", "RunVerdict", "FlakeVerdict"]) {
+  for (const product of ["BountyVerdict", "BountyVerdict Portfolio", "HarnessVerdict", "SkillVerdict", "RunVerdict", "FlakeVerdict", "MCPDriftVerdict"]) {
     assert.match(skill, new RegExp(product));
   }
-  for (const cap of ["50,000", "400,000", "30,000", "60,000", "40,000", "70,000"]) {
+  for (const cap of ["50,000", "400,000", "30,000", "60,000", "40,000", "70,000", "20,000"]) {
     assert.match(skill, new RegExp(cap));
   }
   assert.match(skill, /one payment option only/);
@@ -66,6 +75,7 @@ test("umbrella routing skill selects one product and preserves payment safety", 
   assert.match(skill, /example input as documentation/);
   assert.match(skill, /Never reveal wallet secrets/);
   assert.match(skill, /service_reuse/);
+  assert.match(skill, /byte-identical validated request body/);
 });
 
 test("public samples remain valid JSON with the declared product contracts", async () => {
@@ -75,6 +85,7 @@ test("public samples remain valid JSON with the declared product contracts", asy
   const skillAudit = await readJson("../samples/skill.json");
   const runDiagnosis = await readJson("../samples/run.json");
   const flakeDiagnosis = await readJson("../samples/flake.json");
+  const mcpDrift = await readJson("../samples/mcp-drift.json");
   assert.equal(verdict.product, "BountyVerdict");
   assert.ok(["AVOID", "CAUTION", "VIABLE"].includes(verdict.verdict));
   assertReusable(verdict.service_reuse);
@@ -100,6 +111,26 @@ test("public samples remain valid JSON with the declared product contracts", asy
   assertReusable(flakeDiagnosis.service_reuse);
   assert.equal(flakeDiagnosis.service_reuse.guidance, flakeReuseGuidance);
   assert.match(flakeDiagnosis.target.head_sha, /^[a-f0-9]{40}$/);
+  assert.equal(mcpDrift.service, "MCPDriftVerdict");
+  assert.ok(["UNCHANGED", "SAFE_ADDITIVE", "REVIEW", "INCONCLUSIVE", "BREAKING", "SECURITY_REGRESSION"].includes(mcpDrift.verdict));
+  assert.equal(mcpDrift.service_reuse, mcpReuseGuidance);
+  assert.match(mcpDrift.hashes.baseline_snapshot, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(mcpDrift.coverage.truncated, false);
+});
+
+test("hosted MCPDriftVerdict workflow gates payment and treats catalogs as data", async () => {
+  const skill = await readFile(
+    new URL("../skills/check-mcp-tool-drift/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(skill, /^---\nname: check-mcp-tool-drift\ndescription: .+\n---/);
+  assert.match(skill, /20000/);
+  assert.match(skill, /byte-identical original body/);
+  assert.match(skill, /Never connect to a server, invoke a listed tool, fetch a schema or icon URL/);
+  assert.match(skill, /Never reveal wallet secrets/);
+  assert.match(skill, /never pay blindly twice/i);
+  assert.match(skill, /service_reuse/);
+  assert.match(skill, new RegExp(mcpReuseGuidance.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("hosted FlakeVerdict workflow caps payment and never mutates CI", async () => {

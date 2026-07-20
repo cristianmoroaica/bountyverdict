@@ -16,6 +16,7 @@ import {
   type SettlementCanaryProduct,
 } from "../src/settlement-canary.ts";
 import { FLAKE_SERVICE_REUSE } from "../src/flake.ts";
+import { mcpDriftExample } from "../src/mcp-drift-discovery.ts";
 
 function encodeHeader(value: unknown): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64");
@@ -98,7 +99,7 @@ test("settlement fixtures are exact production-only resources", () => {
     assert.equal(url.username, "");
     assert.equal(url.password, "");
     assert.equal(url.hash, "");
-    assert.match(url.pathname, /^\/api\/(?:verdict|portfolio|harness|skill|run|flake)$/);
+    assert.match(url.pathname, /^\/api\/(?:verdict|portfolio|harness|skill|run|flake|mcp-drift)$/);
   }
   assert.throws(
     () => selectSettlementCanaryProduct("https://attacker.invalid", new Date()),
@@ -115,6 +116,10 @@ test("default selection rotates deterministically once per UTC week", () => {
   );
   assert.equal(
     selectSettlementCanaryProduct(undefined, new Date(6 * 7 * 24 * 60 * 60 * 1000)),
+    "mcpdrift",
+  );
+  assert.equal(
+    selectSettlementCanaryProduct(undefined, new Date(7 * 7 * 24 * 60 * 60 * 1000)),
     "single",
   );
   assert.equal(selectSettlementCanaryProduct("run", epoch), "run");
@@ -192,6 +197,25 @@ test("paid contract validation requires reusable bounded-live guidance", () => {
     } })),
     /SERVICE_REUSE_INVALID/,
   );
+});
+
+test("MCP drift settlement pins POST body, price, challenge, and exact-hash contract", () => {
+  const fixture = getSettlementCanaryFixture("mcpdrift");
+  assert.equal(fixture.method, "POST");
+  assert.equal(fixture.amountAtomic, "20000");
+  assert.equal(fixture.service, "MCPDriftVerdict");
+  assert.ok(fixture.body);
+  assert.doesNotThrow(() => JSON.parse(fixture.body!));
+  assert.doesNotThrow(() => decodeAndValidatePaymentRequired(
+    encodeHeader(paymentRequired("mcpdrift")),
+    "mcpdrift",
+  ));
+  assert.deepEqual(validatePaidProductContract("mcpdrift", mcpDriftExample), {
+    verdict: "SAFE_ADDITIVE",
+    action: "ACCEPT_CURRENT",
+    relation_checks: 1,
+    proven_subset: 1,
+  });
 });
 
 test("flake settlement contract rejects obsolete retry advice and incomplete targets", () => {
@@ -281,6 +305,34 @@ test("orchestration authorizes once, sends once, forbids redirects, and validate
   assert.equal(new Headers(calls[0].init.headers).has("payment-signature"), false);
   assert.equal(new Headers(calls[1].init.headers).get("payment-signature"), "not-persisted");
   assert.equal(JSON.stringify(result).includes("not-persisted"), false);
+});
+
+test("MCP drift settlement resends the byte-identical POST body exactly once", async () => {
+  const fixture = getSettlementCanaryFixture("mcpdrift");
+  const bodies: Array<BodyInit | null | undefined> = [];
+  let calls = 0;
+  const result = await runSettlementCanary({
+    product: "mcpdrift",
+    fetchImpl: (async (_input, init = {}) => {
+      calls += 1;
+      bodies.push(init.body);
+      if (calls === 1) {
+        return new Response("", { status: 402, headers: { "payment-required": encodeHeader(paymentRequired("mcpdrift")) } });
+      }
+      return new Response(JSON.stringify(mcpDriftExample), {
+        status: 200,
+        headers: { "content-type": "application/json", "payment-response": settlementHeader() },
+      });
+    }) as typeof fetch,
+    payment: {
+      createPaymentPayload: async () => ({}),
+      encodePaymentHeaders: () => ({ "PAYMENT-SIGNATURE": "redacted" }),
+    },
+  });
+  assert.equal(result.status, "SETTLED");
+  assert.equal(calls, 2);
+  assert.equal(bodies[0], fixture.body);
+  assert.equal(bodies[1], fixture.body);
 });
 
 test("post-authorization transport ambiguity is never retried", async () => {

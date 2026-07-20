@@ -1,0 +1,4 @@
+interface:
+  display_name: "MCP Tool Drift"
+  short_description: "Gate MCP catalog changes before agent upgrades"
+  default_prompt: "Use $check-mcp-tool-drift to compare these MCP tool catalogs before I accept the server change."

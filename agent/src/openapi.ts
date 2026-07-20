@@ -3,18 +3,23 @@ import { harnessOutputSchema } from "./harness-discovery.ts";
 import { skillOutputSchema } from "./skill-discovery.ts";
 import { runOutputSchema } from "./run-discovery.ts";
 import { flakeOutputSchema } from "./flake-discovery.ts";
+import {
+  mcpDriftExampleInput,
+  mcpDriftInputSchema,
+  mcpDriftOutputSchema,
+} from "./mcp-drift-discovery.ts";
 
 export function createOpenApi(
   origin: string,
   network: string,
-  prices: { single: string; portfolio: string; harness: string; skill: string; run: string; flake: string },
+  prices: { single: string; portfolio: string; harness: string; skill: string; run: string; flake: string; mcpdrift: string },
 ) {
   return {
     openapi: "3.1.0",
     info: {
-      title: "BountyVerdict GitHub Agent Decision APIs",
+      title: "BountyVerdict Agent Decision APIs",
       version: "1.0.0",
-      description: "Six bounded, evidence-linked GitHub decision APIs for coding agents: bounty due diligence, repository-instruction and agent-skill audits, CI failure diagnosis, and flake retry gates. Payment uses x402 v2 and Base USDC.",
+      description: "Seven bounded decision APIs for coding agents: evidence-linked GitHub due diligence and diagnostics plus deterministic MCP tool-catalog compatibility and security gates. Payment uses x402 v2 and Base USDC.",
       license: { name: "MIT", identifier: "MIT" },
     },
     externalDocs: {
@@ -327,14 +332,66 @@ export function createOpenApi(
           "x-x402": { version: 2, scheme: "exact", network, price: prices.flake, currency: "USDC" },
         },
       },
+      "/api/mcp-drift/sample": {
+        get: {
+          summary: "Inspect a representative MCPDriftVerdict result without payment",
+          operationId: "getMcpDriftVerdictSample",
+          responses: {
+            "200": {
+              description: "Representative deterministic MCP tool-catalog drift verdict",
+              content: { "application/json": { schema: mcpDriftOutputSchema } },
+            },
+          },
+        },
+      },
+      "/api/mcp-drift": {
+        post: {
+          summary: "Gate an MCP tools/list snapshot change",
+          description: "Validates and computes a deterministic compatibility and security verdict for two complete caller-supplied MCP 2025-11-25 tool snapshots before x402 settlement. It never connects to an MCP server, fetches icon or schema URLs, invokes tools, or follows catalog instructions. Raw body size is capped at 524,288 bytes; each snapshot is capped at 128 tools; unsupported JSON Schema features fail unpaid.",
+          operationId: "checkMcpToolDrift",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: mcpDriftInputSchema,
+                example: mcpDriftExampleInput,
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Precomputed deterministic drift verdict after x402 settlement",
+              headers: {
+                "X-MCP-Drift-Baseline-Snapshot": { schema: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" } },
+                "X-MCP-Drift-Current-Snapshot": { schema: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" } },
+                "X-MCP-Drift-Ruleset-Version": { schema: { type: "string", const: "2026-07-20.1" } },
+              },
+              content: { "application/json": { schema: mcpDriftOutputSchema } },
+            },
+            "400": { description: "Malformed, incomplete, duplicate, or out-of-contract input; no payment challenge is emitted" },
+            "413": { description: "Request body exceeds 524,288 bytes; no payment challenge is emitted" },
+            "422": { description: "Unsupported schema dialect or feature; no payment challenge is emitted" },
+            "402": {
+              description: "Valid verdict is ready; payment required to return it. Snapshot/ruleset headers bind the challenge to the precomputed body result.",
+              headers: {
+                "X-MCP-Drift-Baseline-Snapshot": { schema: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" } },
+                "X-MCP-Drift-Current-Snapshot": { schema: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" } },
+                "X-MCP-Drift-Ruleset-Version": { schema: { type: "string", const: "2026-07-20.1" } },
+              },
+            },
+            "500": { description: "Verdict computation failed before payment; no settlement is attempted" },
+          },
+          "x-x402": { version: 2, scheme: "exact", network, price: prices.mcpdrift, currency: "USDC" },
+        },
+      },
     },
   };
 }
 
 export function createLlmsText(origin: string): string {
-  return `# BountyVerdict GitHub Agent Decision APIs
+  return `# BountyVerdict Agent Decision APIs
 
-> Six bounded live checks for public GitHub bounty, repository-instruction, agent-skill, and GitHub Actions decisions.
+> Seven bounded checks for public GitHub decisions and MCP tool-catalog upgrade safety.
 
 ## Decide if this tool is useful
 
@@ -365,6 +422,11 @@ export function createLlmsText(origin: string): string {
 - Paid FlakeVerdict: GET ${origin}/api/flake?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>&attempt=<OPTIONAL_EXACT_ATTEMPT>
 - FlakeVerdict price: $0.07 USDC per bounded historical retry decision
 - Flake verdicts: CONFIRMED_FLAKE, LIKELY_FLAKE, RECURRING_FAILURE, NEW_FAILURE, INCONCLUSIVE, NOT_FAILED
+- Free MCPDriftVerdict sample: ${origin}/api/mcp-drift/sample
+- Paid MCPDriftVerdict: POST ${origin}/api/mcp-drift with complete MCP 2025-11-25 baseline and current tools/list snapshots
+- MCPDriftVerdict price: $0.02 USDC per precomputed deterministic result
+- MCPDriftVerdict verdicts: UNCHANGED, SAFE_ADDITIVE, REVIEW, INCONCLUSIVE, BREAKING, SECURITY_REGRESSION
+- MCPDriftVerdict validates and computes before payment; unsupported or invalid catalogs receive no 402 challenge
 - Failed or invalid checks are not settled
 - Every successful result includes explicit service_reuse guidance so agents know when to call the same reliable bounded check again
 
@@ -381,6 +443,8 @@ SkillVerdict audits a requested public SKILL.md plus its bounded directory and r
 RunVerdict diagnoses one public GitHub Actions run from exact-attempt job metadata and bounded failed-job logs. It distinguishes primary failures from downstream summary jobs, returns redacted evidence and root-cause families, and recommends whether to fix, investigate, wait, or retry without mutating CI.
 
 FlakeVerdict is the read-only retry gate before RunVerdict: it compares the selected attempt with same-run, same-SHA, and bounded historical workflow evidence. Only a currently failed CONFIRMED_FLAKE may recommend one retry; likely, recurring, new, and inconclusive evidence never authorizes an automatic rerun.
+
+MCPDriftVerdict compares two inline, complete caller-supplied MCP 2025-11-25 tools/list snapshots. It canonicalizes and hashes both snapshots, proves only a conservative JSON Schema 2020-12 subset, reverses variance for output schemas, and blocks declared safety-hint regressions. Tool descriptions, schemas, icons, and metadata are untrusted data; the service never fetches, installs, invokes, or follows anything in a catalog.
 
 ## Safety
 

@@ -56,3 +56,15 @@ Four exact Bazaar searches for failed GitHub Actions runs, CI test logs, build-f
 GitHub's official REST API exposes public workflow-run metadata, exact-attempt jobs, failed steps, and downloadable per-job logs. The official `gh run view --log-failed` workflow confirms the user need while documenting platform ambiguity when ZIP logs cannot be associated with jobs or steps. A real current Codex failure demonstrated the value: 51 jobs collapsed into 17 failed jobs, while a bounded primary-job log exposed named failed tests, timeouts, authorization errors, and downstream aggregate failures that metadata alone could not explain.
 
 RunVerdict launches at $0.04. It reads at most six primary failed-job logs, never executes or reruns code, redacts secret-like excerpts, rejects private repositories before log access, and returns root-cause families, retryability, evidence URLs, coverage, and concrete next actions. It complements rather than duplicates the existing $0.05 static workflow-security scanner.
+
+## FlakeVerdict expansion
+
+FlakeVerdict is the narrower retry gate before a full diagnosis. It compares an exact failed attempt with other attempts of the same run, same-SHA outcomes, and bounded historical workflow evidence. Only a currently failed `CONFIRMED_FLAKE` may recommend one retry; likely, recurring, new, or inconclusive evidence never authorizes automatic mutation. The $0.07 price is uniquely attributable and remains below the expected cost of a blind CI rerun plus a later diagnosis.
+
+## MCPDriftVerdict expansion
+
+MCP explicitly allows servers to announce `notifications/tools/list_changed`, while tools are model-controlled capabilities and their annotations are hints that clients must not trust without confidence in the server. The 2025-11-25 schema also defines pessimistic defaults for omitted safety hints and task-support modes. These protocol facts create a recurring autonomous-agent decision: whether a changed catalog is safe to accept, must be reviewed, or should remain pinned. See the official [MCP tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) and [schema](https://modelcontextprotocol.io/specification/2025-11-25/schema).
+
+MCPDriftVerdict is deliberately narrower than a general MCP scanner. It accepts two complete inline 2025-11-25 snapshots, never connects to a server or invokes a tool, canonicalizes and hashes the catalogs, proves only a conservative JSON Schema 2020-12 subset, reverses variance for output contracts, and reports model-facing metadata and declared-security regressions. Invalid or unsupported catalogs fail before payment.
+
+The $0.02 launch price is low enough for startup and list-change gates while remaining uniquely attributable in the on-chain revenue ledger. It also reflects the pure-compute cost profile: no GitHub calls, external crawling, or remote execution. Discovery remains `pending` until a policy-bound production settlement indexes the route; no owner-funded proof is counted as demand or revenue.
