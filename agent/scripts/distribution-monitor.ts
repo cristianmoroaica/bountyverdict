@@ -123,7 +123,6 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
     const searchUrl = new URL(`${CDP_DISCOVERY}/search`);
     searchUrl.searchParams.set("query", query);
     searchUrl.searchParams.set("network", NETWORK);
-    searchUrl.searchParams.set("payTo", wallet);
     searchUrl.searchParams.set("limit", "20");
     const response = await monitoredFetch(searchUrl.href);
     if (!response.ok) throw new Error(`CDP semantic discovery returned HTTP ${response.status}.`);
