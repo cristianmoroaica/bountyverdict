@@ -2,8 +2,9 @@ export const SINGLE_PAYMENT_ATOMIC = 50_000n;
 export const PORTFOLIO_PAYMENT_ATOMIC = 400_000n;
 export const REVENUE_TARGET_ATOMIC = 1_000_000_000n;
 export const KNOWN_NON_REVENUE_TX_HASHES = [
-  // Capped production interoperability proof funded by the project owner.
+  // Capped production interoperability proofs funded by the project owner.
   "0x6d308dcf6a53aae946b3a5ee55ab5afab8579acfbde7147fa18734ebb11fc7d4",
+  "0x7387f1de74c7441d3d82416e4ece1df8cfd27075ddeb692dda5250ef971d12cd",
 ] as const;
 
 export interface SettlementTransfer {

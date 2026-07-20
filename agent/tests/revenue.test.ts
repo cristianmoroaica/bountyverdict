@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  KNOWN_NON_REVENUE_TX_HASHES,
   PORTFOLIO_PAYMENT_ATOMIC,
   SINGLE_PAYMENT_ATOMIC,
   summarizeRevenue,
@@ -21,22 +22,22 @@ test("revenue summary recognizes only exact product settlements", () => {
   assert.equal(summary.excluded_transfers.length, 0);
 });
 
-test("revenue summary excludes the owner-funded production proof", () => {
-  const proof = {
-    amount: SINGLE_PAYMENT_ATOMIC,
-    transaction_hash: "0x6d308dcf6a53aae946b3a5ee55ab5afab8579acfbde7147fa18734ebb11fc7d4",
-    log_index: 330,
-  };
+test("revenue summary excludes the owner-funded production proofs", () => {
+  const proofs = KNOWN_NON_REVENUE_TX_HASHES.map((transaction_hash, index) => ({
+    amount: index === 0 ? SINGLE_PAYMENT_ATOMIC : PORTFOLIO_PAYMENT_ATOMIC,
+    transaction_hash,
+    log_index: index,
+  }));
   const customer = {
     amount: SINGLE_PAYMENT_ATOMIC,
     transaction_hash: "0xcustomer",
     log_index: 1,
   };
-  const summary = summarizeRevenue([proof, customer]);
+  const summary = summarizeRevenue([...proofs, customer]);
 
   assert.equal(summary.recognized_usdc, "0.05");
   assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, total: 1 });
-  assert.deepEqual(summary.excluded_transfers, [proof]);
+  assert.deepEqual(summary.excluded_transfers, proofs);
   assert.deepEqual(summary.recognized_transfers, [customer]);
 });
 
