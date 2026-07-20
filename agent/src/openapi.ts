@@ -9,6 +9,15 @@ import {
   mcpDriftOutputSchema,
 } from "./mcp-drift-discovery.ts";
 
+function paymentInfo(price: string) {
+  const amount = price.replace(/^\$/, "");
+  if (!/^\d+\.\d{2}$/.test(amount)) throw new Error(`Invalid USD price: ${price}`);
+  return {
+    price: { mode: "fixed", currency: "USD", amount: `${amount}0000` },
+    protocols: [{ x402: {} }],
+  };
+}
+
 export function createOpenApi(
   origin: string,
   network: string,
@@ -20,6 +29,7 @@ export function createOpenApi(
       title: "BountyVerdict Agent Decision APIs",
       version: "1.0.0",
       description: "Seven bounded decision APIs for coding agents: evidence-linked GitHub due diligence and diagnostics plus deterministic MCP tool-catalog compatibility and security gates. Payment uses x402 v2 and Base USDC.",
+      "x-guidance": "Choose the narrowest operation for the decision at hand, inspect its free sample and unpaid x402 challenge, then pay only when the challenge matches the documented price, Base USDC asset, and operation. Reuse a successful result only according to its service_reuse field.",
       license: { name: "MIT", identifier: "MIT" },
     },
     externalDocs: {
@@ -43,7 +53,7 @@ export function createOpenApi(
       "/api/verdict": {
         get: {
           summary: "Deep-preflight a public GitHub bounty issue",
-          description: "Checks issue and repository state, competition and failed-attempt swarms, maintainer rejection, reward withdrawal, and official AI-contribution policy. Successful calls cost $0.05 USDC through x402.",
+          description: "Check whether one public GitHub bounty is still available and worth pursuing before coding. Detects closed or locked issues, withdrawn rewards, maintainer rejection, competing pull requests, claimant and failed-attempt swarms, then returns AVOID, CAUTION, or VIABLE with public evidence and AI-contribution-policy coverage.",
           operationId: "checkBountyVerdict",
           parameters: [{
             name: "issue_url",
@@ -73,6 +83,7 @@ export function createOpenApi(
             price: prices.single,
             currency: "USDC",
           },
+          "x-payment-info": paymentInfo(prices.single),
         },
       },
       "/api/portfolio/sample": {
@@ -90,7 +101,7 @@ export function createOpenApi(
       "/api/portfolio": {
         post: {
           summary: "Rank two to ten GitHub bounty candidates",
-          description: "Runs the full evidence-linked preflight on each candidate with concurrency limits, ranks viable work first, and preserves partial results when an upstream issue is unavailable.",
+          description: "Compare two to ten public GitHub bounties and choose the best candidate. Runs the full due-diligence check for every issue, ranks opportunities, returns per-candidate verdicts and partial failures, and identifies the strongest non-AVOID option. At ten candidates the fixed price is $0.04 per audited candidate.",
           operationId: "rankBountyPortfolio",
           requestBody: {
             required: true,
@@ -138,6 +149,7 @@ export function createOpenApi(
             price: prices.portfolio,
             currency: "USDC",
           },
+          "x-payment-info": paymentInfo(prices.portfolio),
         },
       },
       "/api/harness/sample": {
@@ -186,6 +198,7 @@ export function createOpenApi(
             price: prices.harness,
             currency: "USDC",
           },
+          "x-payment-info": paymentInfo(prices.harness),
         },
       },
       "/api/skill/sample": {
@@ -241,6 +254,7 @@ export function createOpenApi(
             price: prices.skill,
             currency: "USDC",
           },
+          "x-payment-info": paymentInfo(prices.skill),
         },
       },
       "/api/run/sample": {
@@ -258,7 +272,7 @@ export function createOpenApi(
       "/api/run": {
         get: {
           summary: "Diagnose a public GitHub Actions workflow run",
-          description: "Reads exact-attempt job metadata and bounded failed-job logs without executing or rerunning code. Separates primary failures from aggregate result jobs, redacts secret-like evidence, classifies root-cause families, and returns retryability plus next actions.",
+          description: "Find why one public GitHub Actions workflow failed and what the agent should do next. Reads exact-attempt jobs and bounded failed-job logs, separates primary failures from downstream summaries, and returns root cause, retryability, redacted evidence, and concrete next actions without rerunning code.",
           operationId: "diagnoseRunVerdict",
           parameters: [{
             name: "run_url",
@@ -280,6 +294,7 @@ export function createOpenApi(
             "503": { description: "Temporary capacity or service configuration failure" },
           },
           "x-x402": { version: 2, scheme: "exact", network, price: prices.run, currency: "USDC" },
+          "x-payment-info": paymentInfo(prices.run),
         },
       },
       "/api/flake/sample": {
@@ -297,7 +312,7 @@ export function createOpenApi(
       "/api/flake": {
         get: {
           summary: "Classify a public GitHub Actions failure before retrying",
-          description: "Compares an exact run attempt with other attempts of the same run, same-SHA outcomes, exact job-and-failed-step fingerprints, and up to 12 earlier comparable workflow runs. It returns confirmed, likely, structurally recurring, new, inconclusive, or not-failed evidence without executing or rerunning CI.",
+          description: "Decide whether a completed GitHub Actions failure is flaky and should be retried once, or is recurring or new and needs a fix. Compares exact workflow attempts, same-commit outcomes, failed-step fingerprints, and bounded historical runs, then returns a retry-or-fix decision without rerunning CI.",
           operationId: "classifyFlakeVerdict",
           parameters: [
             {
@@ -330,6 +345,7 @@ export function createOpenApi(
             "503": { description: "Temporary capacity, deadline, or service configuration failure; verified payment is not settled" },
           },
           "x-x402": { version: 2, scheme: "exact", network, price: prices.flake, currency: "USDC" },
+          "x-payment-info": paymentInfo(prices.flake),
         },
       },
       "/api/mcp-drift/sample": {
@@ -347,7 +363,7 @@ export function createOpenApi(
       "/api/mcp-drift": {
         post: {
           summary: "Gate an MCP tools/list snapshot change",
-          description: "Validates and computes a deterministic compatibility and security verdict for two complete caller-supplied MCP 2025-11-25 tool snapshots before x402 settlement. It never connects to an MCP server, fetches icon or schema URLs, invokes tools, or follows catalog instructions. Raw body size is capped at 524,288 bytes; each snapshot is capped at 128 tools; unsupported JSON Schema features fail unpaid.",
+          description: "Decide whether a changed MCP tools/list contract will break an agent after a server upgrade. Compares complete baseline and current snapshots; detects removed or renamed tools, new required arguments, incompatible input or output schemas, and model-facing metadata or safety-hint regressions. Returns an exact-hash compatibility verdict without fetching or invoking tools. Invalid or unsupported inputs fail unpaid.",
           operationId: "checkMcpToolDrift",
           requestBody: {
             required: true,
@@ -382,6 +398,7 @@ export function createOpenApi(
             "500": { description: "Verdict computation failed before payment; no settlement is attempted" },
           },
           "x-x402": { version: 2, scheme: "exact", network, price: prices.mcpdrift, currency: "USDC" },
+          "x-payment-info": paymentInfo(prices.mcpdrift),
         },
       },
     },

@@ -14,6 +14,7 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   });
   assert.match(spec.info.title, /Agent Decision APIs/);
   assert.match(spec.info.description, /Seven bounded/);
+  assert.match(spec.info["x-guidance"], /service_reuse/);
   const operation = spec.paths["/api/verdict"].get;
   assert.equal(operation["x-x402"].price, "$0.05");
   assert.equal(operation["x-x402"].network, "eip155:8453");
@@ -29,7 +30,13 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   ];
   for (const paid of paidOperations) {
     assert.ok(paid.responses["200"].content["application/json"].schema.required.includes("service_reuse"));
+    assert.deepEqual(paid["x-payment-info"].protocols, [{ x402: {} }]);
+    assert.equal(paid["x-payment-info"].price.mode, "fixed");
+    assert.equal(paid["x-payment-info"].price.currency, "USD");
+    assert.match(paid["x-payment-info"].price.amount, /^\d+\.\d{6}$/);
+    assert.ok(paid.responses["402"]);
   }
+  assert.equal(operation["x-payment-info"].price.amount, "0.050000");
   assert.equal(spec.paths["/api/portfolio"].post["x-x402"].price, "$0.40");
   assert.equal(spec.paths["/api/portfolio"].post.requestBody.content["application/json"].schema.properties.issue_urls.maxItems, 10);
   assert.equal(spec.paths["/api/harness"].get["x-x402"].price, "$0.03");

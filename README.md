@@ -1,41 +1,37 @@
-# BountyVerdict
+# BountyVerdict Agent Decision APIs
 
-[![CI](https://github.com/cristianmoroaica/bountyverdict/actions/workflows/ci.yml/badge.svg)](https://github.com/cristianmoroaica/bountyverdict/actions/workflows/ci.yml)
+[![CI](https://github.com/cristianmoroaica/bountyverdict/actions/workflows/ci.yml/badge.svg)](https://github.com/cristianmoroaica/bountyverdict/actions/workflows/ci.yml) [![skills.sh](https://skills.sh/b/cristianmoroaica/bountyverdict)](https://skills.sh/cristianmoroaica/bountyverdict)
 
-Know before you code.
+Seven paid, bounded decision APIs for autonomous coding agents. Diagnose a failed GitHub Actions run, decide whether a failure is flaky, audit a third-party skill, check an agent instruction stack, compare GitHub bounties, or gate an MCP server upgrade. No account or API key is required; successful results are paid in Base USDC through x402.
 
-BountyVerdict checks whether a public GitHub bounty issue is still worth investigating. It catches failure modes that shallow bounty boards miss:
-
-- closed or locked issues;
-- archived or stale repositories;
-- linked open pull requests;
-- closed-PR and attempt swarms;
-- explicit maintainer rejection or spam warnings;
-- comments indicating a withdrawn or cancelled reward.
-
-Every important result links back to public GitHub evidence. The tool does not guarantee that a reward exists, that work will be merged, or that anyone will pay.
-
-## Use it
-
-Visit [BountyVerdict](https://cristianmoroaica.github.io/bountyverdict/) and paste a public GitHub issue URL.
-
-No account, token, backend, analytics, or data storage is used. Your browser makes read-only requests directly to GitHub's public API.
-
-## Agent API
-
-The `agent/` directory contains the paid, machine-readable product surface. It is a Cloudflare Worker with seven x402-protected products: a **$0.05 USDC** fresh bounty verdict, a **$0.40 USDC** portfolio that ranks 2–10 candidates, a **$0.03 USDC HarnessVerdict** instruction audit, a **$0.06 USDC SkillVerdict** security audit, a **$0.04 USDC RunVerdict** diagnosis, a **$0.07 Base USDC FlakeVerdict** retry gate, and a **$0.02 USDC MCPDriftVerdict** compatibility and declared-security gate for complete MCP `tools/list` snapshots. All declare input/output schemas through the Bazaar discovery extension.
-
-Agents can inspect free samples, see exact prices in the HTTP 402 response, then independently decide whether to buy. Invalid inputs and upstream failures return an error without settlement. The public [`agent-manifest.json`](agent-manifest.json) is the authoritative activation record. Guarded purchase workflows live under [`skills/`](skills/).
-
-Install the umbrella router, which selects the right bounded check and loads its product-specific safeguards:
+Install the router that selects the narrowest check and applies its payment safeguards:
 
 ```bash
 npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y
 ```
 
-Install every operating skill with `npx skills add cristianmoroaica/bountyverdict --skill '*' -y`. Each product entry in the manifest also publishes its direct `skill_url`, exact install command, and `use_when` trigger.
+Then ask, for example:
 
-The established contracts were exercised end to end on Base Sepolia and Base mainnet. The production manifest is active and Coinbase Bazaar indexes five established resources; FlakeVerdict and MCPDriftVerdict remain explicitly pending until their first policy-bound catalog settlements. Owner-funded launch proofs are interoperability tests, not earned revenue, and are excluded from the revenue ledger.
+- “Why did this public GitHub Actions workflow fail, and what should I do next?”
+- “Will this MCP `tools/list` schema change break my agent after the server upgrade?”
+
+| Decision | Product | Price | Guarded skill |
+|---|---|---:|---|
+| Is one public GitHub bounty still worth pursuing? | BountyVerdict | $0.05 | [`preflight-github-bounties`](skills/preflight-github-bounties/SKILL.md) |
+| Which of 2–10 bounties is the best candidate? | Portfolio | $0.40 | [`preflight-github-bounties`](skills/preflight-github-bounties/SKILL.md) |
+| Are repository agent instructions reliable? | HarnessVerdict | $0.03 | [`audit-agent-harness`](skills/audit-agent-harness/SKILL.md) |
+| Is a third-party SKILL.md safe to install? | SkillVerdict | $0.06 | [`preflight-agent-skills`](skills/preflight-agent-skills/SKILL.md) |
+| Why did this workflow run fail? | RunVerdict | $0.04 | [`diagnose-github-actions`](skills/diagnose-github-actions/SKILL.md) |
+| Is this failure flaky: retry once or fix it? | FlakeVerdict | $0.07 | [`classify-github-flakes`](skills/classify-github-flakes/SKILL.md) |
+| Will an MCP tool-catalog change break the agent? | MCPDriftVerdict | $0.02 | [`check-mcp-tool-drift`](skills/check-mcp-tool-drift/SKILL.md) |
+
+Task-specific skills are the least-privilege path. Install all seven only when needed with `npx skills add cristianmoroaica/bountyverdict --skill '*' -y`.
+
+## Inspect before paying
+
+Every product has a free sample, a machine-readable OpenAPI contract, a declared price, and a successful-result `service_reuse` rule. Invalid inputs and upstream failures are not settled. Start with the [agent page](https://cristianmoroaica.github.io/bountyverdict/agents.html), [`agent-manifest.json`](agent-manifest.json), or the production [`openapi.json`](https://bountyverdict-agent-production.mimirslab.workers.dev/openapi.json).
+
+The seven contracts are continuously checked in production. Coinbase Bazaar currently indexes five resources. FlakeVerdict has a successful policy-bound settlement and is awaiting discovery-cache propagation; MCPDriftVerdict is pending its first eligible settlement. Owner-funded proofs are excluded from customer revenue.
 
 HarnessVerdict pins the repository default branch to an immutable commit and audits recognized `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, Copilot, Cursor, and `SKILL.md` surfaces without cloning or executing repository code. It reports evidence-linked path, scope, portability, context-budget, skill-frontmatter, and secret-like-material findings.
 
@@ -51,7 +47,11 @@ MCPDriftVerdict accepts two complete inline MCP 2025-11-25 `tools/list` snapshot
 
 See [`agent/README.md`](agent/README.md) for the protocol, local verification, and deployment configuration.
 
-The launch price and differentiation are grounded in a live Bazaar comparison documented in [`docs/MARKET_VALIDATION.md`](docs/MARKET_VALIDATION.md). Agents and crawlers can read [`llms.txt`](llms.txt) before deciding whether the product is relevant.
+The launch prices and differentiation are grounded in a live Bazaar comparison documented in [`docs/MARKET_VALIDATION.md`](docs/MARKET_VALIDATION.md). Agents and crawlers can read [`llms.txt`](llms.txt) before deciding whether a product is relevant.
+
+## Free human bounty checker
+
+Visit [BountyVerdict](https://cristianmoroaica.github.io/bountyverdict/) and paste a public GitHub issue URL. The browser makes read-only requests directly to GitHub's public API without an account, backend, analytics, or data storage. It checks issue and repository state, competing pull requests, failed-attempt swarms, maintainer rejection, and reward-withdrawal language. Every important result links to public evidence; no result guarantees a reward, acceptance, merge, or payment.
 
 ## Run locally
 

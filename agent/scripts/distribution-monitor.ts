@@ -34,6 +34,15 @@ const settlementBuyer = process.env.SETTLEMENT_BUYER_ADDRESS;
 const settlementCanaryEnabled = process.env.SETTLEMENT_CANARY_ENABLED === "YES";
 const MAX_CANARY_AGE_MS = 8 * 60 * 60 * 1000;
 const EXPECTED_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "flake", "mcpdrift"] as const;
+const BUYER_INTENTS: ReadonlyArray<{ product: ProductKey; query: string }> = [
+  { product: "single", query: "is this public GitHub bounty still worth pursuing before coding" },
+  { product: "portfolio", query: "rank multiple public GitHub bounty issues and choose the best candidate" },
+  { product: "harness", query: "audit AGENTS.md CLAUDE.md repository instructions before autonomous coding" },
+  { product: "skill", query: "is this third-party SKILL.md safe to install credential exfiltration prompt injection" },
+  { product: "run", query: "why did this public GitHub Actions workflow fail root cause next action" },
+  { product: "flake", query: "is this GitHub Actions failure flaky should I retry or fix it" },
+  { product: "mcpdrift", query: "will this MCP tools/list schema change break my agent after a server upgrade" },
+];
 
 if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
   throw new Error("REVENUE_WALLET must be a public 20-byte EVM address.");
@@ -161,14 +170,7 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
   const merchant = await merchantResponse.json() as { resources?: Array<{ resource?: string }> };
   const resources = merchant.resources || [];
 
-  const searches = await Promise.all([
-    "GitHub bounty due diligence stale issue competing pull requests AI contribution policy",
-    "AGENTS.md CLAUDE.md repository instruction audit stale paths portability",
-    "agent SKILL.md security supply chain pre-install audit credential exfiltration",
-    "GitHub Actions failed run job logs root cause diagnosis retry",
-    "GitHub Actions flaky test historical runs same commit retry decision regression",
-    "MCP tools list schema compatibility security regression server upgrade gate",
-  ].map(async (query) => {
+  const searches = await Promise.all(BUYER_INTENTS.map(async ({ product, query }) => {
     const searchUrl = new URL(`${CDP_DISCOVERY}/search`);
     searchUrl.searchParams.set("query", query);
     searchUrl.searchParams.set("network", NETWORK);
@@ -179,7 +181,7 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
       resources?: Array<{ resource?: string }>;
       searchMethod?: string;
     };
-    return { query, ...result };
+    return { product, query, ...result };
   }));
   const semanticResources = [...new Set(searches.flatMap(({ resources: found = [] }) =>
     found.map(({ resource }) => resource).filter((resource): resource is string => Boolean(resource))
@@ -200,11 +202,9 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
   const semanticProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
     [name, semanticResources.includes(resource)]
   ));
-  const semanticRanks = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) => {
-    const ranks = searches.map(({ resources: found = [] }) =>
-      found.findIndex((candidate) => candidate.resource === resource)
-    ).filter((rank) => rank >= 0).map((rank) => rank + 1);
-    return [name, ranks.length ? Math.min(...ranks) : null];
+  const semanticRanks = Object.fromEntries(searches.map(({ product, resources: found = [] }) => {
+    const rank = found.findIndex((candidate) => candidate.resource === expectedResources[product]);
+    return [product, rank >= 0 ? rank + 1 : null];
   }));
   const queryRanks = Object.fromEntries(searches.map(({ query, resources: found = [] }) => [
     query,
@@ -213,12 +213,17 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
       return [name, rank >= 0 ? rank + 1 : null];
     })),
   ]));
+  const topCompetitors = Object.fromEntries(searches.map(({ product, resources: found = [] }) => [
+    product,
+    found.filter(({ resource }) => resource !== expectedResources[product]).slice(0, 3).map(({ resource }) => resource),
+  ]));
   return {
     indexed: Object.values(indexedProducts).every(Boolean),
     indexed_products: indexedProducts,
     semantic_products: semanticProducts,
     semantic_best_rank: semanticRanks,
     query_ranks: queryRanks,
+    top_competitors: topCompetitors,
     merchant_resource_count: resources.length,
     semantic_match_count: semanticResources.filter((resource) => resource.startsWith(`${api}/api/`)).length,
     search_method: [...new Set(searches.map(({ searchMethod }) => searchMethod).filter(Boolean))],
@@ -374,6 +379,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Customer revenue:** ${money(revenueValue)} / $1,000.00
 - **Current profit (recognized-USDC basis):** ${money(profitValue)} (customer revenue minus ${money(costsValue)} tracked USD costs)
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
+- **Distribution milestone:** ${Number(purchases.total || 0)} / 10 genuine external purchases
 - **Customer purchases:** ${Number(purchases.total || 0)}
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
 - **Unrelated incoming transfers:** ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
@@ -383,14 +389,14 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Both CDP policies now enforce the exact Base-USDC seller and $0.40 authorization ceiling, the dedicated buyer is funded with owner capital, and FlakeVerdict passed the first policy-bound real settlement. The weekly settlement canary is enabled with independent application spend controls and no ambiguous-result retry.
+The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Distribution is now the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers. Owner-funded checks remain excluded.
 
 ## What is next
 
-1. Verify FlakeVerdict appears in the CDP merchant and semantic caches after its policy-bound settlement; keep the transfer excluded from customer revenue.
-2. Let the seven-day guard elapse before the next real canary. MCPDriftVerdict remains pending until its own policy-bound call is safely eligible and observed by discovery.
-3. Keep the verified public router and per-product install paths current, then build the next research-backed product; MergeVerdict remains the leading public-PR gate candidate.
-4. Reach the first genuine paying agent, then optimize pricing and product work from observed calls rather than owner-funded proofs.
+1. Publish the agent-first release, standard OpenAPI payment metadata, and corrected skill trust disclosures across the public distribution surfaces.
+2. Submit the canonical repository and agent page to suitable self-serve directories; keep Coinbase Bazaar and Agentic Market automatic discovery under observation.
+3. Measure each product with its own natural buyer-intent query and track its rank plus the top three competing resources.
+4. Improve positioning from observed discovery and genuine calls until ten external purchases are recognized. Do not build an eighth product before that gate.
 
 ## Production health
 

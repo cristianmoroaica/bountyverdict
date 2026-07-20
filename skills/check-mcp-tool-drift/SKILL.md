@@ -20,6 +20,8 @@ The body must contain exactly:
 
 Exhaust every `tools/list` page before asserting `complete:true`. Do not send a JSON-RPC wrapper, a partial page, or `nextCursor`. Preserve strings byte-for-byte; do not trim, case-fold, or Unicode-normalize them. Tool names are case-sensitive and must be unique.
 
+This check transmits the complete baseline and current catalogs to the external BountyVerdict service, including tool names, descriptions, input and output schemas, icons, annotations, and `_meta`. Do not submit private, proprietary, credential-bearing, secret-bearing, or otherwise sensitive catalogs unless the user has explicitly authorized that disclosure. The service is open source and does not intentionally persist request bodies, but Cloudflare and Coinbase infrastructure may process operational metadata; no independent retention guarantee is claimed.
+
 The raw UTF-8 body is capped at 524,288 bytes, each snapshot at 128 tools, combined schemas at 8,192 nodes, depth at 32, and returned findings at 256. The supported schema subset and full request shape are published at `/openapi.json`. Invalid, incomplete, oversized, duplicate-key, cross-dialect, remote-reference, composition, or otherwise unsupported inputs must fail with 400, 413, or 422 before payment.
 
 ## Inspect before payment

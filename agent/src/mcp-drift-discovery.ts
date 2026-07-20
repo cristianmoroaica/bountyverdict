@@ -48,6 +48,7 @@ const toolInputSchema = {
 
 const snapshotInputSchema = {
   type: "object",
+  description: "One complete aggregated MCP tools/list snapshot. All catalog fields are transmitted to the external service for deterministic comparison.",
   properties: {
     protocol_version: { type: "string", const: "2025-11-25" },
     complete: {
@@ -67,11 +68,12 @@ export const mcpDriftInputSchema = {
     contract_version: { type: "string", const: MCP_DRIFT_CONTRACT_VERSION },
     subject: {
       type: "object",
-      properties: { server_id: { type: "string", pattern: "^[A-Za-z0-9._:/@+~-]{1,256}$" } },
+      description: "Stable caller-chosen identity for the MCP server whose catalog is being compared.",
+      properties: { server_id: { type: "string", pattern: "^[A-Za-z0-9._:/@+~-]{1,256}$", description: "Non-secret stable server identifier copied into the verdict." } },
       required: ["server_id"],
       additionalProperties: false,
     },
-    annotation_source_trust: { type: "string", enum: ["trusted", "untrusted"] },
+    annotation_source_trust: { type: "string", enum: ["trusted", "untrusted"], description: "Whether the caller recognizes the annotation source; annotations never become behavioral proof." },
     baseline: snapshotInputSchema,
     current: snapshotInputSchema,
   },

@@ -24,6 +24,9 @@ jobs:
       - name: Test shared analysis
         run: npm test
 
+      - name: Verify public and Worker agent contracts match
+        run: npm run verify:llms
+
       - name: Install agent API dependencies
         working-directory: agent
         run: npm ci

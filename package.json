@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "sync:llms": "node --experimental-strip-types agent/scripts/sync-public-llms.ts --write",
+    "verify:llms": "node --experimental-strip-types agent/scripts/sync-public-llms.ts --check",
     "serve": "python -m http.server 4174"
   }
 }
-
