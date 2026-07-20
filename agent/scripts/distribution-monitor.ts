@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
@@ -19,6 +19,9 @@ const wallet = process.env.REVENUE_WALLET || DEFAULT_WALLET;
 const startBlockInput = process.env.START_BLOCK || DEFAULT_START_BLOCK;
 const stateFile = process.env.STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/distribution-status.json`;
+const canaryStateFile = process.env.CANARY_STATE_FILE ||
+  `${homedir()}/.local/state/bountyverdict/functional-canary.json`;
+const MAX_CANARY_AGE_MS = 8 * 60 * 60 * 1000;
 
 if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
   throw new Error("REVENUE_WALLET must be a public 20-byte EVM address.");
@@ -229,11 +232,40 @@ async function revenueStatus(): Promise<Record<string, unknown>> {
   };
 }
 
+async function functionalStatus(): Promise<Record<string, unknown>> {
+  const raw = await readFile(canaryStateFile, "utf8");
+  const state = JSON.parse(raw) as {
+    checked_at?: unknown;
+    healthy?: unknown;
+    products_checked?: unknown;
+    checks?: unknown;
+  };
+  if (typeof state.checked_at !== "string" || !Number.isFinite(Date.parse(state.checked_at))) {
+    throw new Error("Functional canary state has no valid checked_at timestamp.");
+  }
+  const ageMs = Date.now() - Date.parse(state.checked_at);
+  if (ageMs < 0 || ageMs > MAX_CANARY_AGE_MS) {
+    throw new Error(`Functional canary state is stale (${Math.round(ageMs / 60_000)} minutes old).`);
+  }
+  if (state.healthy !== true) throw new Error("The latest functional canary run is unhealthy.");
+  const checked = Array.isArray(state.products_checked) ? state.products_checked : [];
+  const missing = ["single", "portfolio", "harness", "skill", "run"].filter((product) => !checked.includes(product));
+  if (missing.length) throw new Error(`Functional canary state is missing products: ${missing.join(", ")}.`);
+  return {
+    healthy: true,
+    checked_at: state.checked_at,
+    age_seconds: Math.round(ageMs / 1000),
+    products_checked: checked,
+    checks: Array.isArray(state.checks) ? state.checks : [],
+  };
+}
+
 const checkedAt = new Date().toISOString();
 const errors: string[] = [];
 let health: Record<string, unknown> = {};
 let discovery: Record<string, unknown> = {};
 let revenue: Record<string, unknown> = {};
+let functional: Record<string, unknown> = {};
 
 try {
   const [root, sample, portfolioSample, harnessSample, skillSample, runSample, openapi, llms, single, portfolio, harness, skill, run] = await Promise.all([
@@ -268,6 +300,12 @@ try {
   errors.push(error instanceof Error ? error.message : String(error));
 }
 
+try {
+  functional = await functionalStatus();
+} catch (error) {
+  errors.push(error instanceof Error ? error.message : String(error));
+}
+
 const report = {
   product: "BountyVerdict",
   checked_at: checkedAt,
@@ -278,6 +316,7 @@ const report = {
   health,
   discovery,
   revenue,
+  functional,
   errors,
 };
 

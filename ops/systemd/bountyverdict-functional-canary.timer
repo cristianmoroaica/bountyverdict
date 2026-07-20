@@ -1,0 +1,12 @@
+[Unit]
+Description=Run all BountyVerdict functional canaries every six hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+RandomizedDelaySec=5min
+Persistent=true
+Unit=bountyverdict-functional-canary.service
+
+[Install]
+WantedBy=timers.target

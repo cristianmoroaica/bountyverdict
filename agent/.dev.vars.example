@@ -3,3 +3,6 @@ PAY_TO_ADDRESS=0xYourPublicWalletAddress
 
 # Optional. Adds authenticated GitHub API capacity for paid checks.
 GITHUB_TOKEN=
+
+# Strong random token for the hard-coded internal production canaries. Never commit the real value.
+CANARY_TOKEN=replace-with-at-least-32-random-characters

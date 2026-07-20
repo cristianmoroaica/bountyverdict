@@ -90,13 +90,22 @@ Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.03, $0.04, $0.
 
 ## Continuous distribution monitoring
 
-The credential-free production monitor verifies all free routes, all five exact mainnet payment challenges, Coinbase Bazaar merchant and semantic-search visibility, and on-chain Base USDC revenue in one pass:
+The credential-free production monitor verifies all free routes, all five exact mainnet payment challenges, Coinbase Bazaar merchant and semantic-search visibility, on-chain Base USDC revenue, and the freshness of the latest authenticated functional-canary pass in one run:
 
 ```bash
 npm run distribution:monitor
 ```
 
 It writes the latest machine-readable snapshot to `~/.local/state/bountyverdict/distribution-status.json`. The versioned user-service templates in `ops/systemd/` run it every 15 minutes; per-product merchant indexing and semantic-search rank are tracked without treating normal discovery-cache delay as a health failure. Owner-funded production proofs are retained as settlement evidence but explicitly excluded from earned revenue and $1,000 progress.
+
+The separate six-hour functional canary invokes each real paid handler against a hard-coded public fixture without creating a settlement or accepting a customer-controlled target. It validates commit pinning, coverage, structured output, and failed-job log retrieval—not just HTTP availability. Its bearer token lives only in the Worker secret store, the repository Actions secret store, and a mode-0600 local token file:
+
+```bash
+CANARY_TOKEN=... npm run canary:production
+# Or: CANARY_TOKEN_FILE=~/.config/bountyverdict/canary.token npm run canary:production
+```
+
+The latest result is written to `~/.local/state/bountyverdict/functional-canary.json`. The internal endpoint is absent from OpenAPI and Bazaar metadata, returns only a compact fixture summary, and responds as not found without the exact secret.
 
 ## Deployment inputs
 
@@ -107,6 +116,7 @@ For production Bazaar discovery, configure:
 - `PAY_TO_ADDRESS`: public Base-compatible wallet address receiving USDC
 - `GITHUB_TOKEN`: fine-grained read-only token for reliable public GitHub API capacity; private repositories are rejected before file access
 - `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET`: facilitator credentials stored as Worker secrets
+- `CANARY_TOKEN`: at least 32 random characters for hard-coded internal functional checks
 - `X402_NETWORK=eip155:8453`
 - `X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`
 
@@ -125,19 +135,21 @@ npx wrangler secret put PAY_TO_ADDRESS --env production
 npx wrangler secret put GITHUB_TOKEN --env production
 npx wrangler secret put CDP_API_KEY_ID --env production
 npx wrangler secret put CDP_API_KEY_SECRET --env production
+npx wrangler secret put CANARY_TOKEN --env production
 npm run deploy -- --env production
 ```
 
-The receiving address is public on-chain, but storing it as a binding keeps deployment configuration separate from source. The other three values are secrets and must never be committed.
+The receiving address is public on-chain, but storing it as a binding keeps deployment configuration separate from source. GitHub, CDP, and canary credentials are secrets and must never be committed.
 
 ### One-action release
 
-The manual `Deploy paid Worker` GitHub Actions workflow performs the same production deployment, verifies every free route and all four x402 challenges, and activates the public agent manifest only after the live checks pass. Configure these repository Actions secrets before running it:
+The manual `Deploy paid Worker` GitHub Actions workflow performs the same production deployment, verifies every free route, all five x402 challenges, and every real handler canary, then activates the public agent manifest only after the live checks pass. Configure these repository Actions secrets before running it:
 
 - `CLOUDFLARE_API_TOKEN`
 - `PAY_TO_ADDRESS`
 - `CDP_API_KEY_ID`
 - `CDP_API_KEY_SECRET`
 - `UPSTREAM_GITHUB_TOKEN` (stored in the Worker as `GITHUB_TOKEN`; use a fine-grained read-only token)
+- `CANARY_TOKEN` (a strong random value used only by hard-coded internal checks)
 
 The Cloudflare token needs permission to deploy Workers. No CDP wallet secret or buyer private key is uploaded to the Worker, and no deployment secret is committed to Git.

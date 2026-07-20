@@ -1,0 +1,18 @@
+[Unit]
+Description=BountyVerdict authenticated production functional canaries
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/sandbox/bountyverdict/agent
+Environment=PATH=%h/.local/share/mise/shims:/usr/local/bin:/usr/bin
+Environment=PRODUCTION_API_URL=https://bountyverdict-agent-production.mimirslab.workers.dev
+Environment=CANARY_TOKEN_FILE=%h/.config/bountyverdict/canary.token
+ExecStart=/usr/bin/env node --experimental-strip-types scripts/functional-canary.ts
+NoNewPrivileges=yes
+PrivateTmp=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

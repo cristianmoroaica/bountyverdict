@@ -28,6 +28,7 @@ jobs:
       CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
       CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
       UPSTREAM_GITHUB_TOKEN: ${{ secrets.UPSTREAM_GITHUB_TOKEN }}
+      CANARY_TOKEN: ${{ secrets.CANARY_TOKEN }}
       API_URL_OVERRIDE: ${{ inputs.api_url }}
 
     steps:
@@ -44,7 +45,7 @@ jobs:
       - name: Verify required deployment secrets
         run: |
           node -e '
-            const required = ["CLOUDFLARE_API_TOKEN", "PAY_TO_ADDRESS", "CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "UPSTREAM_GITHUB_TOKEN"];
+            const required = ["CLOUDFLARE_API_TOKEN", "PAY_TO_ADDRESS", "CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "UPSTREAM_GITHUB_TOKEN", "CANARY_TOKEN"];
             const missing = required.filter((name) => !process.env[name]);
             if (missing.length) throw new Error(`Missing GitHub Actions secrets: ${missing.join(", ")}`);
             if (!/^0x[a-fA-F0-9]{40}$/.test(process.env.PAY_TO_ADDRESS)) throw new Error("PAY_TO_ADDRESS is invalid.");
@@ -63,6 +64,7 @@ jobs:
               CDP_API_KEY_ID: process.env.CDP_API_KEY_ID,
               CDP_API_KEY_SECRET: process.env.CDP_API_KEY_SECRET,
               GITHUB_TOKEN: process.env.UPSTREAM_GITHUB_TOKEN,
+              CANARY_TOKEN: process.env.CANARY_TOKEN,
             }));
           ' "$secret_file"
           npx wrangler deploy --env production --secrets-file "$secret_file" 2>&1 | tee "$deploy_log"
@@ -90,6 +92,9 @@ jobs:
           PRODUCT=harness RESOURCE_SERVER_URL="$PRODUCTION_API_URL" npm run payment:inspect
           PRODUCT=skill RESOURCE_SERVER_URL="$PRODUCTION_API_URL" npm run payment:inspect
           PRODUCT=run RESOURCE_SERVER_URL="$PRODUCTION_API_URL" npm run payment:inspect
+
+      - name: Verify real production handlers
+        run: npm run canary:production
 
       - name: Activate public agent manifest
         run: npm run manifest:activate

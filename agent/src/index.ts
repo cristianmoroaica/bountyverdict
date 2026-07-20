@@ -3,21 +3,27 @@ import { HTTPFacilitatorClient, type RouteConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { Hono, type MiddlewareHandler } from "hono";
-import { CheckError, checkGithubIssue } from "./check";
+import { CheckError, checkGithubIssue } from "./check.ts";
 import {
   discoveryExtension,
   exampleVerdict,
   portfolioDiscoveryExtension,
   portfolioExample,
-} from "./discovery";
-import { createLlmsText, createOpenApi } from "./openapi";
-import { checkBountyPortfolio } from "./portfolio";
-import { checkGithubHarness, HarnessError } from "./harness";
-import { harnessDiscoveryExtension, harnessExample } from "./harness-discovery";
-import { checkGithubSkill } from "./skill";
-import { skillDiscoveryExtension, skillExample } from "./skill-discovery";
-import { diagnoseGithubRun } from "./run";
-import { runDiscoveryExtension, runExample } from "./run-discovery";
+} from "./discovery.ts";
+import { createLlmsText, createOpenApi } from "./openapi.ts";
+import { checkBountyPortfolio } from "./portfolio.ts";
+import { checkGithubHarness, HarnessError } from "./harness.ts";
+import { harnessDiscoveryExtension, harnessExample } from "./harness-discovery.ts";
+import { checkGithubSkill } from "./skill.ts";
+import { skillDiscoveryExtension, skillExample } from "./skill-discovery.ts";
+import { diagnoseGithubRun } from "./run.ts";
+import { runDiscoveryExtension, runExample } from "./run-discovery.ts";
+import {
+  canaryErrorCode,
+  isCanaryProduct,
+  runFunctionalCanary,
+  verifyCanaryAuthorization,
+} from "./canary.ts";
 
 interface Env {
   PAY_TO_ADDRESS?: string;
@@ -26,6 +32,7 @@ interface Env {
   X402_FACILITATOR_URL?: string;
   CDP_API_KEY_ID?: string;
   CDP_API_KEY_SECRET?: string;
+  CANARY_TOKEN?: string;
 }
 
 type AppBindings = { Bindings: Env };
@@ -299,6 +306,33 @@ app.get("/openapi.json", (c) => {
 app.get("/llms.txt", (c) => {
   const origin = new URL(c.req.url).origin;
   return c.text(createLlmsText(origin), 200, { "Content-Type": "text/plain; charset=utf-8" });
+});
+
+app.get("/_internal/canary/:product", async (c) => {
+  c.header("Cache-Control", "no-store");
+  c.header("X-Robots-Tag", "noindex, nofollow");
+  const configured = Boolean(c.env.CANARY_TOKEN && c.env.CANARY_TOKEN.length >= 32);
+  if (!configured) {
+    return c.json({ error: "CANARY_NOT_CONFIGURED" }, 503);
+  }
+  if (!await verifyCanaryAuthorization(c.req.header("Authorization"), c.env.CANARY_TOKEN)) {
+    return c.json({ error: "NOT_FOUND" }, 404);
+  }
+  const product = c.req.param("product");
+  if (!isCanaryProduct(product)) {
+    return c.json({ error: "NOT_FOUND" }, 404);
+  }
+  try {
+    return c.json(await runFunctionalCanary(product, { GITHUB_TOKEN: c.env.GITHUB_TOKEN }));
+  } catch (error) {
+    console.error(`Functional canary ${product} failed:`, error);
+    return c.json({
+      product,
+      ok: false,
+      error: canaryErrorCode(error),
+      checked_at: new Date().toISOString(),
+    }, 503);
+  }
 });
 
 const paymentGate: MiddlewareHandler<AppBindings> = async (c, next) => {
