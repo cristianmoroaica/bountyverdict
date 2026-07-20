@@ -20,6 +20,7 @@ test("NEAR Market publishes only the six frozen automated products", () => {
     assert.equal(listing.price_token, "USDC");
     assert.equal(listing.pricing_model, "fixed");
     assert.equal(listing.enabled, true);
+    assert.ok(listing.tags.length <= 10);
     assert.match(listing.endpoint_url, /^https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/api\/near-market\//);
   }
 });

@@ -19,7 +19,7 @@ export const NEAR_MARKET_LISTINGS = Object.freeze(THE402_LISTINGS.map((listing) 
   price_amount: "1",
   price_token: "USDC",
   response_time_seconds: 120,
-  tags: [...listing.tags, "automated", "json-api"],
+  tags: [...new Set([...listing.tags, "automated", "json-api"])].slice(0, 10),
   enabled: true,
 })));
 
