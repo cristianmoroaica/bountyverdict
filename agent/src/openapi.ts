@@ -2,7 +2,9 @@ import { outputSchema, portfolioOutputSchema } from "./discovery.ts";
 import { harnessOutputSchema } from "./harness-discovery.ts";
 import { skillOutputSchema } from "./skill-discovery.ts";
 import { runOutputSchema } from "./run-discovery.ts";
-import { flakeOutputSchema } from "./flake-discovery.ts";
+import { FLAKE_SERVICE_REUSE, flakeOutputSchema } from "./flake-discovery.ts";
+import { SERVICE_REUSE } from "./reuse.ts";
+import { MCP_DRIFT_SERVICE_REUSE } from "./mcp-drift.ts";
 import {
   mcpDriftExampleInput,
   mcpDriftInputSchema,
@@ -18,6 +20,27 @@ function paymentInfo(price: string) {
   };
 }
 
+const SKILLS_BASE = "https://cristianmoroaica.github.io/bountyverdict/skills/";
+
+function agentMetadata(
+  origin: string,
+  options: {
+    tags: string[];
+    samplePath: string;
+    skill: string;
+    useWhen: string;
+    reuse: unknown;
+  },
+) {
+  return {
+    tags: options.tags,
+    "x-agent-skill": `${SKILLS_BASE}${options.skill}/SKILL.md`,
+    "x-use-when": options.useWhen,
+    "x-service-reuse": options.reuse,
+    "x-free-sample": new URL(options.samplePath, origin).href,
+  };
+}
+
 export function createOpenApi(
   origin: string,
   network: string,
@@ -27,7 +50,7 @@ export function createOpenApi(
     openapi: "3.1.0",
     info: {
       title: "BountyVerdict Agent Decision APIs",
-      version: "1.0.0",
+      version: "1.0.1",
       description: "Seven bounded decision APIs for coding agents: evidence-linked GitHub due diligence and diagnostics plus deterministic MCP tool-catalog compatibility and security gates. Payment uses x402 v2 and Base USDC.",
       "x-guidance": "Choose the narrowest operation for the decision at hand, inspect its free sample and unpaid x402 challenge, then pay only when the challenge matches the documented price, Base USDC asset, and operation. Reuse a successful result only according to its service_reuse field.",
       license: { name: "MIT", identifier: "MIT" },
@@ -36,6 +59,15 @@ export function createOpenApi(
       description: "Agent manifest and activation status",
       url: "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json",
     },
+    tags: [
+      { name: "bounty-due-diligence", description: "Decide whether one public GitHub bounty remains worth pursuing." },
+      { name: "bounty-ranking", description: "Compare and rank two to ten public GitHub bounty candidates." },
+      { name: "agent-instructions", description: "Audit repository instructions used by autonomous coding agents." },
+      { name: "skill-security", description: "Audit a public agent skill before installation or execution." },
+      { name: "ci-diagnosis", description: "Find the root cause and next action for a public GitHub Actions run." },
+      { name: "ci-flake-gate", description: "Decide whether a failed workflow should be retried once or fixed." },
+      { name: "mcp-compatibility", description: "Gate MCP tools/list schema changes before an agent upgrade." },
+    ],
     servers: [{ url: origin }],
     paths: {
       "/api/sample": {
@@ -55,6 +87,13 @@ export function createOpenApi(
           summary: "Deep-preflight a public GitHub bounty issue",
           description: "Check whether one public GitHub bounty is still available and worth pursuing before coding. Detects closed or locked issues, withdrawn rewards, maintainer rejection, competing pull requests, claimant and failed-attempt swarms, then returns AVOID, CAUTION, or VIABLE with public evidence and AI-contribution-policy coverage.",
           operationId: "checkBountyVerdict",
+          ...agentMetadata(origin, {
+            tags: ["bounty-due-diligence"],
+            samplePath: "/api/sample",
+            skill: "preflight-github-bounties",
+            useWhen: "Decide whether one public GitHub bounty is still available and worth pursuing before coding.",
+            reuse: SERVICE_REUSE.single,
+          }),
           parameters: [{
             name: "issue_url",
             in: "query",
@@ -103,6 +142,13 @@ export function createOpenApi(
           summary: "Rank two to ten GitHub bounty candidates",
           description: "Compare two to ten public GitHub bounties and choose the best candidate. Runs the full due-diligence check for every issue, ranks opportunities, returns per-candidate verdicts and partial failures, and identifies the strongest non-AVOID option. At ten candidates the fixed price is $0.04 per audited candidate.",
           operationId: "rankBountyPortfolio",
+          ...agentMetadata(origin, {
+            tags: ["bounty-ranking"],
+            samplePath: "/api/portfolio/sample",
+            skill: "preflight-github-bounties",
+            useWhen: "Choose the best candidate from two to ten public GitHub bounty issues.",
+            reuse: SERVICE_REUSE.portfolio,
+          }),
           requestBody: {
             required: true,
             content: {
@@ -169,6 +215,13 @@ export function createOpenApi(
           summary: "Audit a public repository's coding-agent instruction stack",
           description: "Pins the repository default branch to a commit and audits recognized AGENTS.md, CLAUDE.md, GEMINI.md, Copilot, Cursor, and SKILL.md files for structural reliability, portability, stale references, context size, and secret-like material.",
           operationId: "checkHarnessVerdict",
+          ...agentMetadata(origin, {
+            tags: ["agent-instructions"],
+            samplePath: "/api/harness/sample",
+            skill: "audit-agent-harness",
+            useWhen: "Audit AGENTS.md, CLAUDE.md, and other repository instructions before autonomous coding.",
+            reuse: SERVICE_REUSE.harness,
+          }),
           parameters: [{
             name: "repo_url",
             in: "query",
@@ -218,6 +271,13 @@ export function createOpenApi(
           summary: "Audit a public agent skill before installation",
           description: "Pins the repository default branch to a commit and statically scans the requested SKILL.md plus its bounded directory context without executing code. Returns redacted findings, capabilities, domains, coverage, and a LOW_RISK, REVIEW, or BLOCK verdict.",
           operationId: "checkSkillVerdict",
+          ...agentMetadata(origin, {
+            tags: ["skill-security"],
+            samplePath: "/api/skill/sample",
+            skill: "preflight-agent-skills",
+            useWhen: "Decide whether a third-party public SKILL.md bundle is safe to install or requires review.",
+            reuse: SERVICE_REUSE.skill,
+          }),
           parameters: [
             {
               name: "repo_url",
@@ -274,6 +334,13 @@ export function createOpenApi(
           summary: "Diagnose a public GitHub Actions workflow run",
           description: "Find why one public GitHub Actions workflow failed and what the agent should do next. Reads exact-attempt jobs and bounded failed-job logs, separates primary failures from downstream summaries, and returns root cause, retryability, redacted evidence, and concrete next actions without rerunning code.",
           operationId: "diagnoseRunVerdict",
+          ...agentMetadata(origin, {
+            tags: ["ci-diagnosis"],
+            samplePath: "/api/run/sample",
+            skill: "diagnose-github-actions",
+            useWhen: "Find why one public GitHub Actions workflow failed and what the agent should do next.",
+            reuse: SERVICE_REUSE.run,
+          }),
           parameters: [{
             name: "run_url",
             in: "query",
@@ -314,6 +381,13 @@ export function createOpenApi(
           summary: "Classify a public GitHub Actions failure before retrying",
           description: "Decide whether a completed GitHub Actions failure is flaky and should be retried once, or is recurring or new and needs a fix. Compares exact workflow attempts, same-commit outcomes, failed-step fingerprints, and bounded historical runs, then returns a retry-or-fix decision without rerunning CI.",
           operationId: "classifyFlakeVerdict",
+          ...agentMetadata(origin, {
+            tags: ["ci-flake-gate"],
+            samplePath: "/api/flake/sample",
+            skill: "classify-github-flakes",
+            useWhen: "Decide whether a completed GitHub Actions failure is flaky: retry once or fix it.",
+            reuse: FLAKE_SERVICE_REUSE,
+          }),
           parameters: [
             {
               name: "run_url",
@@ -365,6 +439,13 @@ export function createOpenApi(
           summary: "Gate an MCP tools/list snapshot change",
           description: "Decide whether a changed MCP tools/list contract will break an agent after a server upgrade. Compares complete baseline and current snapshots; detects removed or renamed tools, new required arguments, incompatible input or output schemas, and model-facing metadata or safety-hint regressions. Returns an exact-hash compatibility verdict without fetching or invoking tools. Invalid or unsupported inputs fail unpaid.",
           operationId: "checkMcpToolDrift",
+          ...agentMetadata(origin, {
+            tags: ["mcp-compatibility"],
+            samplePath: "/api/mcp-drift/sample",
+            skill: "check-mcp-tool-drift",
+            useWhen: "Decide whether an MCP tools/list schema change will break an agent after a server upgrade.",
+            reuse: MCP_DRIFT_SERVICE_REUSE,
+          }),
           requestBody: {
             required: true,
             content: {

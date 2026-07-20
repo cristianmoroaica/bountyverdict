@@ -34,6 +34,28 @@ async function pageStatus(url: string, expected: string): Promise<Record<string,
   }
 }
 
+async function agentToolStatus(): Promise<Record<string, unknown>> {
+  const apiUrl = "https://agenttool.sh/api/tools/bountyverdict-agent-decision-apis";
+  try {
+    const response = await fetch(apiUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    return {
+      url: agentToolUrl,
+      api_url: apiUrl,
+      http_status: response.status,
+      listed: response.ok,
+      status: response.ok ? "listed" : response.status === 404 ? "scanning" : "unexpected_response",
+    };
+  } catch (error) {
+    return {
+      url: agentToolUrl,
+      api_url: apiUrl,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function submitAgentSkill(): Promise<Record<string, unknown>> {
   try {
     const response = await fetch("https://agentskill.sh/api/skills/submit", {
@@ -74,7 +96,7 @@ try {
 
 const [skills, agenttool] = await Promise.all([
   pageStatus(skillsUrl, "bountyverdict"),
-  pageStatus(agentToolUrl, "BountyVerdict Agent Decision APIs"),
+  agentToolStatus(),
 ]);
 const agentskill = previous.agentskill?.listed === true
   ? previous.agentskill

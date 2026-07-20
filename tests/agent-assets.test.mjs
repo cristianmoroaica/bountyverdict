@@ -14,6 +14,8 @@ const mcpReuseGuidance = "Call MCPDriftVerdict after every notifications/tools/l
 
 test("agent manifest is honest and links inspectable products", async () => {
   const manifest = await readJson("../agent-manifest.json");
+  assert.equal(manifest.release_version, "1.0.1");
+  assert.match(manifest.release_url, /\/releases\/tag\/v1\.0\.1$/);
   assert.ok(["awaiting_production", "active"].includes(manifest.status));
   if (manifest.status === "awaiting_production") assert.equal(manifest.production_api, null);
   if (manifest.status === "active") assert.match(manifest.production_api, /^https:\/\//);
@@ -187,6 +189,30 @@ test("agent landing page exposes all seven self-serve products", async () => {
   for (const price of ["0.05", "0.40", "0.03", "0.06", "0.04", "0.07", "0.02"]) {
     assert.match(page, new RegExp(`\\$${price}`));
   }
+  assert.equal((page.match(/https:\/\/skills\.sh\/cristianmoroaica\/bountyverdict\//g) || []).length, 7);
+});
+
+test("skills.sh groups every published skill exactly once", async () => {
+  const config = await readJson("../skills.sh.json");
+  assert.equal(config.$schema, "https://skills.sh/schemas/skills.sh.schema.json");
+  assert.equal(config.notGrouped, "bottom");
+  assert.deepEqual(config.groupings.map((group) => group.title), [
+    "Start here",
+    "GitHub decisions",
+    "Agent trust",
+  ]);
+  const skills = config.groupings.flatMap((group) => group.skills);
+  assert.equal(skills.length, 7);
+  assert.equal(new Set(skills).size, 7);
+  assert.deepEqual(new Set(skills), new Set([
+    "route-github-agent-checks",
+    "preflight-github-bounties",
+    "audit-agent-harness",
+    "diagnose-github-actions",
+    "classify-github-flakes",
+    "preflight-agent-skills",
+    "check-mcp-tool-drift",
+  ]));
 });
 
 test("hosted HarnessVerdict skill has payment and evidence safety gates", async () => {

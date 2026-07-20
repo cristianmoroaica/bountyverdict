@@ -13,8 +13,11 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
     mcpdrift: "$0.02",
   });
   assert.match(spec.info.title, /Agent Decision APIs/);
+  assert.equal(spec.info.version, "1.0.1");
   assert.match(spec.info.description, /Seven bounded/);
   assert.match(spec.info["x-guidance"], /service_reuse/);
+  assert.equal(spec.tags.length, 7);
+  assert.equal(new Set(spec.tags.map((tag) => tag.name)).size, 7);
   const operation = spec.paths["/api/verdict"].get;
   assert.equal(operation["x-x402"].price, "$0.05");
   assert.equal(operation["x-x402"].network, "eip155:8453");
@@ -35,6 +38,11 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
     assert.equal(paid["x-payment-info"].price.currency, "USD");
     assert.match(paid["x-payment-info"].price.amount, /^\d+\.\d{6}$/);
     assert.ok(paid.responses["402"]);
+    assert.equal(paid.tags.length, 1);
+    assert.match(paid["x-agent-skill"], /^https:\/\/cristianmoroaica\.github\.io\/bountyverdict\/skills\/[a-z0-9-]+\/SKILL\.md$/);
+    assert.match(paid["x-use-when"], /\.$/);
+    assert.ok(paid["x-service-reuse"]);
+    assert.match(paid["x-free-sample"], /^https:\/\/agent\.example\/api\/(?:.+\/)?sample$/);
   }
   assert.equal(operation["x-payment-info"].price.amount, "0.050000");
   assert.equal(spec.paths["/api/portfolio"].post["x-x402"].price, "$0.40");
