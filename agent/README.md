@@ -47,15 +47,22 @@ RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 PRODUCT=portfolio RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 ```
 
-To execute a Base Sepolia payment, supply a funded **test-only** buyer key. The harness enforces a 50,000-atomic-unit single-check cap or 400,000-atomic-unit portfolio cap and refuses Base mainnet unless `ALLOW_MAINNET_PAYMENT=YES` is explicitly set:
+To execute a Base Sepolia payment, the preferred path is a CDP-managed test wallet. Put `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET` in the ignored `agent/.dev.vars` file or export them in the shell. Provision the named wallet and request Base Sepolia ETH and USDC:
 
 ```bash
-RESOURCE_SERVER_URL=https://your-test-worker.workers.dev \
-BUYER_PRIVATE_KEY=0xTESTNET_ONLY \
-npm run payment:smoke
+npm run wallet:test
+npm run wallet:fund
+```
+
+The commands print only the public wallet address and faucet transaction hashes. The payment harness then uses that managed wallet automatically, enforces a 50,000-atomic-unit single-check cap or 400,000-atomic-unit portfolio cap, restricts the exact asset/network/payee, and refuses Base mainnet unless `ALLOW_MAINNET_PAYMENT=YES` is explicitly set:
+
+```bash
+RESOURCE_SERVER_URL=https://your-test-worker.workers.dev npm run payment:smoke
 ```
 
 Set `PRODUCT=portfolio` and optionally a comma-separated `ISSUE_URLS` value to exercise the portfolio purchase.
+
+A funded standalone `BUYER_PRIVATE_KEY` remains supported as a test-only fallback. Never use or share a production wallet private key.
 
 ## Revenue accounting
 

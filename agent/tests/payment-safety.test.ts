@@ -3,7 +3,17 @@ import assert from "node:assert/strict";
 import { validatePaymentChallenge } from "../src/payment-safety.ts";
 
 function challenge(amount: string, network = "eip155:84532") {
-  return { accepts: [{ amount, network, asset: "0xasset", payTo: "0xrecipient" }] };
+  const asset = network === "eip155:8453"
+    ? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    : "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+  return {
+    accepts: [{
+      amount,
+      network,
+      asset,
+      payTo: "0x0000000000000000000000000000000000000001",
+    }],
+  };
 }
 
 test("payment safety enforces the atomic price cap", () => {
@@ -14,6 +24,20 @@ test("payment safety enforces the atomic price cap", () => {
       allowMainnet: false,
     }),
     /exceeds safety cap/,
+  );
+});
+
+test("payment safety rejects unexpected networks and assets", () => {
+  const options = { maximumAtomic: 50_000n, executePayment: false, allowMainnet: false };
+  assert.throws(
+    () => validatePaymentChallenge(challenge("50000", "eip155:1"), options),
+    /Unsupported payment network/,
+  );
+  const wrongAsset = challenge("50000");
+  wrongAsset.accepts[0].asset = "0x0000000000000000000000000000000000000002";
+  assert.throws(
+    () => validatePaymentChallenge(wrongAsset, options),
+    /canonical USDC/,
   );
 });
 

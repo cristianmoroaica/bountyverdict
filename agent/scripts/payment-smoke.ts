@@ -1,4 +1,5 @@
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
+import { CdpX402Client } from "@coinbase/cdp-sdk/x402";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { validatePaymentChallenge } from "../src/payment-safety.ts";
@@ -59,16 +60,40 @@ console.log(JSON.stringify({
 
 if (!executePayment) process.exit(0);
 
-const privateKey = process.env.BUYER_PRIVATE_KEY;
-if (!privateKey || !/^0x[a-fA-F0-9]{64}$/.test(privateKey)) {
-  throw new Error("BUYER_PRIVATE_KEY must be set to a funded test wallet for payment execution.");
+const hasCdpWallet = Boolean(
+  process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET && process.env.CDP_WALLET_SECRET,
+);
+let payer: string;
+let client: x402Client;
+if (hasCdpWallet) {
+  const cdpClient = new CdpX402Client({
+    walletConfig: { type: "eoa", accountName: "bountyverdict-test-buyer" },
+    spendControls: {
+      maxAmountPerPayment: { atomic: maximumAtomic, asset: requirement.asset },
+      maxCumulativeSpend: { atomic: maximumAtomic, asset: requirement.asset },
+      maxCumulativeSpendWindow: "24h",
+      allowedNetworks: [requirement.network as `${string}:${string}`],
+      allowedAssets: [requirement.asset],
+      allowedPayees: [requirement.payTo],
+    },
+  });
+  payer = (await cdpClient.getAddresses()).evmAddress;
+  client = cdpClient;
+} else {
+  const privateKey = process.env.BUYER_PRIVATE_KEY;
+  if (!privateKey || !/^0x[a-fA-F0-9]{64}$/.test(privateKey)) {
+    throw new Error(
+      "Set CDP_API_KEY_ID, CDP_API_KEY_SECRET, and CDP_WALLET_SECRET, or provide a funded test-only BUYER_PRIVATE_KEY.",
+    );
+  }
+  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  payer = account.address;
+  client = new x402Client()
+    .register(requirement.network as `${string}:${string}`, new ExactEvmScheme(account))
+    .registerPolicy((_version, requirements) =>
+      requirements.filter((candidate) => BigInt(candidate.amount) <= maximumAtomic),
+    );
 }
-const account = privateKeyToAccount(privateKey as `0x${string}`);
-const client = new x402Client()
-  .register(requirement.network as `${string}:${string}`, new ExactEvmScheme(account))
-  .registerPolicy((_version, requirements) =>
-    requirements.filter((candidate) => BigInt(candidate.amount) <= maximumAtomic),
-  );
 const paidFetch = wrapFetchWithPayment(fetch, client);
 const paid = await paidFetch(url, requestInit);
 const responseBody = await paid.json() as {
@@ -87,6 +112,7 @@ const settlement = decodeHeader(settlementHeader);
 console.log(JSON.stringify({
   phase: "payment_settled",
   product,
+  payer,
   status: paid.status,
   transaction: settlement.transaction,
   network: settlement.network,
