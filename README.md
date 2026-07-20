@@ -10,6 +10,13 @@ Install the router that selects the narrowest check and applies its payment safe
 npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y
 ```
 
+Or inspect and install the immutable v1.0.1 router with GitHub's native skill workflow:
+
+```bash
+gh skill preview cristianmoroaica/bountyverdict route-github-agent-checks@v1.0.1
+gh skill install cristianmoroaica/bountyverdict route-github-agent-checks --pin v1.0.1
+```
+
 Then ask, for example:
 
 - “Why did this public GitHub Actions workflow fail, and what should I do next?”
@@ -31,7 +38,9 @@ Task-specific skills are the least-privilege path. Install all seven only when n
 
 Every product has a free sample, a machine-readable OpenAPI contract, a declared price, and a successful-result `service_reuse` rule. Invalid inputs and upstream failures are not settled. Start with the [agent page](https://cristianmoroaica.github.io/bountyverdict/agents.html), [`agent-manifest.json`](agent-manifest.json), or the production [`openapi.json`](https://bountyverdict-agent-production.mimirslab.workers.dev/openapi.json).
 
-The seven contracts are continuously checked in production. Coinbase Bazaar currently indexes five resources. FlakeVerdict has a successful policy-bound settlement and is awaiting discovery-cache propagation; MCPDriftVerdict is pending its first eligible settlement. Owner-funded proofs are excluded from customer revenue.
+The seven contracts are continuously checked in production. Coinbase Bazaar currently merchant-indexes six resources. FlakeVerdict is awaiting semantic-search propagation; MCPDriftVerdict is pending its first eligible settlement. Owner-funded proofs are excluded from customer revenue.
+
+For the strongest current buyer-intent fit, inspect the [free SkillVerdict sample](https://bountyverdict-agent-production.mimirslab.workers.dev/api/skill/sample) and the task-specific [`preflight-agent-skills`](https://skills.sh/cristianmoroaica/bountyverdict/preflight-agent-skills) workflow. It audits the entire commit-pinned public skill directory without executing it; the paid verdict costs $0.06.
 
 HarnessVerdict pins the repository default branch to an immutable commit and audits recognized `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, Copilot, Cursor, and `SKILL.md` surfaces without cloning or executing repository code. It reports evidence-linked path, scope, portability, context-budget, skill-frontmatter, and secret-like-material findings.
 

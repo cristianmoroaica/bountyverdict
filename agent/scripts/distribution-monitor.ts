@@ -27,6 +27,8 @@ const stateFile = process.env.STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/distribution-status.json`;
 const canaryStateFile = process.env.CANARY_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/functional-canary.json`;
+const directoryStateFile = process.env.DIRECTORY_STATE_FILE ||
+  `${homedir()}/.local/state/bountyverdict/directories.json`;
 const monitorNoteFile = process.env.MONITOR_NOTE_FILE || `${homedir()}/notes/mimirx402.md`;
 const trackedCostsInput = process.env.TRACKED_COSTS_USDC || "0";
 const historicalTestGasEth = process.env.HISTORICAL_TEST_GAS_ETH || "0.00000525";
@@ -357,6 +359,28 @@ async function functionalStatus(): Promise<Record<string, unknown>> {
   };
 }
 
+async function acquisitionStatus(): Promise<Record<string, unknown>> {
+  try {
+    const raw = await readFile(directoryStateFile, "utf8");
+    const state = JSON.parse(raw) as Record<string, any>;
+    const checkedAt = typeof state.checked_at === "string" ? state.checked_at : null;
+    return {
+      available: true,
+      checked_at: checkedAt,
+      skills_sh: state.skills_sh || null,
+      agenttool: state.agenttool || null,
+      agentskill: state.agentskill || null,
+      security_directory_pr: state.security_directory_pr || null,
+      note: "Anonymous install telemetry is an acquisition signal, not proof of a genuine buyer or customer purchase.",
+    };
+  } catch (error) {
+    return {
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function money(value: unknown): string {
   const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) ? `$${parsed.toFixed(2)}` : "unavailable";
@@ -367,6 +391,8 @@ function renderMonitorNote(report: Record<string, any>): string {
   const costsValue = Number(trackedCostsInput);
   const profitValue = revenueValue - costsValue;
   const purchases = report.revenue?.purchases || {};
+  const skillInstalls = report.acquisition?.skills_sh?.install_counts || {};
+  const totalSkillInstalls = report.acquisition?.skills_sh?.total_installs;
   const ranks = report.discovery?.semantic_best_rank || {};
   const indexed = report.discovery?.indexed_products || {};
   const status = report.healthy ? "HEALTHY" : "DEGRADED";
@@ -381,6 +407,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${Number(purchases.total || 0)} / 10 genuine external purchases
 - **Customer purchases:** ${Number(purchases.total || 0)}
+- **skills.sh anonymous CLI installs:** ${Number.isFinite(Number(totalSkillInstalls)) ? Number(totalSkillInstalls) : "unavailable"} (acquisition signal only; 8-install baseline on 2026-07-20)
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
 - **Unrelated incoming transfers:** ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
 - **Last refreshed:** ${report.checked_at}
@@ -393,9 +420,9 @@ The seven-product suite is healthy in production and unattended GitHub-to-Cloudf
 
 ## What is next
 
-1. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
-2. Keep Coinbase Bazaar and Agentic Market automatic discovery under observation while FlakeVerdict propagates and MCPDriftVerdict awaits an eligible settlement.
-3. Measure each product with its own natural buyer-intent query and track its rank plus the top three competing resources.
+1. Run a proof-led acquisition experiment for SkillVerdict through its direct skill, free sample, and one appropriate public agent-security directory submission.
+2. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
+3. Keep Coinbase Bazaar automatic discovery under observation while FlakeVerdict propagates and MCPDriftVerdict awaits an eligible settlement.
 4. Improve positioning from observed discovery and genuine calls until ten external purchases are recognized. Do not build an eighth product before that gate.
 
 ## Production health
@@ -420,6 +447,17 @@ ${errors}
 | FlakeVerdict | $0.07 | ${ranks.flake ?? "not found"} | ${indexed.flake ? "indexed" : "pending"} |
 | MCPDriftVerdict | $0.02 | ${ranks.mcpdrift ?? "not found"} | ${indexed.mcpdrift ? "indexed" : "pending"} |
 
+## Acquisition funnel
+
+- skills.sh repository installs: ${Number.isFinite(Number(totalSkillInstalls)) ? Number(totalSkillInstalls) : "unavailable"}
+- Router installs: ${Number(skillInstalls["route-github-agent-checks"] || 0)}
+- SkillVerdict workflow installs: ${Number(skillInstalls["preflight-agent-skills"] || 0)}
+- AgentTool: ${report.acquisition?.agenttool?.status || (report.acquisition?.agenttool?.listed ? "listed" : "unavailable")}
+- AgentSkill: ${report.acquisition?.agentskill?.status || (report.acquisition?.agentskill?.listed ? "listed" : "unavailable")}
+- Agent security directory PR: ${report.acquisition?.security_directory_pr?.status || "unavailable"} (${report.acquisition?.security_directory_pr?.url || "not recorded"})
+
+skills.sh counts are anonymous CLI telemetry with unknown provenance. They are tracked as a funnel signal only and are never counted as purchases or revenue.
+
 ## Revenue detail
 
 - Single verdict purchases: ${Number(purchases.single || 0)}
@@ -443,6 +481,7 @@ let health: Record<string, unknown> = {};
 let discovery: Record<string, unknown> = {};
 let revenue: Record<string, unknown> = {};
 let functional: Record<string, unknown> = {};
+let acquisition: Record<string, unknown> = {};
 
 try {
   const [root, sample, portfolioSample, harnessSample, skillSample, runSample, flakeSample, mcpDriftSample, openapi, llms] = await Promise.all([
@@ -487,6 +526,8 @@ try {
   errors.push(error instanceof Error ? error.message : String(error));
 }
 
+acquisition = await acquisitionStatus();
+
 const report = {
   product: "BountyVerdict",
   checked_at: checkedAt,
@@ -498,6 +539,7 @@ const report = {
   discovery,
   revenue,
   functional,
+  acquisition,
   errors,
 };
 

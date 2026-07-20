@@ -1,12 +1,15 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
+import { parseSkillsShInstallCounts } from "../src/acquisition.ts";
 
 const repository = "https://github.com/cristianmoroaica/bountyverdict";
 const agentToolUrl = "https://agenttool.sh/tools/bountyverdict-agent-decision-apis";
 const skillsUrl = "https://skills.sh/cristianmoroaica/bountyverdict";
+const securityDirectoryPrUrl = "https://github.com/LLMSecurity/awesome-agent-skills-security/pull/38";
 const stateFile = process.env.DIRECTORY_STATE_FILE || `${homedir()}/.local/state/bountyverdict/directories.json`;
 const timeoutMs = 30_000;
+const agentSkillRetryMs = 20 * 60 * 60 * 1000;
 
 async function atomicWrite(path: string, contents: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -15,18 +18,34 @@ async function atomicWrite(path: string, contents: string): Promise<void> {
   await rename(temporary, path);
 }
 
-async function pageStatus(url: string, expected: string): Promise<Record<string, unknown>> {
+async function skillsShStatus(): Promise<Record<string, unknown>> {
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    const response = await fetch(skillsUrl, { signal: AbortSignal.timeout(timeoutMs) });
     const body = await response.text();
-    return {
-      url,
-      http_status: response.status,
-      listed: response.ok && body.includes(expected) && !body.toLowerCase().includes("not found"),
-    };
+    const listed = response.ok && body.includes("bountyverdict") && !body.toLowerCase().includes("not found");
+    if (!listed) return { url: skillsUrl, http_status: response.status, listed };
+    try {
+      const installs = parseSkillsShInstallCounts(body);
+      return {
+        url: skillsUrl,
+        http_status: response.status,
+        listed: true,
+        total_installs: installs.total,
+        install_counts: installs.by_skill,
+        measurement: "anonymous_cli_install_telemetry_not_customer_purchases",
+      };
+    } catch (error) {
+      return {
+        url: skillsUrl,
+        http_status: response.status,
+        listed: true,
+        measurement: "unavailable",
+        measurement_error: error instanceof Error ? error.message : String(error),
+      };
+    }
   } catch (error) {
     return {
-      url,
+      url: skillsUrl,
       listed: false,
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
@@ -56,6 +75,42 @@ async function agentToolStatus(): Promise<Record<string, unknown>> {
   }
 }
 
+async function securityDirectoryPrStatus(): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch("https://api.github.com/repos/LLMSecurity/awesome-agent-skills-security/pulls/38", {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "bountyverdict-directory-monitor",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return { url: securityDirectoryPrUrl, http_status: response.status, status: "unexpected_response" };
+    }
+    const payload = await response.json() as {
+      state?: string;
+      merged_at?: string | null;
+      draft?: boolean;
+      mergeable?: boolean | null;
+    };
+    return {
+      url: securityDirectoryPrUrl,
+      http_status: response.status,
+      status: payload.merged_at ? "merged" : payload.state || "unknown",
+      merged_at: payload.merged_at || null,
+      draft: payload.draft === true,
+      mergeable: payload.mergeable,
+    };
+  } catch (error) {
+    return {
+      url: securityDirectoryPrUrl,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function submitAgentSkill(): Promise<Record<string, unknown>> {
   try {
     const response = await fetch("https://agentskill.sh/api/skills/submit", {
@@ -72,6 +127,7 @@ async function submitAgentSkill(): Promise<Record<string, unknown>> {
     const listed = response.ok && payload.success === true && summary.found === 7 && summary.failed === 0;
     return {
       url: "https://agentskill.sh/submit",
+      attempted_at: new Date().toISOString(),
       http_status: response.status,
       listed,
       status: listed ? "accepted" : "upstream_blocked",
@@ -80,6 +136,7 @@ async function submitAgentSkill(): Promise<Record<string, unknown>> {
   } catch (error) {
     return {
       url: "https://agentskill.sh/submit",
+      attempted_at: new Date().toISOString(),
       listed: false,
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
@@ -94,19 +151,29 @@ try {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 }
 
-const [skills, agenttool] = await Promise.all([
-  pageStatus(skillsUrl, "bountyverdict"),
+const [skills, agenttool, securityDirectoryPr] = await Promise.all([
+  skillsShStatus(),
   agentToolStatus(),
+  securityDirectoryPrStatus(),
 ]);
+const previousAttempt = Date.parse(String(previous.agentskill?.attempted_at || previous.checked_at || ""));
+const agentSkillRetryDue = !Number.isFinite(previousAttempt) || Date.now() - previousAttempt >= agentSkillRetryMs;
 const agentskill = previous.agentskill?.listed === true
   ? previous.agentskill
-  : await submitAgentSkill();
+  : agentSkillRetryDue
+    ? await submitAgentSkill()
+    : {
+        ...previous.agentskill,
+        retry_deferred: true,
+        retry_after: new Date(previousAttempt + agentSkillRetryMs).toISOString(),
+      };
 const state = {
   checked_at: new Date().toISOString(),
   repository,
   skills_sh: skills,
   agenttool,
   agentskill,
+  security_directory_pr: securityDirectoryPr,
   x402scan: {
     url: "https://www.x402scan.com/resources/register",
     listed: false,

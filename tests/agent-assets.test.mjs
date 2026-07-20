@@ -190,13 +190,20 @@ test("agent landing page exposes all seven self-serve products", async () => {
   assert.match(page, /--max-amount/);
   assert.match(page, /blob\/main\/SECURITY\.md/);
   assert.match(page, /blob\/main\/PRIVACY\.md/);
+  assert.match(page, /skills\.sh\/cristianmoroaica\/bountyverdict\/route-github-agent-checks/);
   for (const product of ["BountyVerdict", "Portfolio", "HarnessVerdict", "SkillVerdict", "RunVerdict", "FlakeVerdict", "MCPDriftVerdict"]) {
     assert.match(page, new RegExp(product));
   }
   for (const price of ["0.05", "0.40", "0.03", "0.06", "0.04", "0.07", "0.02"]) {
     assert.match(page, new RegExp(`\\$${price}`));
   }
-  assert.equal((page.match(/https:\/\/skills\.sh\/cristianmoroaica\/bountyverdict\//g) || []).length, 7);
+  assert.equal((page.match(/https:\/\/skills\.sh\/cristianmoroaica\/bountyverdict\//g) || []).length, 8);
+});
+
+test("human landing page links directly to the measurable router funnel", async () => {
+  const page = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(page, /skills\.sh\/cristianmoroaica\/bountyverdict\/route-github-agent-checks/);
+  assert.match(page, /Install the router on skills\.sh/);
 });
 
 test("public trust disclosures cover payment, retention, and private reporting", async () => {
