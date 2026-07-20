@@ -27,6 +27,8 @@ The `agent/` directory contains the paid, machine-readable product surface. It i
 
 Agents can inspect free single and portfolio samples, see exact prices in the HTTP 402 response, then independently decide whether to buy. Invalid inputs and upstream failures return an error without settlement. The public [`agent-manifest.json`](agent-manifest.json) is the authoritative activation record, and [`skills/preflight-github-bounties/SKILL.md`](skills/preflight-github-bounties/SKILL.md) provides a guarded purchase workflow for agent consumers.
 
+Both paid contracts have been exercised end to end by Coinbase Agentic Wallet on Base Sepolia: the $0.05 GET and $0.40 POST returned their structured results and reconciled as exact on-chain USDC transfers. These are interoperability tests, not revenue; the manifest remains `awaiting_production` until a real-money Base deployment is live.
+
 See [`agent/README.md`](agent/README.md) for the protocol, local verification, and deployment configuration.
 
 The launch price and differentiation are grounded in a live Bazaar comparison documented in [`docs/MARKET_VALIDATION.md`](docs/MARKET_VALIDATION.md). Agents and crawlers can read [`llms.txt`](llms.txt) before deciding whether the product is relevant.

@@ -47,20 +47,26 @@ RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 PRODUCT=portfolio RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 ```
 
-To execute a Base Sepolia payment, the preferred path is a CDP-managed test wallet. Put `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET` in the ignored `agent/.dev.vars` file or export them in the shell. Provision the named wallet and request Base Sepolia ETH and USDC:
+To execute a Base Sepolia payment, the preferred buyer is Coinbase Agentic Wallet. It authenticates once through email/OTP, keeps signing keys outside this repository, and supports strict per-request caps:
 
 ```bash
-npm run wallet:test
-npm run wallet:fund
+npx awal@2.12.1 status
+npx awal@2.12.1 balance --chain base-sepolia --json
+npx awal@2.12.1 x402 pay https://your-test-worker.workers.dev/api/verdict \
+  --query '{"issue_url":"https://github.com/typeorm/typeorm/issues/3357"}' \
+  --max-amount 50000 --json
 ```
 
-The commands print only the public wallet address and faucet transaction hashes. The payment harness then uses that managed wallet automatically, enforces a 50,000-atomic-unit single-check cap or 400,000-atomic-unit portfolio cap, restricts the exact asset/network/payee, and refuses Base mainnet unless `ALLOW_MAINNET_PAYMENT=YES` is explicitly set:
+Exercise the portfolio contract with its exact 400,000-atomic-unit cap:
 
 ```bash
-RESOURCE_SERVER_URL=https://your-test-worker.workers.dev npm run payment:smoke
+npx awal@2.12.1 x402 pay https://your-test-worker.workers.dev/api/portfolio \
+  --method POST \
+  --data '{"issue_urls":["https://github.com/godotengine/godot/issues/70796","https://github.com/typeorm/typeorm/issues/3357"]}' \
+  --max-amount 400000 --json
 ```
 
-Set `PRODUCT=portfolio` and optionally a comma-separated `ISSUE_URLS` value to exercise the portfolio purchase.
+The lower-level `npm run payment:smoke` harness remains available for a CDP Server Wallet or funded standalone test key. The Agentic Wallet path does not require `CDP_WALLET_SECRET` and is the verified interoperability path for autonomous buyers.
 
 A funded standalone `BUYER_PRIVATE_KEY` remains supported as a test-only fallback. Never use or share a production wallet private key.
 
