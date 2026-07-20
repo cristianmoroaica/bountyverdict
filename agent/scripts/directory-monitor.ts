@@ -16,13 +16,22 @@ async function atomicWrite(path: string, contents: string): Promise<void> {
 }
 
 async function pageStatus(url: string, expected: string): Promise<Record<string, unknown>> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-  const body = await response.text();
-  return {
-    url,
-    http_status: response.status,
-    listed: response.ok && body.includes(expected) && !body.toLowerCase().includes("not found"),
-  };
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    const body = await response.text();
+    return {
+      url,
+      http_status: response.status,
+      listed: response.ok && body.includes(expected) && !body.toLowerCase().includes("not found"),
+    };
+  } catch (error) {
+    return {
+      url,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function submitAgentSkill(): Promise<Record<string, unknown>> {
