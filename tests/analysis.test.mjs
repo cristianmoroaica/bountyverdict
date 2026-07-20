@@ -74,3 +74,24 @@ test("linked competing PR reduces the verdict", () => {
   assert.equal(output.pullRequests.length, 1);
 });
 
+test("official repository policy can block AI-assisted bounty work", () => {
+  const policyDocuments = [{
+    body: "We do not accept contributions generated or assisted by AI or an LLM.",
+    html_url: "https://github.com/acme/widget/blob/main/CONTRIBUTING.md"
+  }];
+  const output = analyzeBounty({ issue: healthyIssue, repository: healthyRepo, policyDocuments, now });
+  assert.equal(output.verdict, "AVOID");
+  assert.equal(output.aiPolicyBlocks.length, 1);
+  assert.ok(output.signals.some((item) => item.label === "Repository AI policy blocks the work" && item.hardStop));
+});
+
+test("official repository policy surfaces an AI disclosure requirement", () => {
+  const policyDocuments = [{
+    body: "Contributors must clearly disclose any generative AI assistance in the pull request.",
+    html_url: "https://github.com/acme/widget/blob/main/CONTRIBUTING.md"
+  }];
+  const output = analyzeBounty({ issue: healthyIssue, repository: healthyRepo, policyDocuments, now });
+  assert.equal(output.verdict, "VIABLE");
+  assert.equal(output.aiPolicyRequirements.length, 1);
+  assert.ok(output.signals.some((item) => item.label === "AI-use disclosure required"));
+});

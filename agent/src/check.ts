@@ -25,10 +25,15 @@ export interface AgentVerdict {
     repository: string;
   };
   signals: VerdictSignal[];
+  contribution_policy: {
+    ai_use: "BLOCKED" | "DISCLOSURE_REQUIRED" | "NO_EXPLICIT_RULE_FOUND";
+    documents: Array<{ path: string; url: string }>;
+  };
   coverage: {
     comments_scanned: number;
     timeline_events_scanned: number;
     linked_pull_requests_found: number;
+    policy_documents_scanned: number;
     github_rate_limit_remaining: number | null;
   };
   checked_at: string;
@@ -41,6 +46,8 @@ interface AnalysisResult {
   verdict: AgentVerdict["verdict"];
   score: number;
   pullRequests: unknown[];
+  aiPolicyBlocks: unknown[];
+  aiPolicyRequirements: unknown[];
   signals: Array<{
     label: string;
     impact: number;
@@ -71,6 +78,19 @@ interface GithubResponse {
   link: string | null;
 }
 
+interface PolicyDocument {
+  path: string;
+  body: string;
+  html_url: string;
+}
+
+const POLICY_PATHS = [
+  "CONTRIBUTING.md",
+  ".github/CONTRIBUTING.md",
+  "docs/CONTRIBUTING.md",
+  ".github/pull_request_template.md",
+];
+
 function githubHeaders(env: CheckEnvironment): HeadersInit {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -85,6 +105,7 @@ async function githubJson(
   path: string,
   env: CheckEnvironment,
   fetchImpl: FetchLike,
+  allowNotFound = false,
 ): Promise<GithubResponse> {
   const response = await fetchImpl(`https://api.github.com${path}`, {
     headers: githubHeaders(env),
@@ -93,6 +114,9 @@ async function githubJson(
   const remaining = Number.isFinite(remainingValue) ? remainingValue : null;
 
   if (!response.ok) {
+    if (response.status === 404 && allowNotFound) {
+      return { data: null, remaining, link: response.headers.get("link") };
+    }
     if (response.status === 404) {
       throw new CheckError("GitHub could not find that public issue.", 404, "ISSUE_NOT_FOUND");
     }
@@ -106,6 +130,44 @@ async function githubJson(
     data: await response.json(),
     remaining,
     link: response.headers.get("link"),
+  };
+}
+
+function decodeBase64Utf8(value: string): string {
+  const binary = atob(value.replace(/\s/g, ""));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+async function githubPolicyDocument(
+  base: string,
+  path: string,
+  env: CheckEnvironment,
+  fetchImpl: FetchLike,
+): Promise<{ document: PolicyDocument | null; response: GithubResponse }> {
+  const response = await githubJson(
+    `${base}/contents/${path.split("/").map(encodeURIComponent).join("/")}`,
+    env,
+    fetchImpl,
+    true,
+  );
+  const file = response.data;
+  if (
+    !file ||
+    file.type !== "file" ||
+    file.encoding !== "base64" ||
+    typeof file.content !== "string" ||
+    typeof file.html_url !== "string"
+  ) {
+    return { document: null, response };
+  }
+  return {
+    document: {
+      path: file.path || path,
+      body: decodeBase64Utf8(file.content),
+      html_url: file.html_url,
+    },
+    response,
   };
 }
 
@@ -155,13 +217,16 @@ export async function checkGithubIssue(
     { length: Math.min(3, commentPageCount) },
     (_, index) => index + 1,
   );
-  const [commentResponses, firstTimeline] = await Promise.all([
+  const [commentResponses, firstTimeline, policyResponses] = await Promise.all([
     Promise.all(
       commentPages.map((page) =>
         githubJson(`${base}/issues/${number}/comments?per_page=100&page=${page}`, env, fetchImpl),
       ),
     ),
     githubJson(`${base}/issues/${number}/timeline?per_page=100&page=1`, env, fetchImpl),
+    Promise.all(
+      POLICY_PATHS.map((path) => githubPolicyDocument(base, path, env, fetchImpl)),
+    ),
   ]);
 
   const timelineLastPage = lastPageFromLink(firstTimeline.link);
@@ -176,12 +241,16 @@ export async function checkGithubIssue(
   const timeline = lastTimeline
     ? [...firstTimeline.data, ...lastTimeline.data]
     : firstTimeline.data;
+  const policyDocuments = policyResponses
+    .map((result) => result.document)
+    .filter((document): document is PolicyDocument => document !== null);
   const responses = [
     issueResponse,
     repoResponse,
     ...commentResponses,
     firstTimeline,
     lastTimeline,
+    ...policyResponses.map((result) => result.response),
   ].filter((value): value is GithubResponse => value !== null);
   const remainingValues = responses
     .map((response) => response.remaining)
@@ -192,6 +261,7 @@ export async function checkGithubIssue(
     repository: repoResponse.data,
     comments,
     timeline,
+    policyDocuments,
     now,
   });
 
@@ -214,10 +284,22 @@ export async function checkGithubIssue(
       evidence_url: item.evidenceUrl,
       hard_stop: item.hardStop,
     })),
+    contribution_policy: {
+      ai_use: analysis.aiPolicyBlocks.length
+        ? "BLOCKED"
+        : analysis.aiPolicyRequirements.length
+          ? "DISCLOSURE_REQUIRED"
+          : "NO_EXPLICIT_RULE_FOUND",
+      documents: policyDocuments.map((document) => ({
+        path: document.path,
+        url: document.html_url,
+      })),
+    },
     coverage: {
       comments_scanned: comments.length,
       timeline_events_scanned: timeline.length,
       linked_pull_requests_found: analysis.pullRequests.length,
+      policy_documents_scanned: policyDocuments.length,
       github_rate_limit_remaining: remainingValues.length
         ? Math.min(...remainingValues)
         : null,
@@ -227,6 +309,7 @@ export async function checkGithubIssue(
       "A VIABLE verdict is permission to investigate, not a payout guarantee.",
       "Confirm current reward terms, payout eligibility, contribution policy, and acceptance criteria before coding.",
       "The check reads at most 300 comments plus the first and newest timeline pages.",
+      "AI-policy detection checks four conventional contribution-document paths and may not find policies stored elsewhere.",
     ],
   };
 }

@@ -21,11 +21,13 @@ No account, token, backend, analytics, or data storage is used. Your browser mak
 
 ## Agent API
 
-The `agent/` directory contains the paid, machine-readable product surface. It is a Cloudflare Worker with an x402-protected endpoint that charges **$0.25 USDC per fresh verdict** and declares its input/output schema through the Bazaar discovery extension.
+The `agent/` directory contains the paid, machine-readable product surface. It is a Cloudflare Worker with an x402-protected endpoint that charges **$0.05 USDC per fresh verdict** and declares its input/output schema through the Bazaar discovery extension. The paid check also reads official contribution documents for explicit AI-work bans or disclosure requirements.
 
 Agents can inspect the free `/api/sample`, see the exact price in the HTTP 402 response, and pay only when they call `/api/verdict?issue_url=...`. Invalid inputs and upstream failures return an error without settlement.
 
 See [`agent/README.md`](agent/README.md) for the protocol, local verification, and deployment configuration.
+
+The launch price and differentiation are grounded in a live Bazaar comparison documented in [`docs/MARKET_VALIDATION.md`](docs/MARKET_VALIDATION.md). Agents and crawlers can read [`llms.txt`](llms.txt) before deciding whether the product is relevant.
 
 ## Run locally
 

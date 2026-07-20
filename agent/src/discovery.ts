@@ -22,10 +22,20 @@ export const exampleVerdict = {
       hard_stop: true,
     },
   ],
+  contribution_policy: {
+    ai_use: "NO_EXPLICIT_RULE_FOUND",
+    documents: [
+      {
+        path: "CONTRIBUTING.md",
+        url: "https://github.com/typeorm/typeorm/blob/master/CONTRIBUTING.md",
+      },
+    ],
+  },
   coverage: {
     comments_scanned: 100,
     timeline_events_scanned: 100,
     linked_pull_requests_found: 12,
+    policy_documents_scanned: 1,
     github_rate_limit_remaining: 4994,
   },
   checked_at: "2026-07-20T00:00:00.000Z",
@@ -34,7 +44,7 @@ export const exampleVerdict = {
   ],
 };
 
-const outputSchema = {
+export const outputSchema = {
   properties: {
     product: { type: "string", const: "BountyVerdict" },
     version: { type: "string" },
@@ -65,7 +75,44 @@ const outputSchema = {
         required: ["label", "impact", "detail", "evidence_url", "hard_stop"],
       },
     },
-    coverage: { type: "object" },
+    contribution_policy: {
+      type: "object",
+      properties: {
+        ai_use: {
+          type: "string",
+          enum: ["BLOCKED", "DISCLOSURE_REQUIRED", "NO_EXPLICIT_RULE_FOUND"],
+        },
+        documents: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              url: { type: "string" },
+            },
+            required: ["path", "url"],
+          },
+        },
+      },
+      required: ["ai_use", "documents"],
+    },
+    coverage: {
+      type: "object",
+      properties: {
+        comments_scanned: { type: "integer", minimum: 0 },
+        timeline_events_scanned: { type: "integer", minimum: 0 },
+        linked_pull_requests_found: { type: "integer", minimum: 0 },
+        policy_documents_scanned: { type: "integer", minimum: 0 },
+        github_rate_limit_remaining: { type: ["integer", "null"] },
+      },
+      required: [
+        "comments_scanned",
+        "timeline_events_scanned",
+        "linked_pull_requests_found",
+        "policy_documents_scanned",
+        "github_rate_limit_remaining",
+      ],
+    },
     checked_at: { type: "string" },
     limitations: { type: "array", items: { type: "string" } },
   },
@@ -77,6 +124,7 @@ const outputSchema = {
     "summary",
     "issue",
     "signals",
+    "contribution_policy",
     "coverage",
     "checked_at",
     "limitations",

@@ -1,0 +1,23 @@
+# BountyVerdict
+
+> Know whether a public GitHub bounty is worth investigating before spending coding time, agent compute, or repository reputation.
+
+## Free human checker
+
+https://cristianmoroaica.github.io/bountyverdict/
+
+Paste a canonical public GitHub issue URL. The browser performs read-only GitHub API requests and returns an evidence-linked AVOID, CAUTION, or VIABLE verdict without login or storage.
+
+## Paid agent API
+
+- Price: $0.05 USDC per successful fresh verdict
+- Payment: x402 v2 exact scheme
+- Marketplace: Coinbase x402 Bazaar after production settlement activation
+- Free sample, OpenAPI contract, and llms.txt are served by the agent endpoint
+- Source and integration contract: https://github.com/cristianmoroaica/bountyverdict/tree/main/agent
+
+The paid check adds conventional repository contribution-document checks for explicit AI-work bans and disclosure requirements. Invalid or failed checks are not settled.
+
+## Limits
+
+A VIABLE verdict is permission to investigate, not a guarantee of reward availability, acceptance, merge, eligibility, or payment.

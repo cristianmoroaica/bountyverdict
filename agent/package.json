@@ -7,6 +7,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "deploy:dry": "wrangler deploy --dry-run --env=''",
+    "payment:inspect": "node --experimental-strip-types scripts/payment-smoke.ts",
+    "payment:smoke": "EXECUTE_PAYMENT=YES node --experimental-strip-types scripts/payment-smoke.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -15,11 +17,14 @@
     "@x402/core": "2.19.0",
     "@x402/evm": "2.19.0",
     "@x402/extensions": "2.19.0",
+    "@x402/fetch": "2.19.0",
     "@x402/hono": "2.19.0",
-    "hono": "4.12.31"
+    "hono": "4.12.31",
+    "viem": "2.55.4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260719.1",
+    "@types/node": "22.19.7",
     "node-addon-api": "8.5.0",
     "node-gyp": "13.0.1",
     "typescript": "6.0.3",

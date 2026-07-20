@@ -20,7 +20,7 @@ const repository = {
   full_name: "acme/widget",
 };
 
-function githubMock(comments: unknown[] = []): typeof fetch {
+function githubMock(comments: unknown[] = [], policy: string | null = null): typeof fetch {
   return async (input) => {
     const url = String(input);
     const headers = { "x-ratelimit-remaining": "4990" };
@@ -28,6 +28,15 @@ function githubMock(comments: unknown[] = []): typeof fetch {
     if (/\/repos\/acme\/widget$/.test(url)) return Response.json(repository, { headers });
     if (/\/comments\?/.test(url)) return Response.json(comments, { headers });
     if (/\/timeline\?/.test(url)) return Response.json([], { headers });
+    if (policy && /\/contents\/CONTRIBUTING\.md$/.test(url)) {
+      return Response.json({
+        type: "file",
+        path: "CONTRIBUTING.md",
+        encoding: "base64",
+        content: Buffer.from(policy).toString("base64"),
+        html_url: "https://github.com/acme/widget/blob/main/CONTRIBUTING.md",
+      }, { headers });
+    }
     return Response.json({ message: "not found" }, { status: 404, headers });
   };
 }
@@ -43,8 +52,23 @@ test("returns structured evidence for a viable issue", async () => {
   assert.equal(result.verdict, "VIABLE");
   assert.equal(result.issue.repository, "acme/widget");
   assert.equal(result.coverage.comments_scanned, 0);
+  assert.equal(result.coverage.policy_documents_scanned, 0);
   assert.equal(result.coverage.github_rate_limit_remaining, 4990);
   assert.ok(result.signals.some((signal) => signal.label === "No linked open PR found"));
+});
+
+test("paid check reads repository policy and blocks prohibited AI work", async () => {
+  const result = await checkGithubIssue(
+    "https://github.com/acme/widget/issues/4",
+    {},
+    githubMock([], "We do not accept contributions generated or assisted by AI or an LLM."),
+    new Date("2026-07-20T12:00:00Z"),
+  );
+
+  assert.equal(result.verdict, "AVOID");
+  assert.equal(result.contribution_policy.ai_use, "BLOCKED");
+  assert.equal(result.contribution_policy.documents[0]?.path, "CONTRIBUTING.md");
+  assert.equal(result.coverage.policy_documents_scanned, 1);
 });
 
 test("returns AVOID when a maintainer rejects AI bounty work", async () => {

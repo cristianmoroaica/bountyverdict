@@ -5,9 +5,9 @@ A paid, deterministic preflight for autonomous coding agents. It checks a public
 ## Product contract
 
 - Endpoint: `GET /api/verdict?issue_url=<public GitHub issue URL>`
-- Price: **$0.25 USDC per successful verdict**
+- Price: **$0.05 USDC per successful verdict**
 - Payment: x402 v2, exact scheme
-- Output: structured `AVOID`, `CAUTION`, or `VIABLE` verdict with score, signals, coverage, limitations, and evidence URLs
+- Output: structured `AVOID`, `CAUTION`, or `VIABLE` verdict with score, signals, repository AI-contribution policy, coverage, limitations, and evidence URLs
 - Discovery: x402 Bazaar extension with a strict input schema and realistic output example
 - Failure behavior: invalid inputs, GitHub failures, and handler errors are not settled
 
@@ -25,10 +25,24 @@ npm run deploy:dry
 npm run dev -- --var PAY_TO_ADDRESS:0x0000000000000000000000000000000000000001
 ```
 
-An unpaid request should return HTTP 402 with `PAYMENT-REQUIRED`, including the $0.25 price and `extensions.bazaar` metadata:
+An unpaid request should return HTTP 402 with `PAYMENT-REQUIRED`, including the $0.05 price and `extensions.bazaar` metadata:
 
 ```bash
 curl -i 'http://127.0.0.1:8787/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Ftypeorm%2Ftypeorm%2Fissues%2F3357'
+```
+
+The buyer harness inspects the challenge without paying by default:
+
+```bash
+RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
+```
+
+To execute a Base Sepolia payment, supply a funded **test-only** buyer key. The harness enforces a 50,000-atomic-unit ($0.05 USDC) cap and refuses Base mainnet unless `ALLOW_MAINNET_PAYMENT=YES` is explicitly set:
+
+```bash
+RESOURCE_SERVER_URL=https://your-test-worker.workers.dev \
+BUYER_PRIVATE_KEY=0xTESTNET_ONLY \
+npm run payment:smoke
 ```
 
 ## Deployment inputs

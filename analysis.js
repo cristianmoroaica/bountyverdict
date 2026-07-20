@@ -23,6 +23,17 @@ const WITHDRAWAL_PATTERNS = [
   /cancel(?:led|ing)?.{0,40}(?:reward|bounty)/i
 ];
 
+const AI_POLICY_BLOCK_PATTERNS = [
+  /(?:we\s+)?(?:do not|don['’]?t|must not|may not)\s+(?:accept|allow|use|submit).{0,80}(?:ai|llm|chatgpt|generative)/i,
+  /(?:ai|llm|chatgpt|generative ai).{0,80}(?:contributions?|pull requests?|patches?|code).{0,60}(?:not accepted|not allowed|prohibited|forbidden|will be (?:closed|rejected))/i,
+  /(?:contributions?|pull requests?|patches?|code).{0,80}(?:generated|written|assisted) by (?:ai|an? llm|chatgpt).{0,60}(?:not accepted|not allowed|prohibited|forbidden|will be (?:closed|rejected))/i
+];
+
+const AI_POLICY_DISCLOSURE_PATTERNS = [
+  /(?:must|required to|please)\s+(?:clearly\s+)?(?:disclose|declare|label).{0,60}(?:ai|llm|chatgpt|generative)/i,
+  /(?:ai|llm|chatgpt|generative ai).{0,70}(?:must|required).{0,40}(?:disclos|declar|label)/i
+];
+
 export function parseIssueUrl(value) {
   let url;
   try {
@@ -69,7 +80,7 @@ function signal(label, impact, detail, evidenceUrl = null, hardStop = false) {
   return { label, impact, detail, evidenceUrl, hardStop };
 }
 
-export function analyzeBounty({ issue, repository, comments = [], timeline = [], now = new Date() }) {
+export function analyzeBounty({ issue, repository, comments = [], timeline = [], policyDocuments = [], now = new Date() }) {
   const signals = [];
   const pulls = uniquePullRequests(timeline);
   const openPulls = pulls.filter((pull) => pull.state === "open");
@@ -78,6 +89,12 @@ export function analyzeBounty({ issue, repository, comments = [], timeline = [],
   const attemptUsers = [...new Set(attempts.map((comment) => comment.user?.login).filter(Boolean))];
   const maintainerWarnings = matchingComments(comments, NEGATIVE_MAINTAINER_PATTERNS, true);
   const withdrawals = matchingComments(comments, WITHDRAWAL_PATTERNS, false);
+  const aiPolicyBlocks = policyDocuments.filter((document) =>
+    AI_POLICY_BLOCK_PATTERNS.some((pattern) => pattern.test(document.body ?? ""))
+  );
+  const aiPolicyRequirements = policyDocuments.filter((document) =>
+    AI_POLICY_DISCLOSURE_PATTERNS.some((pattern) => pattern.test(document.body ?? ""))
+  );
   const issueAge = daysSince(issue.updated_at, now);
   const repoAge = daysSince(repository.pushed_at, now);
   let score = 50;
@@ -147,6 +164,16 @@ export function analyzeBounty({ issue, repository, comments = [], timeline = [],
     signals.push(signal("Reward withdrawal signal", -70, "The discussion contains language indicating that a bounty or reward was removed, withdrawn, or cancelled.", comment.html_url, true));
   }
 
+  if (aiPolicyBlocks.length) {
+    score -= 70;
+    const document = aiPolicyBlocks[0];
+    signals.push(signal("Repository AI policy blocks the work", -70, "An official contribution document appears to prohibit AI-generated or AI-assisted contributions.", document.html_url, true));
+  } else if (aiPolicyRequirements.length) {
+    score -= 5;
+    const document = aiPolicyRequirements[0];
+    signals.push(signal("AI-use disclosure required", -5, "An official contribution document appears to require disclosure or labeling of AI assistance.", document.html_url));
+  }
+
   if ((issue.body ?? "").trim().length < 120) {
     score -= 10;
     signals.push(signal("Thin specification", -10, "The issue body is too short to provide strong acceptance criteria.", issue.html_url));
@@ -165,7 +192,8 @@ export function analyzeBounty({ issue, repository, comments = [], timeline = [],
     pullRequests: pulls,
     maintainerWarnings,
     withdrawals,
+    aiPolicyBlocks,
+    aiPolicyRequirements,
     signals: signals.sort((left, right) => left.impact - right.impact)
   };
 }
-

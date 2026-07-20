@@ -5,6 +5,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { Hono, type MiddlewareHandler } from "hono";
 import { CheckError, checkGithubIssue } from "./check";
 import { discoveryExtension, exampleVerdict } from "./discovery";
+import { createLlmsText, createOpenApi } from "./openapi";
 
 interface Env {
   PAY_TO_ADDRESS?: string;
@@ -17,7 +18,7 @@ interface Env {
 
 type AppBindings = { Bindings: Env };
 
-const PRICE_USD = "$0.25";
+const PRICE_USD = "$0.05";
 const ENDPOINT = "/api/verdict";
 const TESTNET_NETWORK = "eip155:84532";
 const TESTNET_FACILITATOR = "https://x402.org/facilitator";
@@ -62,7 +63,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       network: network as `${string}:${string}`,
       payTo,
     },
-    description: "Preflight a public GitHub bounty issue before spending agent compute. Returns a deterministic AVOID, CAUTION, or VIABLE verdict with linked evidence for locks, closed state, competing PRs, failed-attempt swarms, maintainer rejection, and withdrawn rewards.",
+    description: "Deep-preflight a public GitHub bounty before spending agent compute. Returns a deterministic AVOID, CAUTION, or VIABLE verdict with evidence for locks, closed state, competing PRs, failed-attempt swarms, maintainer rejection, withdrawn rewards, and repository AI-contribution policy.",
     mimeType: "application/json",
     serviceName: "BountyVerdict",
     tags: ["github", "bounties", "developer-tools", "risk", "agents"],
@@ -105,11 +106,23 @@ app.get("/", (c) =>
     method: "GET",
     input: { issue_url: "https://github.com/owner/repository/issues/123" },
     sample: "/api/sample",
+    openapi: "/openapi.json",
+    llms: "/llms.txt",
     human_checker: PRODUCT_URL,
   }),
 );
 
 app.get("/api/sample", (c) => c.json(exampleVerdict));
+
+app.get("/openapi.json", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(createOpenApi(origin, c.env.X402_NETWORK || TESTNET_NETWORK, PRICE_USD));
+});
+
+app.get("/llms.txt", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.text(createLlmsText(origin), 200, { "Content-Type": "text/plain; charset=utf-8" });
+});
 
 app.use(ENDPOINT, async (c, next) => {
   try {
