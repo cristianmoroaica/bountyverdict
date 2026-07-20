@@ -1,0 +1,54 @@
+{
+  "product": "SkillVerdict",
+  "version": "1.0",
+  "verdict": "REVIEW",
+  "risk_score": 30,
+  "summary": "The skill has consequential behavior or structural ambiguity that requires manual review before installation.",
+  "repository": {
+    "url": "https://github.com/acme/agent-skills",
+    "full_name": "acme/agent-skills",
+    "archived": false,
+    "default_branch": "main",
+    "commit_sha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "skill": {
+    "path": "skills/release/SKILL.md",
+    "name": "release",
+    "description": "Deploy the service using the repository release script.",
+    "files": [
+      "skills/release/SKILL.md",
+      "skills/release/scripts/deploy.sh"
+    ]
+  },
+  "capabilities": {
+    "declared": ["network", "shell"],
+    "observed": ["network", "shell", "system_configuration"],
+    "external_domains": ["api.cloudflare.com"]
+  },
+  "findings": [
+    {
+      "severity": "high",
+      "code": "UNDECLARED_CAPABILITY",
+      "message": "Observed system configuration behavior is not disclosed by the skill description or instructions.",
+      "file": null,
+      "line": null,
+      "evidence_url": "https://github.com/acme/agent-skills/blob/0123456789abcdef0123456789abcdef01234567/skills/release/SKILL.md"
+    }
+  ],
+  "recommendations": [
+    "Disclose every consequential capability in the skill description and least-privilege workflow."
+  ],
+  "coverage": {
+    "entries_in_skill": 3,
+    "files_scanned": 2,
+    "bytes_scanned": 4820,
+    "skipped_binary": 1,
+    "skipped_oversized": 0,
+    "selection_truncated": false,
+    "github_rate_limit_remaining": 4997
+  },
+  "checked_at": "2026-07-20T00:00:00.000Z",
+  "limitations": [
+    "This static audit never executes the skill and cannot prove that a low-risk result is safe."
+  ]
+}

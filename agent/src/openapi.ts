@@ -1,10 +1,11 @@
 import { outputSchema, portfolioOutputSchema } from "./discovery.ts";
 import { harnessOutputSchema } from "./harness-discovery.ts";
+import { skillOutputSchema } from "./skill-discovery.ts";
 
 export function createOpenApi(
   origin: string,
   network: string,
-  prices: { single: string; portfolio: string; harness: string },
+  prices: { single: string; portfolio: string; harness: string; skill: string },
 ) {
   return {
     openapi: "3.1.0",
@@ -180,6 +181,61 @@ export function createOpenApi(
           },
         },
       },
+      "/api/skill/sample": {
+        get: {
+          summary: "Inspect a representative SkillVerdict audit without payment",
+          operationId: "getSkillVerdictSample",
+          responses: {
+            "200": {
+              description: "Representative pre-install skill security audit",
+              content: { "application/json": { schema: { type: "object", ...skillOutputSchema } } },
+            },
+          },
+        },
+      },
+      "/api/skill": {
+        get: {
+          summary: "Audit a public agent skill before installation",
+          description: "Pins the repository default branch to a commit and statically scans the requested SKILL.md plus its bounded directory context without executing code. Returns redacted findings, capabilities, domains, coverage, and a LOW_RISK, REVIEW, or BLOCK verdict.",
+          operationId: "checkSkillVerdict",
+          parameters: [
+            {
+              name: "repo_url",
+              in: "query",
+              required: true,
+              description: "Canonical public GitHub repository URL",
+              schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:\\.git)?$" },
+              example: "https://github.com/coinbase/agentic-wallet-skills",
+            },
+            {
+              name: "skill_path",
+              in: "query",
+              required: true,
+              description: "Repository-relative skill directory or exact SKILL.md path",
+              schema: { type: "string", pattern: "^[A-Za-z0-9._/-]+$" },
+              example: "skills/agentic-wallet",
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Commit-pinned redacted skill security audit after x402 settlement",
+              content: { "application/json": { schema: { type: "object", ...skillOutputSchema } } },
+            },
+            "402": { description: "Payment required; inspect the PAYMENT-REQUIRED header" },
+            "400": { description: "Invalid repository URL or skill path; verified payment is not settled" },
+            "404": { description: "Public repository or skill not found; verified payment is not settled" },
+            "502": { description: "GitHub upstream failure; verified payment is not settled" },
+            "503": { description: "Temporary capacity or service configuration failure" },
+          },
+          "x-x402": {
+            version: 2,
+            scheme: "exact",
+            network,
+            price: prices.skill,
+            currency: "USDC",
+          },
+        },
+      },
     },
   };
 }
@@ -204,6 +260,10 @@ export function createLlmsText(origin: string): string {
 - Paid HarnessVerdict: GET ${origin}/api/harness?repo_url=<PUBLIC_GITHUB_REPOSITORY_URL>
 - HarnessVerdict price: $0.03 USDC per successful commit-pinned audit
 - Harness verdicts: READY, REVIEW, REPAIR
+- Free SkillVerdict sample: ${origin}/api/skill/sample
+- Paid SkillVerdict: GET ${origin}/api/skill?repo_url=<PUBLIC_GITHUB_REPOSITORY_URL>&skill_path=<SKILL_DIRECTORY>
+- SkillVerdict price: $0.06 USDC per successful commit-pinned pre-install audit
+- Skill verdicts: LOW_RISK, REVIEW, BLOCK
 - Failed or invalid checks are not settled
 
 ## Differentiation
@@ -213,6 +273,8 @@ BountyVerdict checks up to 300 issue comments, first and newest timeline pages, 
 The portfolio product runs the full check on every submitted candidate, ranks VIABLE before CAUTION before AVOID, recommends the strongest candidate, and reports partial upstream failures.
 
 HarnessVerdict audits the repository's recognized coding-agent instruction surfaces without cloning or executing its code. It reports stale path references, oversized always-loaded context, machine-local paths, malformed skill frontmatter, secret-like material, and client portability across Codex, Claude Code, Gemini CLI, GitHub Copilot, and Cursor. Every result is pinned to the audited commit SHA.
+
+SkillVerdict audits a requested public SKILL.md plus its bounded directory and repository context without execution. It detects high-confidence supply-chain hazards, redacts secret-like values, discloses observed capabilities and external domains, and pins every finding to the exact reviewed commit. LOW_RISK is not a safety guarantee; retain least privilege and inspect coverage before installation.
 
 ## Safety
 

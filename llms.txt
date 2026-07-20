@@ -13,15 +13,17 @@ Paste a canonical public GitHub issue URL. The browser performs read-only GitHub
 - Agent manifest: https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json
 - Agent operating skill: https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md
 - Harness audit skill: https://cristianmoroaica.github.io/bountyverdict/skills/audit-agent-harness/SKILL.md
+- Skill security workflow: https://cristianmoroaica.github.io/bountyverdict/skills/preflight-agent-skills/SKILL.md
 - Single verdict: GET /api/verdict for $0.05 USDC per successful result
 - Portfolio ranking: POST /api/portfolio for $0.40 USDC, covering 2 to 10 unique candidates
 - Harness audit: GET /api/harness for $0.03 USDC per successful commit-pinned public repository audit
+- Skill security audit: GET /api/skill for $0.06 USDC per successful commit-pinned public skill audit
 - Payment: x402 v2 exact scheme
 - Marketplace: Coinbase x402 Bazaar after production settlement activation
 - Free sample, OpenAPI contract, and llms.txt are served by the agent endpoint
 - Source and integration contract: https://github.com/cristianmoroaica/bountyverdict/tree/main/agent
 
-The bounty products add conventional repository contribution-document checks for explicit AI-work bans and disclosure requirements. The portfolio ranks full verdicts and recommends the strongest candidate. HarnessVerdict checks coding-agent instruction discovery, paths, portability, context size, skill frontmatter, and secret-like material without executing repository code. Invalid or failed checks are not settled.
+The bounty products add conventional repository contribution-document checks for explicit AI-work bans and disclosure requirements. The portfolio ranks full verdicts and recommends the strongest candidate. HarnessVerdict checks coding-agent instruction discovery, paths, portability, context size, skill frontmatter, and secret-like material. SkillVerdict performs a bounded, redacted, repository-aware pre-install security audit of a requested SKILL.md bundle. Neither audit executes repository code. Invalid or failed checks are not settled.
 
 Check the manifest status before attempting a purchase. Buy only when it is `active` and the x402 challenge matches the declared network, asset, recipient, and atomic cap.
 

@@ -14,6 +14,8 @@ import { createLlmsText, createOpenApi } from "./openapi";
 import { checkBountyPortfolio } from "./portfolio";
 import { checkGithubHarness, HarnessError } from "./harness";
 import { harnessDiscoveryExtension, harnessExample } from "./harness-discovery";
+import { checkGithubSkill } from "./skill";
+import { skillDiscoveryExtension, skillExample } from "./skill-discovery";
 
 interface Env {
   PAY_TO_ADDRESS?: string;
@@ -29,9 +31,11 @@ type AppBindings = { Bindings: Env };
 const SINGLE_PRICE_USD = "$0.05";
 const PORTFOLIO_PRICE_USD = "$0.40";
 const HARNESS_PRICE_USD = "$0.03";
+const SKILL_PRICE_USD = "$0.06";
 const SINGLE_ENDPOINT = "/api/verdict";
 const PORTFOLIO_ENDPOINT = "/api/portfolio";
 const HARNESS_ENDPOINT = "/api/harness";
+const SKILL_ENDPOINT = "/api/skill";
 const TESTNET_NETWORK = "eip155:84532";
 const TESTNET_FACILITATOR = "https://x402.org/facilitator";
 const CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402";
@@ -145,11 +149,37 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       },
     }),
   };
+  const skillRouteConfig: RouteConfig = {
+    accepts: {
+      scheme: "exact",
+      price: SKILL_PRICE_USD,
+      network: network as `${string}:${string}`,
+      payTo,
+    },
+    description: "Pre-install security audit for a public agent SKILL.md bundle. Pins the repository to a commit, scans the whole skill directory without executing it, uses repository context to reduce false positives, and flags credential exfiltration, remote or encoded execution, destructive commands, persistence, privilege escalation, instruction evasion, hidden scripts, symlinks, submodules, hardcoded secrets, and undeclared capabilities.",
+    mimeType: "application/json",
+    serviceName: "SkillVerdict",
+    tags: ["agent-skills", "skill-md", "security", "supply-chain", "prompt-injection", "pre-install"],
+    iconUrl: ICON_URL,
+    unpaidResponseBody: () => ({
+      contentType: "application/json",
+      body: {
+        error: "PAYMENT_REQUIRED",
+        product: "SkillVerdict",
+        price: SKILL_PRICE_USD,
+        currency: "USDC",
+        description: "Pay once for a commit-pinned, non-executing security audit before installing a public agent skill.",
+        free_sample: "/api/skill/sample",
+        documentation: PRODUCT_URL,
+      },
+    }),
+  };
   const middleware = paymentMiddleware(
     {
       [`GET ${SINGLE_ENDPOINT}`]: routeConfig,
       [`POST ${PORTFOLIO_ENDPOINT}`]: portfolioRouteConfig,
       [`GET ${HARNESS_ENDPOINT}`]: harnessRouteConfig,
+      [`GET ${SKILL_ENDPOINT}`]: skillRouteConfig,
     },
     resourceServer,
   );
@@ -159,6 +189,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
   routeConfig.extensions = discoveryExtension;
   portfolioRouteConfig.extensions = portfolioDiscoveryExtension;
   harnessRouteConfig.extensions = harnessDiscoveryExtension;
+  skillRouteConfig.extensions = skillDiscoveryExtension;
   middlewareCache.set(key, middleware);
   return middleware;
 }
@@ -193,6 +224,13 @@ app.get("/", (c) =>
         method: "GET",
         input: { repo_url: "https://github.com/owner/repository" },
       },
+      {
+        name: "SkillVerdict",
+        price: SKILL_PRICE_USD,
+        endpoint: SKILL_ENDPOINT,
+        method: "GET",
+        input: { repo_url: "https://github.com/owner/skills", skill_path: "skills/example" },
+      },
     ],
     sample: "/api/sample",
     openapi: "/openapi.json",
@@ -206,6 +244,7 @@ app.get("/", (c) =>
 app.get("/api/sample", (c) => c.json(exampleVerdict));
 app.get("/api/portfolio/sample", (c) => c.json(portfolioExample));
 app.get("/api/harness/sample", (c) => c.json(harnessExample));
+app.get("/api/skill/sample", (c) => c.json(skillExample));
 
 app.get("/openapi.json", (c) => {
   const origin = new URL(c.req.url).origin;
@@ -213,6 +252,7 @@ app.get("/openapi.json", (c) => {
     single: SINGLE_PRICE_USD,
     portfolio: PORTFOLIO_PRICE_USD,
     harness: HARNESS_PRICE_USD,
+    skill: SKILL_PRICE_USD,
   }));
 });
 
@@ -239,6 +279,7 @@ const paymentGate: MiddlewareHandler<AppBindings> = async (c, next) => {
 app.use(SINGLE_ENDPOINT, paymentGate);
 app.use(PORTFOLIO_ENDPOINT, paymentGate);
 app.use(HARNESS_ENDPOINT, paymentGate);
+app.use(SKILL_ENDPOINT, paymentGate);
 
 app.get(SINGLE_ENDPOINT, async (c) => {
   const issueUrl = c.req.query("issue_url") || "";
@@ -294,6 +335,21 @@ app.get(HARNESS_ENDPOINT, async (c) => {
     }
     console.error(error);
     return c.json({ error: "INTERNAL_ERROR", message: "The harness audit could not be produced." }, 500);
+  }
+});
+
+app.get(SKILL_ENDPOINT, async (c) => {
+  const repoUrl = c.req.query("repo_url") || "";
+  const skillPath = c.req.query("skill_path") || "";
+  try {
+    const audit = await checkGithubSkill(repoUrl, skillPath, { GITHUB_TOKEN: c.env.GITHUB_TOKEN });
+    return c.json(audit);
+  } catch (error) {
+    if (error instanceof HarnessError) {
+      return c.json({ error: error.code, message: error.message }, error.status as 400);
+    }
+    console.error(error);
+    return c.json({ error: "INTERNAL_ERROR", message: "The skill audit could not be produced." }, 500);
   }
 });
 

@@ -1,6 +1,7 @@
 export const SINGLE_PAYMENT_ATOMIC = 50_000n;
 export const PORTFOLIO_PAYMENT_ATOMIC = 400_000n;
 export const HARNESS_PAYMENT_ATOMIC = 30_000n;
+export const SKILL_PAYMENT_ATOMIC = 60_000n;
 export const REVENUE_TARGET_ATOMIC = 1_000_000_000n;
 export const KNOWN_NON_REVENUE_TX_HASHES = [
   // Capped production interoperability proofs funded by the project owner.
@@ -24,6 +25,7 @@ export interface RevenueSummary {
     single: number;
     portfolio: number;
     harness: number;
+    skill: number;
     total: number;
   };
   recognized_transfers: SettlementTransfer[];
@@ -49,10 +51,10 @@ export function summarizeRevenue(
     !exclusions.has(transaction_hash.toLowerCase())
   );
   const recognized = eligible.filter(({ amount }) =>
-    amount === SINGLE_PAYMENT_ATOMIC || amount === PORTFOLIO_PAYMENT_ATOMIC || amount === HARNESS_PAYMENT_ATOMIC
+    amount === SINGLE_PAYMENT_ATOMIC || amount === PORTFOLIO_PAYMENT_ATOMIC || amount === HARNESS_PAYMENT_ATOMIC || amount === SKILL_PAYMENT_ATOMIC
   );
   const unrecognized = eligible.filter(({ amount }) =>
-    amount !== SINGLE_PAYMENT_ATOMIC && amount !== PORTFOLIO_PAYMENT_ATOMIC && amount !== HARNESS_PAYMENT_ATOMIC
+    amount !== SINGLE_PAYMENT_ATOMIC && amount !== PORTFOLIO_PAYMENT_ATOMIC && amount !== HARNESS_PAYMENT_ATOMIC && amount !== SKILL_PAYMENT_ATOMIC
   );
   const recognizedAtomic = recognized.reduce((sum, transfer) => sum + transfer.amount, 0n);
   const remainingAtomic = recognizedAtomic >= REVENUE_TARGET_ATOMIC
@@ -61,13 +63,14 @@ export function summarizeRevenue(
   const single = recognized.filter(({ amount }) => amount === SINGLE_PAYMENT_ATOMIC).length;
   const portfolio = recognized.filter(({ amount }) => amount === PORTFOLIO_PAYMENT_ATOMIC).length;
   const harness = recognized.filter(({ amount }) => amount === HARNESS_PAYMENT_ATOMIC).length;
+  const skill = recognized.filter(({ amount }) => amount === SKILL_PAYMENT_ATOMIC).length;
 
   return {
     target_usdc: formatUsdc(REVENUE_TARGET_ATOMIC),
     recognized_usdc: formatUsdc(recognizedAtomic),
     remaining_usdc: formatUsdc(remainingAtomic),
     progress_percent: Number((recognizedAtomic * 1_000_000n) / REVENUE_TARGET_ATOMIC) / 10_000,
-    purchases: { single, portfolio, harness, total: single + portfolio + harness },
+    purchases: { single, portfolio, harness, skill, total: single + portfolio + harness + skill },
     recognized_transfers: recognized,
     unrecognized_transfers: unrecognized,
     excluded_transfers: excluded,

@@ -40,3 +40,11 @@ Exact Coinbase Bazaar searches for `AGENTS.md CLAUDE.md GEMINI.md repository ins
 The broader market contains capable local tools such as [agentlint](https://agentlint.sh/) and [ctxlint](https://www.npmjs.com/package/@ctxlint/ctxlint), confirming demand while making a shallow linter clone uncompetitive. HarnessVerdict instead provides a remote x402-native preflight that requires no checkout or package installation, pins evidence to a commit SHA, and returns a bounded machine-readable contract for another agent.
 
 Public issue demand is also concrete: OpenAI Codex and Anthropic Claude Code issue trackers contain hundreds of discussions mentioning `AGENTS.md` or `CLAUDE.md`, including recurring discovery, scope, portability, and cross-client support failures. The launch price is $0.03 because the audit saves an agent a repository checkout and multi-file inspection while remaining deterministic and inexpensive to compute.
+
+## SkillVerdict expansion
+
+Exact Bazaar searches for agent-skill security, malicious `SKILL.md` preflight, prompt-injection scripts, and cross-agent skill supply-chain safety returned no paid matching resource on 2026-07-20.
+
+The risk is current and measurable. The 2026 report [Exploring the Emerging Threats of the Agent Skill Ecosystem](https://arxiv.org/abs/2605.28588) analyzed 3,984 skills and reported confirmed malicious payloads, credential theft, backdoors, and exfiltration. [Malicious Or Not](https://arxiv.org/abs/2603.16572) shows why repository context matters: skill-text-only scanners can produce extreme false-positive rates. [Snyk Agent Scan](https://github.com/snyk/agent-scan) further validates prompt injection, credential handling, hardcoded secrets, and malware payloads as operational skill risks.
+
+SkillVerdict is not a replacement for those local or enterprise scanners. Its distinct buyer value is an account-free, non-executing, x402-native audit that an autonomous agent can purchase before installation, using the whole bounded skill directory and repository context at an immutable commit. It launches at $0.06 so its settlements remain distinguishable from the $0.05 bounty product in the public on-chain revenue ledger.

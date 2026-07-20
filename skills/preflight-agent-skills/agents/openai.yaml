@@ -1,0 +1,4 @@
+interface:
+  display_name: "Preflight Agent Skills"
+  short_description: "Audit public agent skills before installation"
+  default_prompt: "Use $preflight-agent-skills to audit this public SKILL.md bundle before installing it."

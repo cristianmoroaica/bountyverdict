@@ -16,13 +16,19 @@ const product = process.env.PRODUCT === "portfolio"
   ? "portfolio"
   : process.env.PRODUCT === "harness"
     ? "harness"
+    : process.env.PRODUCT === "skill"
+      ? "skill"
     : "single";
 const issueUrls = process.env.ISSUE_URLS
   ? process.env.ISSUE_URLS.split(",").map((value) => value.trim()).filter(Boolean)
   : defaultPortfolio;
-const url = new URL(product === "portfolio" ? "/api/portfolio" : product === "harness" ? "/api/harness" : "/api/verdict", baseUrl);
+const url = new URL(product === "portfolio" ? "/api/portfolio" : product === "harness" ? "/api/harness" : product === "skill" ? "/api/skill" : "/api/verdict", baseUrl);
 if (product === "single") url.searchParams.set("issue_url", issueUrl);
 if (product === "harness") url.searchParams.set("repo_url", process.env.REPO_URL || defaultRepo);
+if (product === "skill") {
+  url.searchParams.set("repo_url", process.env.SKILL_REPO_URL || "https://github.com/coinbase/agentic-wallet-skills");
+  url.searchParams.set("skill_path", process.env.SKILL_PATH || "skills/agentic-wallet");
+}
 const requestInit: RequestInit = product === "portfolio"
   ? {
       method: "POST",
@@ -42,7 +48,7 @@ if (unpaid.status !== 402) {
 const paymentHeader = unpaid.headers.get("payment-required");
 if (!paymentHeader) throw new Error("The 402 response omitted PAYMENT-REQUIRED.");
 const challenge = decodeHeader(paymentHeader);
-const defaultMaximumAtomic = product === "portfolio" ? "400000" : product === "harness" ? "30000" : "50000";
+const defaultMaximumAtomic = product === "portfolio" ? "400000" : product === "harness" ? "30000" : product === "skill" ? "60000" : "50000";
 const maximumAtomic = BigInt(process.env.MAX_PAYMENT_ATOMIC || defaultMaximumAtomic);
 const executePayment = process.env.EXECUTE_PAYMENT === "YES";
 const requirement = validatePaymentChallenge(challenge, {
@@ -105,6 +111,7 @@ const paid = await paidFetch(url, requestInit);
 const responseBody = await paid.json() as {
   verdict?: string;
   score?: number;
+  risk_score?: number;
   recommendation?: string;
   checked_at?: string;
 };
@@ -124,6 +131,7 @@ console.log(JSON.stringify({
   network: settlement.network,
   verdict: responseBody.verdict,
   score: responseBody.score,
+  risk_score: responseBody.risk_score,
   recommendation: responseBody.recommendation,
   checked_at: responseBody.checked_at,
 }, null, 2));
