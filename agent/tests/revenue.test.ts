@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   KNOWN_NON_REVENUE_TX_HASHES,
+  HARNESS_PAYMENT_ATOMIC,
   PORTFOLIO_PAYMENT_ATOMIC,
   SINGLE_PAYMENT_ATOMIC,
   summarizeRevenue,
@@ -11,13 +12,14 @@ test("revenue summary recognizes only exact product settlements", () => {
   const summary = summarizeRevenue([
     { amount: SINGLE_PAYMENT_ATOMIC, transaction_hash: "0x1", log_index: 0 },
     { amount: PORTFOLIO_PAYMENT_ATOMIC, transaction_hash: "0x2", log_index: 0 },
+    { amount: HARNESS_PAYMENT_ATOMIC, transaction_hash: "0x4", log_index: 0 },
     { amount: 10_000_000n, transaction_hash: "0x3", log_index: 0 },
   ]);
 
-  assert.equal(summary.recognized_usdc, "0.45");
-  assert.equal(summary.remaining_usdc, "999.55");
-  assert.equal(summary.progress_percent, 0.045);
-  assert.deepEqual(summary.purchases, { single: 1, portfolio: 1, total: 2 });
+  assert.equal(summary.recognized_usdc, "0.48");
+  assert.equal(summary.remaining_usdc, "999.52");
+  assert.equal(summary.progress_percent, 0.048);
+  assert.deepEqual(summary.purchases, { single: 1, portfolio: 1, harness: 1, total: 3 });
   assert.equal(summary.unrecognized_transfers.length, 1);
   assert.equal(summary.excluded_transfers.length, 0);
 });
@@ -36,7 +38,7 @@ test("revenue summary excludes the owner-funded production proofs", () => {
   const summary = summarizeRevenue([...proofs, customer]);
 
   assert.equal(summary.recognized_usdc, "0.05");
-  assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, total: 1 });
+  assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, harness: 0, total: 1 });
   assert.deepEqual(summary.excluded_transfers, proofs);
   assert.deepEqual(summary.recognized_transfers, [customer]);
 });

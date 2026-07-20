@@ -5,18 +5,24 @@ import { privateKeyToAccount } from "viem/accounts";
 import { validatePaymentChallenge } from "../src/payment-safety.ts";
 
 const defaultIssue = "https://github.com/typeorm/typeorm/issues/3357";
+const defaultRepo = "https://github.com/openai/codex";
 const defaultPortfolio = [
   "https://github.com/godotengine/godot/issues/70796",
   defaultIssue,
 ];
 const baseUrl = process.env.RESOURCE_SERVER_URL || "http://127.0.0.1:8787";
 const issueUrl = process.env.ISSUE_URL || defaultIssue;
-const product = process.env.PRODUCT === "portfolio" ? "portfolio" : "single";
+const product = process.env.PRODUCT === "portfolio"
+  ? "portfolio"
+  : process.env.PRODUCT === "harness"
+    ? "harness"
+    : "single";
 const issueUrls = process.env.ISSUE_URLS
   ? process.env.ISSUE_URLS.split(",").map((value) => value.trim()).filter(Boolean)
   : defaultPortfolio;
-const url = new URL(product === "portfolio" ? "/api/portfolio" : "/api/verdict", baseUrl);
+const url = new URL(product === "portfolio" ? "/api/portfolio" : product === "harness" ? "/api/harness" : "/api/verdict", baseUrl);
 if (product === "single") url.searchParams.set("issue_url", issueUrl);
+if (product === "harness") url.searchParams.set("repo_url", process.env.REPO_URL || defaultRepo);
 const requestInit: RequestInit = product === "portfolio"
   ? {
       method: "POST",
@@ -36,7 +42,7 @@ if (unpaid.status !== 402) {
 const paymentHeader = unpaid.headers.get("payment-required");
 if (!paymentHeader) throw new Error("The 402 response omitted PAYMENT-REQUIRED.");
 const challenge = decodeHeader(paymentHeader);
-const defaultMaximumAtomic = product === "portfolio" ? "400000" : "50000";
+const defaultMaximumAtomic = product === "portfolio" ? "400000" : product === "harness" ? "30000" : "50000";
 const maximumAtomic = BigInt(process.env.MAX_PAYMENT_ATOMIC || defaultMaximumAtomic);
 const executePayment = process.env.EXECUTE_PAYMENT === "YES";
 const requirement = validatePaymentChallenge(challenge, {

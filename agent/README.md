@@ -1,18 +1,19 @@
 # BountyVerdict Agent API
 
-A paid, deterministic preflight for autonomous coding agents. It checks a public GitHub issue before an agent commits implementation time, API spend, or repository reputation.
+A paid, deterministic preflight suite for autonomous coding agents. It checks public GitHub bounty issues and repository instruction stacks before an agent commits implementation time, API spend, or repository reputation.
 
 ## Product contracts
 
 - Single check: `GET /api/verdict?issue_url=<public GitHub issue URL>` for **$0.05 USDC**
 - Portfolio ranking: `POST /api/portfolio` with `{"issue_urls":[...]}` for **$0.40 USDC**
+- Harness audit: `GET /api/harness?repo_url=<public GitHub repository URL>` for **$0.03 USDC**
 - Portfolio size: 2–10 unique public GitHub issue URLs; at 10 candidates the effective price is $0.04 each
 - Payment: x402 v2, exact scheme
-- Output: structured `AVOID`, `CAUTION`, or `VIABLE` verdicts with scores, signals, repository AI-contribution policy, coverage, limitations, and evidence URLs; the portfolio also ranks results and recommends the strongest candidate
+- Output: structured bounty `AVOID`, `CAUTION`, or `VIABLE` verdicts and harness `READY`, `REVIEW`, or `REPAIR` verdicts with evidence and explicit coverage
 - Discovery: x402 Bazaar extension with a strict input schema and realistic output example
 - Failure behavior: invalid inputs, GitHub failures, and handler errors are not settled
 
-`GET /` returns both product contracts without payment. `GET /api/sample` and `GET /api/portfolio/sample` return free representative results.
+`GET /` returns all product contracts without payment. `GET /api/sample`, `GET /api/portfolio/sample`, and `GET /api/harness/sample` return free representative results.
 
 ## Local verification
 
@@ -45,6 +46,7 @@ The buyer harness inspects the challenge without paying by default:
 ```bash
 RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 PRODUCT=portfolio RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
+PRODUCT=harness RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 ```
 
 To execute a Base Sepolia payment, the preferred buyer is Coinbase Agentic Wallet. It authenticates once through email/OTP, keeps signing keys outside this repository, and supports strict per-request caps:
@@ -80,11 +82,11 @@ START_BLOCK=PRODUCTION_DEPLOYMENT_BLOCK \
 npm run revenue
 ```
 
-Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.05 and $0.40 product settlements, separates unrelated incoming transfers, and shows purchase counts and progress toward $1,000.
+Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.03, $0.05, and $0.40 product settlements, separates unrelated incoming transfers, and shows purchase counts and progress toward $1,000.
 
 ## Continuous distribution monitoring
 
-The credential-free production monitor verifies all free routes, both exact mainnet payment challenges, Coinbase Bazaar merchant and semantic-search visibility, and on-chain Base USDC revenue in one pass:
+The credential-free production monitor verifies all free routes, all three exact mainnet payment challenges, Coinbase Bazaar merchant and semantic-search visibility, and on-chain Base USDC revenue in one pass:
 
 ```bash
 npm run distribution:monitor
@@ -126,7 +128,7 @@ The receiving address is public on-chain, but storing it as a binding keeps depl
 
 ### One-action release
 
-The manual `Deploy paid Worker` GitHub Actions workflow performs the same production deployment, verifies both free routes and both x402 challenges, and activates the public agent manifest only after the live checks pass. Configure these repository Actions secrets before running it:
+The manual `Deploy paid Worker` GitHub Actions workflow performs the same production deployment, verifies every free route and all three x402 challenges, and activates the public agent manifest only after the live checks pass. Configure these repository Actions secrets before running it:
 
 - `CLOUDFLARE_API_TOKEN`
 - `PAY_TO_ADDRESS`

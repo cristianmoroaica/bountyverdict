@@ -1,9 +1,10 @@
 import { outputSchema, portfolioOutputSchema } from "./discovery.ts";
+import { harnessOutputSchema } from "./harness-discovery.ts";
 
 export function createOpenApi(
   origin: string,
   network: string,
-  prices: { single: string; portfolio: string },
+  prices: { single: string; portfolio: string; harness: string },
 ) {
   return {
     openapi: "3.1.0",
@@ -131,6 +132,54 @@ export function createOpenApi(
           },
         },
       },
+      "/api/harness/sample": {
+        get: {
+          summary: "Inspect a representative HarnessVerdict audit without payment",
+          operationId: "getHarnessVerdictSample",
+          responses: {
+            "200": {
+              description: "Representative instruction-stack audit",
+              content: { "application/json": { schema: { type: "object", ...harnessOutputSchema } } },
+            },
+          },
+        },
+      },
+      "/api/harness": {
+        get: {
+          summary: "Audit a public repository's coding-agent instruction stack",
+          description: "Pins the repository default branch to a commit and audits recognized AGENTS.md, CLAUDE.md, GEMINI.md, Copilot, Cursor, and SKILL.md files for structural reliability, portability, stale references, context size, and secret-like material.",
+          operationId: "checkHarnessVerdict",
+          parameters: [{
+            name: "repo_url",
+            in: "query",
+            required: true,
+            description: "Canonical public GitHub repository URL",
+            schema: {
+              type: "string",
+              pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:\\.git)?$",
+            },
+            example: "https://github.com/openai/codex",
+          }],
+          responses: {
+            "200": {
+              description: "Commit-pinned evidence-linked harness audit after x402 settlement",
+              content: { "application/json": { schema: { type: "object", ...harnessOutputSchema } } },
+            },
+            "402": { description: "Payment required; inspect the PAYMENT-REQUIRED header" },
+            "400": { description: "Invalid repository URL; verified payment is not settled" },
+            "404": { description: "Public repository not found; verified payment is not settled" },
+            "502": { description: "GitHub upstream failure; verified payment is not settled" },
+            "503": { description: "Temporary capacity or service configuration failure" },
+          },
+          "x-x402": {
+            version: 2,
+            scheme: "exact",
+            network,
+            price: prices.harness,
+            currency: "USDC",
+          },
+        },
+      },
     },
   };
 }
@@ -151,6 +200,10 @@ export function createLlmsText(origin: string): string {
 - Paid portfolio: POST ${origin}/api/portfolio with {"issue_urls":[...]} for $0.40 USDC
 - Portfolio size: 2 to 10 unique public GitHub issue URLs
 - Verdicts: AVOID, CAUTION, VIABLE
+- Free HarnessVerdict sample: ${origin}/api/harness/sample
+- Paid HarnessVerdict: GET ${origin}/api/harness?repo_url=<PUBLIC_GITHUB_REPOSITORY_URL>
+- HarnessVerdict price: $0.03 USDC per successful commit-pinned audit
+- Harness verdicts: READY, REVIEW, REPAIR
 - Failed or invalid checks are not settled
 
 ## Differentiation
@@ -158,6 +211,8 @@ export function createLlmsText(origin: string): string {
 BountyVerdict checks up to 300 issue comments, first and newest timeline pages, competing and failed PRs, attempt swarms, issue locks, repository state, explicit maintainer rejection, reward-withdrawal language, and conventional contribution-document paths for AI-work bans or disclosure requirements. Important signals include public evidence URLs and coverage counts.
 
 The portfolio product runs the full check on every submitted candidate, ranks VIABLE before CAUTION before AVOID, recommends the strongest candidate, and reports partial upstream failures.
+
+HarnessVerdict audits the repository's recognized coding-agent instruction surfaces without cloning or executing its code. It reports stale path references, oversized always-loaded context, machine-local paths, malformed skill frontmatter, secret-like material, and client portability across Codex, Claude Code, Gemini CLI, GitHub Copilot, and Cursor. Every result is pinned to the audited commit SHA.
 
 ## Safety
 

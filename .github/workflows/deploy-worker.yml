@@ -75,13 +75,15 @@ jobs:
           curl --fail --silent --show-error "$PRODUCTION_API_URL/" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const value = JSON.parse(body);
-              if (value.status !== "available" || value.products?.length !== 2) process.exit(1);
+              if (value.status !== "available" || value.products?.length !== 3) process.exit(1);
             });
           '
           curl --fail --silent --show-error "$PRODUCTION_API_URL/api/sample" >/dev/null
           curl --fail --silent --show-error "$PRODUCTION_API_URL/api/portfolio/sample" >/dev/null
+          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/harness/sample" >/dev/null
           RESOURCE_SERVER_URL="$PRODUCTION_API_URL" npm run payment:inspect
           PRODUCT=portfolio RESOURCE_SERVER_URL="$PRODUCTION_API_URL" npm run payment:inspect
+          PRODUCT=harness RESOURCE_SERVER_URL="$PRODUCTION_API_URL" npm run payment:inspect
 
       - name: Activate public agent manifest
         run: npm run manifest:activate

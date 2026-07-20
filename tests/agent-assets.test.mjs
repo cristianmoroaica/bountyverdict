@@ -11,18 +11,34 @@ test("agent manifest is honest and links inspectable products", async () => {
   if (manifest.status === "active") assert.match(manifest.production_api, /^https:\/\//);
   assert.match(manifest.test_api, /^https:\/\//);
   assert.equal(manifest.test_network, "eip155:84532");
-  assert.deepEqual(manifest.products.map((product) => product.price_usdc), ["0.05", "0.40"]);
+  assert.deepEqual(manifest.products.map((product) => product.price_usdc), ["0.05", "0.40", "0.03"]);
   assert.match(manifest.skill, /\/SKILL\.md$/);
+  assert.match(manifest.skills.audit_agent_harness, /audit-agent-harness\/SKILL\.md$/);
 });
 
 test("public samples remain valid JSON with the declared product contracts", async () => {
   const verdict = await readJson("../samples/verdict.json");
   const portfolio = await readJson("../samples/portfolio.json");
+  const harness = await readJson("../samples/harness.json");
   assert.equal(verdict.product, "BountyVerdict");
   assert.ok(["AVOID", "CAUTION", "VIABLE"].includes(verdict.verdict));
   assert.equal(portfolio.product, "BountyVerdict Portfolio");
   assert.equal(portfolio.counts.checked, portfolio.ranked.length);
   assert.equal(portfolio.counts.failed, portfolio.failures.length);
+  assert.equal(harness.product, "HarnessVerdict");
+  assert.ok(["READY", "REVIEW", "REPAIR"].includes(harness.verdict));
+  assert.match(harness.repository.commit_sha, /^[a-f0-9]{40}$/);
+});
+
+test("hosted HarnessVerdict skill has payment and evidence safety gates", async () => {
+  const skill = await readFile(
+    new URL("../skills/audit-agent-harness/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(skill, /^---\nname: audit-agent-harness\ndescription: .+\n---/);
+  assert.match(skill, /30000/);
+  assert.match(skill, /commit_sha/);
+  assert.match(skill, /Never reveal wallet secrets/);
 });
 
 test("hosted agent skill has valid minimal frontmatter and safety gates", async () => {

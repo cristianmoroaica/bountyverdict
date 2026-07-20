@@ -23,11 +23,13 @@ No account, token, backend, analytics, or data storage is used. Your browser mak
 
 ## Agent API
 
-The `agent/` directory contains the paid, machine-readable product surface. It is a Cloudflare Worker with two x402-protected products: a **$0.05 USDC** fresh verdict and a **$0.40 USDC** portfolio that ranks 2–10 candidates. Both declare strict input/output schemas through the Bazaar discovery extension. The paid checks also read official contribution documents for explicit AI-work bans or disclosure requirements.
+The `agent/` directory contains the paid, machine-readable product surface. It is a Cloudflare Worker with three x402-protected products: a **$0.05 USDC** fresh bounty verdict, a **$0.40 USDC** portfolio that ranks 2–10 candidates, and a **$0.03 USDC HarnessVerdict** audit for repository coding-agent instructions. All three declare strict input/output schemas through the Bazaar discovery extension.
 
-Agents can inspect free single and portfolio samples, see exact prices in the HTTP 402 response, then independently decide whether to buy. Invalid inputs and upstream failures return an error without settlement. The public [`agent-manifest.json`](agent-manifest.json) is the authoritative activation record, and [`skills/preflight-github-bounties/SKILL.md`](skills/preflight-github-bounties/SKILL.md) provides a guarded purchase workflow for agent consumers.
+Agents can inspect free samples, see exact prices in the HTTP 402 response, then independently decide whether to buy. Invalid inputs and upstream failures return an error without settlement. The public [`agent-manifest.json`](agent-manifest.json) is the authoritative activation record. Guarded purchase workflows live in [`skills/preflight-github-bounties/SKILL.md`](skills/preflight-github-bounties/SKILL.md) and [`skills/audit-agent-harness/SKILL.md`](skills/audit-agent-harness/SKILL.md).
 
-Both paid contracts have been exercised end to end by Coinbase Agentic Wallet on Base Sepolia: the $0.05 GET and $0.40 POST returned their structured results and reconciled as exact on-chain USDC transfers. These are interoperability tests, not revenue; the manifest remains `awaiting_production` until a real-money Base deployment is live.
+The bounty contracts were exercised end to end on Base Sepolia and Base mainnet. The production manifest is active and Coinbase Bazaar indexes the live resources. Owner-funded launch proofs are interoperability tests, not earned revenue, and are explicitly excluded from the revenue ledger.
+
+HarnessVerdict pins the repository default branch to an immutable commit and audits recognized `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, Copilot, Cursor, and `SKILL.md` surfaces without cloning or executing repository code. It reports evidence-linked path, scope, portability, context-budget, skill-frontmatter, and secret-like-material findings.
 
 See [`agent/README.md`](agent/README.md) for the protocol, local verification, and deployment configuration.
 

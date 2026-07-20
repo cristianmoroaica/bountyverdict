@@ -44,11 +44,13 @@ function decodeChallenge(header: string): any {
 }
 
 async function inspectChallenge(
-  product: "single" | "portfolio",
+  product: "single" | "portfolio" | "harness",
 ): Promise<Record<string, unknown>> {
   const url = product === "single"
     ? `${api}/api/verdict?issue_url=${encodeURIComponent("https://github.com/typeorm/typeorm/issues/3357")}`
-    : `${api}/api/portfolio`;
+    : product === "harness"
+      ? `${api}/api/harness?repo_url=${encodeURIComponent("https://github.com/openai/codex")}`
+      : `${api}/api/portfolio`;
   const response = await monitoredFetch(url, product === "portfolio"
     ? {
         method: "POST",
@@ -67,7 +69,7 @@ async function inspectChallenge(
   const header = response.headers.get("payment-required");
   if (!header) throw new Error(`${product} endpoint omitted PAYMENT-REQUIRED.`);
   const challenge = decodeChallenge(header);
-  const expectedAmount = product === "single" ? 50_000n : 400_000n;
+  const expectedAmount = product === "single" ? 50_000n : product === "harness" ? 30_000n : 400_000n;
   const requirement = validatePaymentChallenge(challenge, {
     maximumAtomic: expectedAmount,
     executePayment: false,
@@ -82,7 +84,7 @@ async function inspectChallenge(
   if (requirement.payTo.toLowerCase() !== wallet.toLowerCase()) {
     throw new Error(`${product} endpoint recipient does not match the revenue wallet.`);
   }
-  const expectedMethod = product === "single" ? "GET" : "POST";
+  const expectedMethod = product === "portfolio" ? "POST" : "GET";
   const method = challenge.extensions?.bazaar?.info?.input?.method;
   if (method !== expectedMethod) {
     throw new Error(`${product} Bazaar method is ${method || "missing"}; expected ${expectedMethod}.`);
@@ -195,16 +197,18 @@ let discovery: Record<string, unknown> = {};
 let revenue: Record<string, unknown> = {};
 
 try {
-  const [root, sample, portfolioSample, openapi, llms, single, portfolio] = await Promise.all([
+  const [root, sample, portfolioSample, harnessSample, openapi, llms, single, portfolio, harness] = await Promise.all([
     requireStatus("/"),
     requireStatus("/api/sample"),
     requireStatus("/api/portfolio/sample"),
+    requireStatus("/api/harness/sample"),
     requireStatus("/openapi.json"),
     requireStatus("/llms.txt"),
     inspectChallenge("single"),
     inspectChallenge("portfolio"),
+    inspectChallenge("harness"),
   ]);
-  health = { root, sample, portfolio_sample: portfolioSample, openapi, llms, single, portfolio };
+  health = { root, sample, portfolio_sample: portfolioSample, harness_sample: harnessSample, openapi, llms, single, portfolio, harness };
 } catch (error) {
   errors.push(error instanceof Error ? error.message : String(error));
 }

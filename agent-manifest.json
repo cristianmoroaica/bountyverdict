@@ -30,9 +30,20 @@
       "minimum_candidates": 2,
       "maximum_candidates": 10,
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/portfolio.json"
+    },
+    {
+      "name": "HarnessVerdict",
+      "method": "GET",
+      "path": "/api/harness",
+      "price_usdc": "0.03",
+      "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/harness.json"
     }
   ],
   "skill": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
+  "skills": {
+    "preflight_github_bounties": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
+    "audit_agent_harness": "https://cristianmoroaica.github.io/bountyverdict/skills/audit-agent-harness/SKILL.md"
+  },
   "source": "https://github.com/cristianmoroaica/bountyverdict/tree/main/agent",
-  "updated_at": "2026-07-20T10:44:32.429Z"
+  "updated_at": "2026-07-20T10:53:00.000Z"
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit Agent Harness"
+  short_description: "Preflight repository instructions for coding agents"
+  default_prompt: "Use $audit-agent-harness to audit this public GitHub repository before autonomous coding."

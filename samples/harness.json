@@ -1,0 +1,56 @@
+{
+  "product": "HarnessVerdict",
+  "version": "1.0",
+  "verdict": "REVIEW",
+  "score": 77,
+  "summary": "The instruction stack is usable but has portability, scope, or maintenance risks worth fixing before autonomous work.",
+  "repository": {
+    "url": "https://github.com/acme/widget",
+    "full_name": "acme/widget",
+    "default_branch": "main",
+    "commit_sha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "surfaces": {
+    "instruction_files_found": 2,
+    "instruction_files_scanned": 1,
+    "skill_files_scanned": 1,
+    "files": [
+      "AGENTS.md",
+      ".agents/skills/release/SKILL.md"
+    ]
+  },
+  "portability": {
+    "codex": true,
+    "claude_code": false,
+    "gemini_cli": false,
+    "github_copilot": false,
+    "cursor": false
+  },
+  "findings": [
+    {
+      "severity": "warning",
+      "code": "STALE_PATH_REFERENCE",
+      "message": "Referenced repository path does not exist at the audited commit: docs/release.md",
+      "file": "AGENTS.md",
+      "line": 18,
+      "evidence_url": "https://github.com/acme/widget/blob/0123456789abcdef0123456789abcdef01234567/AGENTS.md"
+    }
+  ],
+  "recommendations": [
+    "Repair or remove stale repository-path references so agents do not navigate nonexistent files.",
+    "Add small client-specific pointer files instead of duplicating the canonical guidance."
+  ],
+  "coverage": {
+    "tree_entries": 420,
+    "candidate_files": 2,
+    "files_scanned": 2,
+    "bytes_scanned": 8420,
+    "tree_truncated": false,
+    "file_selection_truncated": false,
+    "github_rate_limit_remaining": 4997
+  },
+  "checked_at": "2026-07-20T00:00:00.000Z",
+  "limitations": [
+    "This deterministic audit checks repository structure and text patterns; it does not prove that a model will obey the instructions."
+  ]
+}
