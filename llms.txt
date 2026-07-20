@@ -10,13 +10,14 @@ Paste a canonical public GitHub issue URL. The browser performs read-only GitHub
 
 ## Paid agent API
 
-- Price: $0.05 USDC per successful fresh verdict
+- Single verdict: GET /api/verdict for $0.05 USDC per successful result
+- Portfolio ranking: POST /api/portfolio for $0.40 USDC, covering 2 to 10 unique candidates
 - Payment: x402 v2 exact scheme
 - Marketplace: Coinbase x402 Bazaar after production settlement activation
 - Free sample, OpenAPI contract, and llms.txt are served by the agent endpoint
 - Source and integration contract: https://github.com/cristianmoroaica/bountyverdict/tree/main/agent
 
-The paid check adds conventional repository contribution-document checks for explicit AI-work bans and disclosure requirements. Invalid or failed checks are not settled.
+Both paid products add conventional repository contribution-document checks for explicit AI-work bans and disclosure requirements. The portfolio ranks full verdicts and recommends the strongest candidate. Invalid or failed checks are not settled.
 
 ## Limits
 

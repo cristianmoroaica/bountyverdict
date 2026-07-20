@@ -9,6 +9,7 @@
     "deploy:dry": "wrangler deploy --dry-run --env=''",
     "payment:inspect": "node --experimental-strip-types scripts/payment-smoke.ts",
     "payment:smoke": "EXECUTE_PAYMENT=YES node --experimental-strip-types scripts/payment-smoke.ts",
+    "revenue": "node --experimental-strip-types scripts/revenue-monitor.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

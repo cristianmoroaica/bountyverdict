@@ -2,16 +2,17 @@
 
 A paid, deterministic preflight for autonomous coding agents. It checks a public GitHub issue before an agent commits implementation time, API spend, or repository reputation.
 
-## Product contract
+## Product contracts
 
-- Endpoint: `GET /api/verdict?issue_url=<public GitHub issue URL>`
-- Price: **$0.05 USDC per successful verdict**
+- Single check: `GET /api/verdict?issue_url=<public GitHub issue URL>` for **$0.05 USDC**
+- Portfolio ranking: `POST /api/portfolio` with `{"issue_urls":[...]}` for **$0.40 USDC**
+- Portfolio size: 2–10 unique public GitHub issue URLs; at 10 candidates the effective price is $0.04 each
 - Payment: x402 v2, exact scheme
-- Output: structured `AVOID`, `CAUTION`, or `VIABLE` verdict with score, signals, repository AI-contribution policy, coverage, limitations, and evidence URLs
+- Output: structured `AVOID`, `CAUTION`, or `VIABLE` verdicts with scores, signals, repository AI-contribution policy, coverage, limitations, and evidence URLs; the portfolio also ranks results and recommends the strongest candidate
 - Discovery: x402 Bazaar extension with a strict input schema and realistic output example
 - Failure behavior: invalid inputs, GitHub failures, and handler errors are not settled
 
-`GET /` returns the product contract without payment. `GET /api/sample` returns a free representative result.
+`GET /` returns both product contracts without payment. `GET /api/sample` and `GET /api/portfolio/sample` return free representative results.
 
 ## Local verification
 
@@ -31,19 +32,42 @@ An unpaid request should return HTTP 402 with `PAYMENT-REQUIRED`, including the 
 curl -i 'http://127.0.0.1:8787/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Ftypeorm%2Ftypeorm%2Fissues%2F3357'
 ```
 
+Inspect the portfolio challenge and its POST body schema:
+
+```bash
+curl -i -X POST 'http://127.0.0.1:8787/api/portfolio' \
+  -H 'Content-Type: application/json' \
+  --data '{"issue_urls":["https://github.com/godotengine/godot/issues/70796","https://github.com/typeorm/typeorm/issues/3357"]}'
+```
+
 The buyer harness inspects the challenge without paying by default:
 
 ```bash
 RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
+PRODUCT=portfolio RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspect
 ```
 
-To execute a Base Sepolia payment, supply a funded **test-only** buyer key. The harness enforces a 50,000-atomic-unit ($0.05 USDC) cap and refuses Base mainnet unless `ALLOW_MAINNET_PAYMENT=YES` is explicitly set:
+To execute a Base Sepolia payment, supply a funded **test-only** buyer key. The harness enforces a 50,000-atomic-unit single-check cap or 400,000-atomic-unit portfolio cap and refuses Base mainnet unless `ALLOW_MAINNET_PAYMENT=YES` is explicitly set:
 
 ```bash
 RESOURCE_SERVER_URL=https://your-test-worker.workers.dev \
 BUYER_PRIVATE_KEY=0xTESTNET_ONLY \
 npm run payment:smoke
 ```
+
+Set `PRODUCT=portfolio` and optionally a comma-separated `ISSUE_URLS` value to exercise the portfolio purchase.
+
+## Revenue accounting
+
+Settlements are reconciled from Base USDC `Transfer` logs, so progress does not depend on a private marketplace dashboard. Start at the production deployment block to keep the scan bounded:
+
+```bash
+REVENUE_WALLET=0xPUBLIC_RECEIVING_ADDRESS \
+START_BLOCK=PRODUCTION_DEPLOYMENT_BLOCK \
+npm run revenue
+```
+
+Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.05 and $0.40 product settlements, separates unrelated incoming transfers, and shows purchase counts and progress toward $1,000.
 
 ## Deployment inputs
 

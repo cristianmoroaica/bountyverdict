@@ -4,23 +4,39 @@ import { privateKeyToAccount } from "viem/accounts";
 import { validatePaymentChallenge } from "../src/payment-safety.ts";
 
 const defaultIssue = "https://github.com/typeorm/typeorm/issues/3357";
+const defaultPortfolio = [
+  "https://github.com/godotengine/godot/issues/70796",
+  defaultIssue,
+];
 const baseUrl = process.env.RESOURCE_SERVER_URL || "http://127.0.0.1:8787";
 const issueUrl = process.env.ISSUE_URL || defaultIssue;
-const url = new URL("/api/verdict", baseUrl);
-url.searchParams.set("issue_url", issueUrl);
+const product = process.env.PRODUCT === "portfolio" ? "portfolio" : "single";
+const issueUrls = process.env.ISSUE_URLS
+  ? process.env.ISSUE_URLS.split(",").map((value) => value.trim()).filter(Boolean)
+  : defaultPortfolio;
+const url = new URL(product === "portfolio" ? "/api/portfolio" : "/api/verdict", baseUrl);
+if (product === "single") url.searchParams.set("issue_url", issueUrl);
+const requestInit: RequestInit = product === "portfolio"
+  ? {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ issue_urls: issueUrls }),
+    }
+  : { headers: { Accept: "application/json" } };
 
 function decodeHeader(value: string): any {
   return JSON.parse(Buffer.from(value, "base64").toString("utf8"));
 }
 
-const unpaid = await fetch(url, { headers: { Accept: "application/json" } });
+const unpaid = await fetch(url, requestInit);
 if (unpaid.status !== 402) {
   throw new Error(`Expected an unpaid HTTP 402 response, received ${unpaid.status}.`);
 }
 const paymentHeader = unpaid.headers.get("payment-required");
 if (!paymentHeader) throw new Error("The 402 response omitted PAYMENT-REQUIRED.");
 const challenge = decodeHeader(paymentHeader);
-const maximumAtomic = BigInt(process.env.MAX_PAYMENT_ATOMIC || "50000");
+const defaultMaximumAtomic = product === "portfolio" ? "400000" : "50000";
+const maximumAtomic = BigInt(process.env.MAX_PAYMENT_ATOMIC || defaultMaximumAtomic);
 const executePayment = process.env.EXECUTE_PAYMENT === "YES";
 const requirement = validatePaymentChallenge(challenge, {
   maximumAtomic,
@@ -30,6 +46,7 @@ const requirement = validatePaymentChallenge(challenge, {
 
 console.log(JSON.stringify({
   phase: "payment_challenge_verified",
+  product,
   resource: challenge.resource?.url,
   service: challenge.resource?.serviceName,
   network: requirement.network,
@@ -53,10 +70,11 @@ const client = new x402Client()
     requirements.filter((candidate) => BigInt(candidate.amount) <= maximumAtomic),
   );
 const paidFetch = wrapFetchWithPayment(fetch, client);
-const paid = await paidFetch(url, { headers: { Accept: "application/json" } });
+const paid = await paidFetch(url, requestInit);
 const responseBody = await paid.json() as {
   verdict?: string;
   score?: number;
+  recommendation?: string;
   checked_at?: string;
 };
 if (!paid.ok) {
@@ -68,10 +86,12 @@ const settlement = decodeHeader(settlementHeader);
 
 console.log(JSON.stringify({
   phase: "payment_settled",
+  product,
   status: paid.status,
   transaction: settlement.transaction,
   network: settlement.network,
   verdict: responseBody.verdict,
   score: responseBody.score,
+  recommendation: responseBody.recommendation,
   checked_at: responseBody.checked_at,
 }, null, 2));

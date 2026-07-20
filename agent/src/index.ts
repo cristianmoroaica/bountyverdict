@@ -4,8 +4,14 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { Hono, type MiddlewareHandler } from "hono";
 import { CheckError, checkGithubIssue } from "./check";
-import { discoveryExtension, exampleVerdict } from "./discovery";
+import {
+  discoveryExtension,
+  exampleVerdict,
+  portfolioDiscoveryExtension,
+  portfolioExample,
+} from "./discovery";
 import { createLlmsText, createOpenApi } from "./openapi";
+import { checkBountyPortfolio } from "./portfolio";
 
 interface Env {
   PAY_TO_ADDRESS?: string;
@@ -18,8 +24,10 @@ interface Env {
 
 type AppBindings = { Bindings: Env };
 
-const PRICE_USD = "$0.05";
-const ENDPOINT = "/api/verdict";
+const SINGLE_PRICE_USD = "$0.05";
+const PORTFOLIO_PRICE_USD = "$0.40";
+const SINGLE_ENDPOINT = "/api/verdict";
+const PORTFOLIO_ENDPOINT = "/api/portfolio";
 const TESTNET_NETWORK = "eip155:84532";
 const TESTNET_FACILITATOR = "https://x402.org/facilitator";
 const CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402";
@@ -59,7 +67,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
   const routeConfig: RouteConfig = {
     accepts: {
       scheme: "exact",
-      price: PRICE_USD,
+      price: SINGLE_PRICE_USD,
       network: network as `${string}:${string}`,
       payTo,
     },
@@ -73,7 +81,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       body: {
         error: "PAYMENT_REQUIRED",
         product: "BountyVerdict",
-        price: PRICE_USD,
+        price: SINGLE_PRICE_USD,
         currency: "USDC",
         description: "Pay once to receive a fresh evidence-linked bounty risk verdict.",
         free_sample: "/api/sample",
@@ -81,14 +89,43 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       },
     }),
   };
+  const portfolioRouteConfig: RouteConfig = {
+    accepts: {
+      scheme: "exact",
+      price: PORTFOLIO_PRICE_USD,
+      network: network as `${string}:${string}`,
+      payTo,
+    },
+    description: "Rank two to ten public GitHub bounty issues in one evidence-linked portfolio preflight. Returns full verdicts, the best candidate, decision counts, partial failures, and repository AI-contribution policy checks.",
+    mimeType: "application/json",
+    serviceName: "BountyVerdict Portfolio",
+    tags: ["github", "bounties", "portfolio", "ranking", "developer-tools", "agents"],
+    iconUrl: ICON_URL,
+    unpaidResponseBody: () => ({
+      contentType: "application/json",
+      body: {
+        error: "PAYMENT_REQUIRED",
+        product: "BountyVerdict Portfolio",
+        price: PORTFOLIO_PRICE_USD,
+        currency: "USDC",
+        description: "Pay once to rank up to ten bounty candidates with full evidence-linked verdicts.",
+        free_sample: "/api/portfolio/sample",
+        documentation: PRODUCT_URL,
+      },
+    }),
+  };
   const middleware = paymentMiddleware(
-    { [`GET ${ENDPOINT}`]: routeConfig },
+    {
+      [`GET ${SINGLE_ENDPOINT}`]: routeConfig,
+      [`POST ${PORTFOLIO_ENDPOINT}`]: portfolioRouteConfig,
+    },
     resourceServer,
   );
   // Attach already-enriched metadata after middleware construction. The Hono
   // adapter otherwise auto-loads the eval-based validator that Workers reject.
   // x402HTTPResourceServer retains this same route object for payment responses.
   routeConfig.extensions = discoveryExtension;
+  portfolioRouteConfig.extensions = portfolioDiscoveryExtension;
   middlewareCache.set(key, middleware);
   return middleware;
 }
@@ -100,11 +137,23 @@ app.get("/", (c) =>
     product: "BountyVerdict",
     status: "available",
     purpose: "Preflight GitHub bounties before an autonomous agent spends compute or reputation.",
-    price: PRICE_USD,
     currency: "USDC",
-    paid_endpoint: ENDPOINT,
-    method: "GET",
-    input: { issue_url: "https://github.com/owner/repository/issues/123" },
+    products: [
+      {
+        name: "BountyVerdict",
+        price: SINGLE_PRICE_USD,
+        endpoint: SINGLE_ENDPOINT,
+        method: "GET",
+        input: { issue_url: "https://github.com/owner/repository/issues/123" },
+      },
+      {
+        name: "BountyVerdict Portfolio",
+        price: PORTFOLIO_PRICE_USD,
+        endpoint: PORTFOLIO_ENDPOINT,
+        method: "POST",
+        input: { issue_urls: ["https://github.com/owner/repository/issues/123", "https://github.com/owner/repository/issues/456"] },
+      },
+    ],
     sample: "/api/sample",
     openapi: "/openapi.json",
     llms: "/llms.txt",
@@ -113,10 +162,14 @@ app.get("/", (c) =>
 );
 
 app.get("/api/sample", (c) => c.json(exampleVerdict));
+app.get("/api/portfolio/sample", (c) => c.json(portfolioExample));
 
 app.get("/openapi.json", (c) => {
   const origin = new URL(c.req.url).origin;
-  return c.json(createOpenApi(origin, c.env.X402_NETWORK || TESTNET_NETWORK, PRICE_USD));
+  return c.json(createOpenApi(origin, c.env.X402_NETWORK || TESTNET_NETWORK, {
+    single: SINGLE_PRICE_USD,
+    portfolio: PORTFOLIO_PRICE_USD,
+  }));
 });
 
 app.get("/llms.txt", (c) => {
@@ -124,7 +177,7 @@ app.get("/llms.txt", (c) => {
   return c.text(createLlmsText(origin), 200, { "Content-Type": "text/plain; charset=utf-8" });
 });
 
-app.use(ENDPOINT, async (c, next) => {
+const paymentGate: MiddlewareHandler<AppBindings> = async (c, next) => {
   try {
     return await buildPaymentMiddleware(c.env)(c, next);
   } catch (error) {
@@ -137,9 +190,12 @@ app.use(ENDPOINT, async (c, next) => {
       503,
     );
   }
-});
+};
 
-app.get(ENDPOINT, async (c) => {
+app.use(SINGLE_ENDPOINT, paymentGate);
+app.use(PORTFOLIO_ENDPOINT, paymentGate);
+
+app.get(SINGLE_ENDPOINT, async (c) => {
   const issueUrl = c.req.query("issue_url") || "";
   try {
     const verdict = await checkGithubIssue(issueUrl, {
@@ -153,6 +209,30 @@ app.get(ENDPOINT, async (c) => {
     console.error(error);
     return c.json(
       { error: "INTERNAL_ERROR", message: "The verdict could not be produced." },
+      500,
+    );
+  }
+});
+
+app.post(PORTFOLIO_ENDPOINT, async (c) => {
+  let body: { issue_urls?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "INVALID_JSON", message: "Request body must be valid JSON." }, 400);
+  }
+  try {
+    const portfolio = await checkBountyPortfolio(body.issue_urls, {
+      GITHUB_TOKEN: c.env.GITHUB_TOKEN,
+    });
+    return c.json(portfolio);
+  } catch (error) {
+    if (error instanceof CheckError) {
+      return c.json({ error: error.code, message: error.message }, error.status as 400);
+    }
+    console.error(error);
+    return c.json(
+      { error: "INTERNAL_ERROR", message: "The portfolio could not be produced." },
       500,
     );
   }

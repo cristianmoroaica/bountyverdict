@@ -151,3 +151,112 @@ export const discoveryExtension = addHttpMethod(declareDiscoveryExtension({
     schema: outputSchema,
   },
 }), "GET");
+
+export const portfolioExample = {
+  product: "BountyVerdict Portfolio",
+  version: "1.0",
+  recommendation: "Investigate https://github.com/acme/widget/issues/12 first; it ranked VIABLE with score 88.",
+  best_candidate: "https://github.com/acme/widget/issues/12",
+  counts: { submitted: 2, checked: 2, viable: 1, caution: 0, avoid: 1, failed: 0 },
+  ranked: [
+    {
+      ...exampleVerdict,
+      verdict: "VIABLE",
+      score: 88,
+      summary: "No obvious public hard stop was found. Confirm reward terms and reproduce the issue before coding.",
+      issue: {
+        url: "https://github.com/acme/widget/issues/12",
+        title: "Fix bounded widget regression",
+        state: "open",
+        repository: "acme/widget",
+      },
+      signals: [],
+    },
+    exampleVerdict,
+  ],
+  failures: [],
+  checked_at: "2026-07-20T00:00:00.000Z",
+};
+
+export const portfolioOutputSchema = {
+  properties: {
+    product: { type: "string", const: "BountyVerdict Portfolio" },
+    version: { type: "string" },
+    recommendation: { type: "string" },
+    best_candidate: { type: ["string", "null"] },
+    counts: {
+      type: "object",
+      properties: {
+        submitted: { type: "integer", minimum: 2, maximum: 10 },
+        checked: { type: "integer", minimum: 1, maximum: 10 },
+        viable: { type: "integer", minimum: 0 },
+        caution: { type: "integer", minimum: 0 },
+        avoid: { type: "integer", minimum: 0 },
+        failed: { type: "integer", minimum: 0 },
+      },
+      required: ["submitted", "checked", "viable", "caution", "avoid", "failed"],
+    },
+    ranked: {
+      type: "array",
+      minItems: 1,
+      items: { type: "object", ...outputSchema },
+    },
+    failures: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          issue_url: { type: "string" },
+          error: {
+            type: "object",
+            properties: { code: { type: "string" }, message: { type: "string" } },
+            required: ["code", "message"],
+          },
+        },
+        required: ["issue_url", "error"],
+      },
+    },
+    checked_at: { type: "string" },
+  },
+  required: [
+    "product",
+    "version",
+    "recommendation",
+    "best_candidate",
+    "counts",
+    "ranked",
+    "failures",
+    "checked_at",
+  ],
+};
+
+export const portfolioDiscoveryExtension = addHttpMethod(declareDiscoveryExtension({
+  bodyType: "json",
+  input: {
+    issue_urls: [
+      "https://github.com/acme/widget/issues/12",
+      "https://github.com/typeorm/typeorm/issues/3357",
+    ],
+  },
+  inputSchema: {
+    properties: {
+      issue_urls: {
+        type: "array",
+        minItems: 2,
+        maxItems: 10,
+        uniqueItems: true,
+        description: "Two to ten canonical public GitHub issue URLs to compare and rank.",
+        items: {
+          type: "string",
+          pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+(?:[?#].*)?$",
+        },
+      },
+    },
+    required: ["issue_urls"],
+    additionalProperties: false,
+  },
+  output: {
+    example: portfolioExample,
+    schema: portfolioOutputSchema,
+  },
+}), "POST");
