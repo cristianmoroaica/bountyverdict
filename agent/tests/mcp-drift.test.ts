@@ -299,6 +299,21 @@ test("HTTP preflight rejects invalid catalogs before x402 and challenges valid e
   assert.ok(encoded.length < 16_000, "actual base64 PAYMENT-REQUIRED must remain under a common single-header budget");
 });
 
+test("bodyless unsigned MCP discovery probes receive the x402 challenge", async () => {
+  const response = await app.request("/api/mcp-drift", { method: "POST" }, {
+    PAY_TO_ADDRESS: "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614",
+    X402_NETWORK: "eip155:84532",
+    X402_FACILITATOR_URL: "https://x402.org/facilitator",
+  });
+  assert.equal(response.status, 402);
+  const encoded = response.headers.get("payment-required");
+  assert.ok(encoded);
+  const decoded = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+  assert.equal(decoded.resource.serviceName, "MCPDriftVerdict");
+  assert.equal(decoded.extensions.bazaar.info.input.method, "POST");
+  assert.equal(decoded.extensions.bazaar.info.input.bodyType, "json");
+});
+
 test("unpaid challenges never depend on facilitator discovery during a cold isolate", async () => {
   const previousFetch = globalThis.fetch;
   let facilitatorFetches = 0;

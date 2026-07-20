@@ -635,6 +635,13 @@ app.use(FLAKE_ENDPOINT, paymentGate);
 
 const mcpDriftPreflight: MiddlewareHandler<AppBindings> = async (c, next) => {
   const contentType = c.req.header("Content-Type") || "";
+  // Discovery registries probe POST resources without a body. Let an unsigned,
+  // bodyless probe reach x402 first so it can inspect the payment challenge.
+  // Real calls (including every signed payment) still validate and compute the
+  // exact body before verification or settlement.
+  if (!contentType && !c.req.header("Payment-Signature")) {
+    return await next();
+  }
   if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
     return c.json({ error: "INVALID_INPUT", message: "Content-Type must be application/json.", path: "" }, 400);
   }

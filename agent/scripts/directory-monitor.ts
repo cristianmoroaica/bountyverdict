@@ -9,6 +9,17 @@ const skillsUrl = "https://skills.sh/cristianmoroaica/bountyverdict";
 const securityDirectoryPrUrl = "https://github.com/LLMSecurity/awesome-agent-skills-security/pull/38";
 const x402DirectoryPrUrl = "https://github.com/xpaysh/awesome-x402/pull/934";
 const x402ScoutUrl = "https://x402scout.com/catalog";
+const productionOrigin = "https://bountyverdict-agent-production.mimirslab.workers.dev";
+const x402ScanUrl = "https://www.x402scan.com";
+const x402ScanResources = Object.freeze([
+  { url: `${productionOrigin}/api/verdict`, method: "GET" },
+  { url: `${productionOrigin}/api/portfolio`, method: "POST" },
+  { url: `${productionOrigin}/api/harness`, method: "GET" },
+  { url: `${productionOrigin}/api/skill`, method: "GET" },
+  { url: `${productionOrigin}/api/run`, method: "GET" },
+  { url: `${productionOrigin}/api/flake`, method: "GET" },
+  { url: `${productionOrigin}/api/mcp-drift`, method: "POST" },
+]);
 const x402ScoutIds = Object.freeze([
   "be000191-00e6-41d6-aed5-da35c6123e52",
   "f2ae9481-cfb9-4bbc-bf7c-9c1fb32523e4",
@@ -206,6 +217,49 @@ async function x402ScoutStatus(): Promise<Record<string, unknown>> {
   }
 }
 
+async function x402ScanStatus(): Promise<Record<string, unknown>> {
+  const input = encodeURIComponent(JSON.stringify({ json: { resources: x402ScanResources } }));
+  const apiUrl = `${x402ScanUrl}/api/trpc/public.resources.checkRegistered?input=${input}`;
+  try {
+    const response = await fetch(apiUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) {
+      return { url: x402ScanUrl, http_status: response.status, listed: false, status: "unexpected_response" };
+    }
+    const payload = await response.json() as {
+      result?: { data?: { json?: { registered?: unknown; unregistered?: unknown } } };
+    };
+    const result = payload.result?.data?.json;
+    const registered = Array.isArray(result?.registered)
+      ? result.registered.filter((value): value is string => typeof value === "string")
+      : [];
+    const unregistered = Array.isArray(result?.unregistered)
+      ? result.unregistered.filter((value): value is string => typeof value === "string")
+      : [];
+    const expected = new Set(x402ScanResources.map(({ url }) => url));
+    const exact = registered.length === expected.size &&
+      new Set(registered).size === expected.size && registered.every((url) => expected.has(url));
+    return {
+      url: `${x402ScanUrl}/resources`,
+      api_url: apiUrl,
+      http_status: response.status,
+      listed: exact,
+      status: exact ? "listed" : registered.length ? "partial" : "missing",
+      expected_resources: expected.size,
+      listed_resources: registered.length,
+      registered,
+      unregistered,
+      measurement: "public_registry_presence_not_customer_purchases",
+    };
+  } catch (error) {
+    return {
+      url: x402ScanUrl,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function submitAgentSkill(): Promise<Record<string, unknown>> {
   try {
     const response = await fetch("https://agentskill.sh/api/skills/submit", {
@@ -246,13 +300,17 @@ try {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 }
 
-const [skills, agenttool, securityDirectoryPr, x402DirectoryPr, x402scout] = await Promise.all([
+const [skills, agenttool, securityDirectoryPr, x402DirectoryPr, x402scout, x402scan] = await Promise.all([
   skillsShStatus(),
   agentToolStatus(),
   githubPrStatus("LLMSecurity", "awesome-agent-skills-security", 38, securityDirectoryPrUrl),
   githubPrStatus("xpaysh", "awesome-x402", 934, x402DirectoryPrUrl),
   x402ScoutStatus(),
+  x402ScanStatus(),
 ]);
+if (Number(x402scan.listed_resources || 0) > 0) {
+  x402scan.exposed_at = previous.x402scan?.exposed_at || new Date().toISOString();
+}
 const previousAttempt = Date.parse(String(previous.agentskill?.attempted_at || previous.checked_at || ""));
 const agentSkillRetryDue = !Number.isFinite(previousAttempt) || Date.now() - previousAttempt >= agentSkillRetryMs;
 const agentskill = previous.agentskill?.listed === true
@@ -273,11 +331,7 @@ const state = {
   security_directory_pr: securityDirectoryPr,
   x402_directory_pr: x402DirectoryPr,
   x402scout,
-  x402scan: {
-    url: "https://www.x402scan.com/resources/register",
-    listed: false,
-    status: "wallet_authenticated_registration_unavailable_to_automation",
-  },
+  x402scan,
 };
 await atomicWrite(stateFile, `${JSON.stringify(state, null, 2)}\n`);
 console.log(JSON.stringify(state, null, 2));

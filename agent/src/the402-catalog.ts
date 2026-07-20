@@ -137,11 +137,11 @@ export const THE402_LISTINGS: ReadonlyArray<{
   {
     product: "mcpdrift",
     service_id: "svc_40e97a390c5b4d71",
-    name: "MCPDriftVerdict",
-    description: "Compare complete baseline and current MCP tools/list snapshots and return an exact-hash compatibility verdict without fetching or invoking tools. Documentation and strict input contract: https://cristianmoroaica.github.io/bountyverdict/agents.html",
+    name: "MCP schema drift compatibility — MCPDriftVerdict",
+    description: "MCP schema drift and MCP tools/list compatibility gate for agent upgrades. Compare complete baseline and current tools/list snapshots and return an exact-hash compatibility verdict without fetching or invoking tools. Documentation and strict input contract: https://cristianmoroaica.github.io/bountyverdict/agents.html",
     price: "$0.02",
     agent_price: "$0.021",
-    tags: ["mcp", "schema-drift", "compatibility", "agent-safety"],
+    tags: ["mcp", "schema-drift", "tools-list-compatibility", "compatibility", "agent-safety"],
     input_schema: {
       type: "object",
       required: ["contract_version", "subject", "annotation_source_trust", "baseline", "current"],
