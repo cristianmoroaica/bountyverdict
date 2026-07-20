@@ -163,7 +163,7 @@
     "check_mcp_tool_drift": "https://cristianmoroaica.github.io/bountyverdict/skills/check-mcp-tool-drift/SKILL.md"
   },
   "source": "https://github.com/cristianmoroaica/bountyverdict",
-  "updated_at": "2026-07-20T18:06:43.844Z",
+  "updated_at": "2026-07-20T18:40:21.726Z",
   "marketplaces": {
     "the402": {
       "provider_id": "p_d4b4ece39162409b",
@@ -207,7 +207,7 @@
           "fulfillment_type": "instant"
         },
         {
-          "name": "HarnessVerdict",
+          "name": "GitHub Agent Instruction Audit — HarnessVerdict",
           "service_id": "svc_df4baf282b7d48d5",
           "purchase_endpoint": "https://api.the402.ai/v1/services/svc_df4baf282b7d48d5/purchase",
           "method": "POST",
