@@ -6,6 +6,8 @@ import { validatePaymentChallenge } from "../src/payment-safety.ts";
 
 const defaultIssue = "https://github.com/typeorm/typeorm/issues/3357";
 const defaultRepo = "https://github.com/openai/codex";
+const defaultRun = "https://github.com/openai/codex/actions/runs/29728148711";
+const defaultPayTo = "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
 const defaultPortfolio = [
   "https://github.com/godotengine/godot/issues/70796",
   defaultIssue,
@@ -18,17 +20,20 @@ const product = process.env.PRODUCT === "portfolio"
     ? "harness"
     : process.env.PRODUCT === "skill"
       ? "skill"
-    : "single";
+      : process.env.PRODUCT === "run"
+        ? "run"
+        : "single";
 const issueUrls = process.env.ISSUE_URLS
   ? process.env.ISSUE_URLS.split(",").map((value) => value.trim()).filter(Boolean)
   : defaultPortfolio;
-const url = new URL(product === "portfolio" ? "/api/portfolio" : product === "harness" ? "/api/harness" : product === "skill" ? "/api/skill" : "/api/verdict", baseUrl);
+const url = new URL(product === "portfolio" ? "/api/portfolio" : product === "harness" ? "/api/harness" : product === "skill" ? "/api/skill" : product === "run" ? "/api/run" : "/api/verdict", baseUrl);
 if (product === "single") url.searchParams.set("issue_url", issueUrl);
 if (product === "harness") url.searchParams.set("repo_url", process.env.REPO_URL || defaultRepo);
 if (product === "skill") {
   url.searchParams.set("repo_url", process.env.SKILL_REPO_URL || "https://github.com/coinbase/agentic-wallet-skills");
   url.searchParams.set("skill_path", process.env.SKILL_PATH || "skills/agentic-wallet");
 }
+if (product === "run") url.searchParams.set("run_url", process.env.RUN_URL || defaultRun);
 const requestInit: RequestInit = product === "portfolio"
   ? {
       method: "POST",
@@ -48,7 +53,12 @@ if (unpaid.status !== 402) {
 const paymentHeader = unpaid.headers.get("payment-required");
 if (!paymentHeader) throw new Error("The 402 response omitted PAYMENT-REQUIRED.");
 const challenge = decodeHeader(paymentHeader);
-const defaultMaximumAtomic = product === "portfolio" ? "400000" : product === "harness" ? "30000" : product === "skill" ? "60000" : "50000";
+const expectedService = product === "portfolio" ? "BountyVerdict Portfolio" : product === "harness" ? "HarnessVerdict" : product === "skill" ? "SkillVerdict" : product === "run" ? "RunVerdict" : "BountyVerdict";
+const expectedMethod = product === "portfolio" ? "POST" : "GET";
+if (challenge.resource?.url !== url.href) throw new Error("The payment challenge resource URL does not match the requested operation.");
+if (challenge.resource?.serviceName !== expectedService) throw new Error(`The payment challenge service is not ${expectedService}.`);
+if (challenge.extensions?.bazaar?.info?.input?.method !== expectedMethod) throw new Error(`The payment challenge method is not ${expectedMethod}.`);
+const defaultMaximumAtomic = product === "portfolio" ? "400000" : product === "harness" ? "30000" : product === "skill" ? "60000" : product === "run" ? "40000" : "50000";
 const maximumAtomic = BigInt(process.env.MAX_PAYMENT_ATOMIC || defaultMaximumAtomic);
 const executePayment = process.env.EXECUTE_PAYMENT === "YES";
 const requirement = validatePaymentChallenge(challenge, {
@@ -56,6 +66,10 @@ const requirement = validatePaymentChallenge(challenge, {
   executePayment,
   allowMainnet: process.env.ALLOW_MAINNET_PAYMENT === "YES",
 });
+const expectedPayTo = process.env.EXPECTED_PAY_TO || defaultPayTo;
+if (!/^0x[a-fA-F0-9]{40}$/.test(expectedPayTo) || requirement.payTo.toLowerCase() !== expectedPayTo.toLowerCase()) {
+  throw new Error("The payment challenge recipient does not match EXPECTED_PAY_TO.");
+}
 
 console.log(JSON.stringify({
   phase: "payment_challenge_verified",

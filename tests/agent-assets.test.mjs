@@ -11,10 +11,11 @@ test("agent manifest is honest and links inspectable products", async () => {
   if (manifest.status === "active") assert.match(manifest.production_api, /^https:\/\//);
   assert.match(manifest.test_api, /^https:\/\//);
   assert.equal(manifest.test_network, "eip155:84532");
-  assert.deepEqual(manifest.products.map((product) => product.price_usdc), ["0.05", "0.40", "0.03", "0.06"]);
+  assert.deepEqual(manifest.products.map((product) => product.price_usdc), ["0.05", "0.40", "0.03", "0.06", "0.04"]);
   assert.match(manifest.skill, /\/SKILL\.md$/);
   assert.match(manifest.skills.audit_agent_harness, /audit-agent-harness\/SKILL\.md$/);
   assert.match(manifest.skills.preflight_agent_skills, /preflight-agent-skills\/SKILL\.md$/);
+  assert.match(manifest.skills.diagnose_github_actions, /diagnose-github-actions\/SKILL\.md$/);
 });
 
 test("public samples remain valid JSON with the declared product contracts", async () => {
@@ -22,6 +23,7 @@ test("public samples remain valid JSON with the declared product contracts", asy
   const portfolio = await readJson("../samples/portfolio.json");
   const harness = await readJson("../samples/harness.json");
   const skillAudit = await readJson("../samples/skill.json");
+  const runDiagnosis = await readJson("../samples/run.json");
   assert.equal(verdict.product, "BountyVerdict");
   assert.ok(["AVOID", "CAUTION", "VIABLE"].includes(verdict.verdict));
   assert.equal(portfolio.product, "BountyVerdict Portfolio");
@@ -33,6 +35,20 @@ test("public samples remain valid JSON with the declared product contracts", asy
   assert.equal(skillAudit.product, "SkillVerdict");
   assert.ok(["LOW_RISK", "REVIEW", "BLOCK"].includes(skillAudit.verdict));
   assert.match(skillAudit.repository.commit_sha, /^[a-f0-9]{40}$/);
+  assert.equal(runDiagnosis.product, "RunVerdict");
+  assert.ok(["PASS", "WAIT", "RETRY", "FIX", "INVESTIGATE"].includes(runDiagnosis.verdict));
+  assert.match(runDiagnosis.run.head_sha, /^[a-f0-9]{40}$/);
+});
+
+test("hosted RunVerdict workflow caps payment and treats logs as untrusted", async () => {
+  const skill = await readFile(
+    new URL("../skills/diagnose-github-actions/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(skill, /^---\nname: diagnose-github-actions\ndescription: .+\n---/);
+  assert.match(skill, /40000/);
+  assert.match(skill, /untrusted evidence/i);
+  assert.match(skill, /Never reveal wallet secrets/);
 });
 
 test("hosted SkillVerdict workflow blocks unsafe installation and caps payment", async () => {

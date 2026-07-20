@@ -48,3 +48,11 @@ Exact Bazaar searches for agent-skill security, malicious `SKILL.md` preflight, 
 The risk is current and measurable. The 2026 report [Exploring the Emerging Threats of the Agent Skill Ecosystem](https://arxiv.org/abs/2605.28588) analyzed 3,984 skills and reported confirmed malicious payloads, credential theft, backdoors, and exfiltration. [Malicious Or Not](https://arxiv.org/abs/2603.16572) shows why repository context matters: skill-text-only scanners can produce extreme false-positive rates. [Snyk Agent Scan](https://github.com/snyk/agent-scan) further validates prompt injection, credential handling, hardcoded secrets, and malware payloads as operational skill risks.
 
 SkillVerdict is not a replacement for those local or enterprise scanners. Its distinct buyer value is an account-free, non-executing, x402-native audit that an autonomous agent can purchase before installation, using the whole bounded skill directory and repository context at an immutable commit. It launches at $0.06 so its settlements remain distinguishable from the $0.05 bounty product in the public on-chain revenue ledger.
+
+## RunVerdict expansion
+
+Four exact Bazaar searches for failed GitHub Actions runs, CI test logs, build-failure diagnosis, and public run URLs returned workflow-security scanning, GitHub status, and generic repository metadata, but no product that diagnoses the root cause of one concrete workflow run.
+
+GitHub's official REST API exposes public workflow-run metadata, exact-attempt jobs, failed steps, and downloadable per-job logs. The official `gh run view --log-failed` workflow confirms the user need while documenting platform ambiguity when ZIP logs cannot be associated with jobs or steps. A real current Codex failure demonstrated the value: 51 jobs collapsed into 17 failed jobs, while a bounded primary-job log exposed named failed tests, timeouts, authorization errors, and downstream aggregate failures that metadata alone could not explain.
+
+RunVerdict launches at $0.04. It reads at most six primary failed-job logs, never executes or reruns code, redacts secret-like excerpts, rejects private repositories before log access, and returns root-cause families, retryability, evidence URLs, coverage, and concrete next actions. It complements rather than duplicates the existing $0.05 static workflow-security scanner.

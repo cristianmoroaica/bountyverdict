@@ -8,6 +8,7 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
     portfolio: "$0.40",
     harness: "$0.03",
     skill: "$0.06",
+    run: "$0.04",
   });
   const operation = spec.paths["/api/verdict"].get;
   assert.equal(operation["x-x402"].price, "$0.05");
@@ -19,6 +20,8 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.ok(spec.paths["/api/harness"].get.parameters.some((parameter) => parameter.name === "repo_url"));
   assert.equal(spec.paths["/api/skill"].get["x-x402"].price, "$0.06");
   assert.deepEqual(spec.paths["/api/skill"].get.parameters.map((parameter) => parameter.name), ["repo_url", "skill_path"]);
+  assert.equal(spec.paths["/api/run"].get["x-x402"].price, "$0.04");
+  assert.deepEqual(spec.paths["/api/run"].get.parameters.map((parameter) => parameter.name), ["run_url"]);
   assert.match(spec.externalDocs.url, /agent-manifest\.json$/);
 
   const llms = createLlmsText("https://agent.example");
@@ -29,6 +32,8 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.match(llms, /HarnessVerdict/);
   assert.match(llms, /\$0\.06 USDC/);
   assert.match(llms, /SkillVerdict/);
+  assert.match(llms, /\$0\.04 USDC/);
+  assert.match(llms, /RunVerdict/);
   assert.match(llms, /preflight-github-bounties\/SKILL\.md/);
   assert.match(llms, /AI-work bans/);
 });

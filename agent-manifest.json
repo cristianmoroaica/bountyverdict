@@ -44,14 +44,22 @@
       "path": "/api/skill",
       "price_usdc": "0.06",
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/skill.json"
+    },
+    {
+      "name": "RunVerdict",
+      "method": "GET",
+      "path": "/api/run",
+      "price_usdc": "0.04",
+      "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/run.json"
     }
   ],
   "skill": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
   "skills": {
     "preflight_github_bounties": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
     "audit_agent_harness": "https://cristianmoroaica.github.io/bountyverdict/skills/audit-agent-harness/SKILL.md",
-    "preflight_agent_skills": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-agent-skills/SKILL.md"
+    "preflight_agent_skills": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-agent-skills/SKILL.md",
+    "diagnose_github_actions": "https://cristianmoroaica.github.io/bountyverdict/skills/diagnose-github-actions/SKILL.md"
   },
   "source": "https://github.com/cristianmoroaica/bountyverdict/tree/main/agent",
-  "updated_at": "2026-07-20T11:13:00.000Z"
+  "updated_at": "2026-07-20T11:42:00.000Z"
 }

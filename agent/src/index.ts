@@ -16,6 +16,8 @@ import { checkGithubHarness, HarnessError } from "./harness";
 import { harnessDiscoveryExtension, harnessExample } from "./harness-discovery";
 import { checkGithubSkill } from "./skill";
 import { skillDiscoveryExtension, skillExample } from "./skill-discovery";
+import { diagnoseGithubRun } from "./run";
+import { runDiscoveryExtension, runExample } from "./run-discovery";
 
 interface Env {
   PAY_TO_ADDRESS?: string;
@@ -32,10 +34,12 @@ const SINGLE_PRICE_USD = "$0.05";
 const PORTFOLIO_PRICE_USD = "$0.40";
 const HARNESS_PRICE_USD = "$0.03";
 const SKILL_PRICE_USD = "$0.06";
+const RUN_PRICE_USD = "$0.04";
 const SINGLE_ENDPOINT = "/api/verdict";
 const PORTFOLIO_ENDPOINT = "/api/portfolio";
 const HARNESS_ENDPOINT = "/api/harness";
 const SKILL_ENDPOINT = "/api/skill";
+const RUN_ENDPOINT = "/api/run";
 const TESTNET_NETWORK = "eip155:84532";
 const TESTNET_FACILITATOR = "https://x402.org/facilitator";
 const CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402";
@@ -174,12 +178,38 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       },
     }),
   };
+  const runRouteConfig: RouteConfig = {
+    accepts: {
+      scheme: "exact",
+      price: RUN_PRICE_USD,
+      network: network as `${string}:${string}`,
+      payTo,
+    },
+    description: "Diagnose one public GitHub Actions workflow run from exact-attempt job metadata and bounded failed-job logs. Separates primary failures from downstream aggregate jobs, classifies test, build, dependency, auth, timeout, network, resource, and infrastructure evidence, redacts secret-like output, and returns retryability plus concrete next actions without rerunning code.",
+    mimeType: "application/json",
+    serviceName: "RunVerdict",
+    tags: ["github-actions", "ci", "failure-diagnosis", "logs", "developer-tools", "agents"],
+    iconUrl: ICON_URL,
+    unpaidResponseBody: () => ({
+      contentType: "application/json",
+      body: {
+        error: "PAYMENT_REQUIRED",
+        product: "RunVerdict",
+        price: RUN_PRICE_USD,
+        currency: "USDC",
+        description: "Pay once for an evidence-linked diagnosis of a public GitHub Actions run.",
+        free_sample: "/api/run/sample",
+        documentation: PRODUCT_URL,
+      },
+    }),
+  };
   const middleware = paymentMiddleware(
     {
       [`GET ${SINGLE_ENDPOINT}`]: routeConfig,
       [`POST ${PORTFOLIO_ENDPOINT}`]: portfolioRouteConfig,
       [`GET ${HARNESS_ENDPOINT}`]: harnessRouteConfig,
       [`GET ${SKILL_ENDPOINT}`]: skillRouteConfig,
+      [`GET ${RUN_ENDPOINT}`]: runRouteConfig,
     },
     resourceServer,
   );
@@ -190,6 +220,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
   portfolioRouteConfig.extensions = portfolioDiscoveryExtension;
   harnessRouteConfig.extensions = harnessDiscoveryExtension;
   skillRouteConfig.extensions = skillDiscoveryExtension;
+  runRouteConfig.extensions = runDiscoveryExtension;
   middlewareCache.set(key, middleware);
   return middleware;
 }
@@ -231,6 +262,13 @@ app.get("/", (c) =>
         method: "GET",
         input: { repo_url: "https://github.com/owner/skills", skill_path: "skills/example" },
       },
+      {
+        name: "RunVerdict",
+        price: RUN_PRICE_USD,
+        endpoint: RUN_ENDPOINT,
+        method: "GET",
+        input: { run_url: "https://github.com/owner/repository/actions/runs/123456789" },
+      },
     ],
     sample: "/api/sample",
     openapi: "/openapi.json",
@@ -245,6 +283,7 @@ app.get("/api/sample", (c) => c.json(exampleVerdict));
 app.get("/api/portfolio/sample", (c) => c.json(portfolioExample));
 app.get("/api/harness/sample", (c) => c.json(harnessExample));
 app.get("/api/skill/sample", (c) => c.json(skillExample));
+app.get("/api/run/sample", (c) => c.json(runExample));
 
 app.get("/openapi.json", (c) => {
   const origin = new URL(c.req.url).origin;
@@ -253,6 +292,7 @@ app.get("/openapi.json", (c) => {
     portfolio: PORTFOLIO_PRICE_USD,
     harness: HARNESS_PRICE_USD,
     skill: SKILL_PRICE_USD,
+    run: RUN_PRICE_USD,
   }));
 });
 
@@ -280,6 +320,7 @@ app.use(SINGLE_ENDPOINT, paymentGate);
 app.use(PORTFOLIO_ENDPOINT, paymentGate);
 app.use(HARNESS_ENDPOINT, paymentGate);
 app.use(SKILL_ENDPOINT, paymentGate);
+app.use(RUN_ENDPOINT, paymentGate);
 
 app.get(SINGLE_ENDPOINT, async (c) => {
   const issueUrl = c.req.query("issue_url") || "";
@@ -350,6 +391,20 @@ app.get(SKILL_ENDPOINT, async (c) => {
     }
     console.error(error);
     return c.json({ error: "INTERNAL_ERROR", message: "The skill audit could not be produced." }, 500);
+  }
+});
+
+app.get(RUN_ENDPOINT, async (c) => {
+  const runUrl = c.req.query("run_url") || "";
+  try {
+    const diagnosis = await diagnoseGithubRun(runUrl, { GITHUB_TOKEN: c.env.GITHUB_TOKEN });
+    return c.json(diagnosis);
+  } catch (error) {
+    if (error instanceof HarnessError) {
+      return c.json({ error: error.code, message: error.message }, error.status as 400);
+    }
+    console.error(error);
+    return c.json({ error: "INTERNAL_ERROR", message: "The workflow run could not be diagnosed." }, 500);
   }
 });
 

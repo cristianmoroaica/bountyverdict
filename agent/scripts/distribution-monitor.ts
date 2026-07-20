@@ -44,7 +44,7 @@ function decodeChallenge(header: string): any {
 }
 
 async function inspectChallenge(
-  product: "single" | "portfolio" | "harness" | "skill",
+  product: "single" | "portfolio" | "harness" | "skill" | "run",
 ): Promise<Record<string, unknown>> {
   const url = product === "single"
     ? `${api}/api/verdict?issue_url=${encodeURIComponent("https://github.com/typeorm/typeorm/issues/3357")}`
@@ -52,6 +52,8 @@ async function inspectChallenge(
       ? `${api}/api/harness?repo_url=${encodeURIComponent("https://github.com/openai/codex")}`
       : product === "skill"
         ? `${api}/api/skill?repo_url=${encodeURIComponent("https://github.com/coinbase/agentic-wallet-skills")}&skill_path=${encodeURIComponent("skills/agentic-wallet")}`
+        : product === "run"
+          ? `${api}/api/run?run_url=${encodeURIComponent("https://github.com/openai/codex/actions/runs/29728148711")}`
       : `${api}/api/portfolio`;
   const response = await monitoredFetch(url, product === "portfolio"
     ? {
@@ -71,7 +73,7 @@ async function inspectChallenge(
   const header = response.headers.get("payment-required");
   if (!header) throw new Error(`${product} endpoint omitted PAYMENT-REQUIRED.`);
   const challenge = decodeChallenge(header);
-  const expectedAmount = product === "single" ? 50_000n : product === "harness" ? 30_000n : product === "skill" ? 60_000n : 400_000n;
+  const expectedAmount = product === "single" ? 50_000n : product === "harness" ? 30_000n : product === "skill" ? 60_000n : product === "run" ? 40_000n : 400_000n;
   const requirement = validatePaymentChallenge(challenge, {
     maximumAtomic: expectedAmount,
     executePayment: false,
@@ -116,6 +118,7 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
     "BountyVerdict GitHub bounty due diligence",
     "HarnessVerdict AGENTS.md CLAUDE.md repository instruction audit",
     "SkillVerdict SKILL.md security supply chain pre-install audit",
+    "RunVerdict GitHub Actions failed run logs root cause diagnosis",
   ].map(async (query) => {
     const searchUrl = new URL(`${CDP_DISCOVERY}/search`);
     searchUrl.searchParams.set("query", query);
@@ -139,6 +142,7 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
     portfolio: `${api}/api/portfolio`,
     harness: `${api}/api/harness`,
     skill: `${api}/api/skill`,
+    run: `${api}/api/run`,
   };
   const indexedProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
     [name, merchantResources.has(resource)]
@@ -233,20 +237,22 @@ let discovery: Record<string, unknown> = {};
 let revenue: Record<string, unknown> = {};
 
 try {
-  const [root, sample, portfolioSample, harnessSample, skillSample, openapi, llms, single, portfolio, harness, skill] = await Promise.all([
+  const [root, sample, portfolioSample, harnessSample, skillSample, runSample, openapi, llms, single, portfolio, harness, skill, run] = await Promise.all([
     requireStatus("/"),
     requireStatus("/api/sample"),
     requireStatus("/api/portfolio/sample"),
     requireStatus("/api/harness/sample"),
     requireStatus("/api/skill/sample"),
+    requireStatus("/api/run/sample"),
     requireStatus("/openapi.json"),
     requireStatus("/llms.txt"),
     inspectChallenge("single"),
     inspectChallenge("portfolio"),
     inspectChallenge("harness"),
     inspectChallenge("skill"),
+    inspectChallenge("run"),
   ]);
-  health = { root, sample, portfolio_sample: portfolioSample, harness_sample: harnessSample, skill_sample: skillSample, openapi, llms, single, portfolio, harness, skill };
+  health = { root, sample, portfolio_sample: portfolioSample, harness_sample: harnessSample, skill_sample: skillSample, run_sample: runSample, openapi, llms, single, portfolio, harness, skill, run };
 } catch (error) {
   errors.push(error instanceof Error ? error.message : String(error));
 }

@@ -23,7 +23,7 @@ No account, token, backend, analytics, or data storage is used. Your browser mak
 
 ## Agent API
 
-The `agent/` directory contains the paid, machine-readable product surface. It is a Cloudflare Worker with four x402-protected products: a **$0.05 USDC** fresh bounty verdict, a **$0.40 USDC** portfolio that ranks 2–10 candidates, a **$0.03 USDC HarnessVerdict** audit for repository coding-agent instructions, and a **$0.06 USDC SkillVerdict** pre-install security audit. All declare strict input/output schemas through the Bazaar discovery extension.
+The `agent/` directory contains the paid, machine-readable product surface. It is a Cloudflare Worker with five x402-protected products: a **$0.05 USDC** fresh bounty verdict, a **$0.40 USDC** portfolio that ranks 2–10 candidates, a **$0.03 USDC HarnessVerdict** audit for repository coding-agent instructions, a **$0.06 USDC SkillVerdict** pre-install security audit, and a **$0.04 USDC RunVerdict** diagnosis for public GitHub Actions runs. All declare strict input/output schemas through the Bazaar discovery extension.
 
 Agents can inspect free samples, see exact prices in the HTTP 402 response, then independently decide whether to buy. Invalid inputs and upstream failures return an error without settlement. The public [`agent-manifest.json`](agent-manifest.json) is the authoritative activation record. Guarded purchase workflows live under [`skills/`](skills/).
 
@@ -32,6 +32,8 @@ The bounty contracts were exercised end to end on Base Sepolia and Base mainnet.
 HarnessVerdict pins the repository default branch to an immutable commit and audits recognized `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, Copilot, Cursor, and `SKILL.md` surfaces without cloning or executing repository code. It reports evidence-linked path, scope, portability, context-budget, skill-frontmatter, and secret-like-material findings.
 
 SkillVerdict pins and statically scans a requested public skill directory without executing it. It combines high-confidence dangerous-pattern checks with repository context, capability disclosure, external-domain inventory, secret redaction, and explicit coverage to reduce both missed supply-chain hazards and naive false positives.
+
+RunVerdict reads exact-attempt job metadata and bounded failed-job logs without executing or rerunning code. It separates primary failures from aggregate-result jobs, redacts secret-like excerpts, classifies root-cause families, and recommends whether to fix, investigate, wait, or retry.
 
 See [`agent/README.md`](agent/README.md) for the protocol, local verification, and deployment configuration.
 

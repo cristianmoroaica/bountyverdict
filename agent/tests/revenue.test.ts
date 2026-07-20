@@ -6,6 +6,7 @@ import {
   SKILL_PAYMENT_ATOMIC,
   PORTFOLIO_PAYMENT_ATOMIC,
   SINGLE_PAYMENT_ATOMIC,
+  RUN_PAYMENT_ATOMIC,
   summarizeRevenue,
 } from "../src/revenue.ts";
 
@@ -15,13 +16,14 @@ test("revenue summary recognizes only exact product settlements", () => {
     { amount: PORTFOLIO_PAYMENT_ATOMIC, transaction_hash: "0x2", log_index: 0 },
     { amount: HARNESS_PAYMENT_ATOMIC, transaction_hash: "0x4", log_index: 0 },
     { amount: SKILL_PAYMENT_ATOMIC, transaction_hash: "0x5", log_index: 0 },
+    { amount: RUN_PAYMENT_ATOMIC, transaction_hash: "0x6", log_index: 0 },
     { amount: 10_000_000n, transaction_hash: "0x3", log_index: 0 },
   ]);
 
-  assert.equal(summary.recognized_usdc, "0.54");
-  assert.equal(summary.remaining_usdc, "999.46");
-  assert.equal(summary.progress_percent, 0.054);
-  assert.deepEqual(summary.purchases, { single: 1, portfolio: 1, harness: 1, skill: 1, total: 4 });
+  assert.equal(summary.recognized_usdc, "0.58");
+  assert.equal(summary.remaining_usdc, "999.42");
+  assert.equal(summary.progress_percent, 0.058);
+  assert.deepEqual(summary.purchases, { single: 1, portfolio: 1, harness: 1, skill: 1, run: 1, total: 5 });
   assert.equal(summary.unrecognized_transfers.length, 1);
   assert.equal(summary.excluded_transfers.length, 0);
 });
@@ -41,7 +43,7 @@ test("revenue summary excludes the owner-funded production proofs", () => {
   const summary = summarizeRevenue([...proofs, customer]);
 
   assert.equal(summary.recognized_usdc, "0.05");
-  assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, harness: 0, skill: 0, total: 1 });
+  assert.deepEqual(summary.purchases, { single: 1, portfolio: 0, harness: 0, skill: 0, run: 0, total: 1 });
   assert.deepEqual(summary.excluded_transfers, proofs);
   assert.deepEqual(summary.recognized_transfers, [customer]);
 });

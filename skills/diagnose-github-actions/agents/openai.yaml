@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagnose GitHub Actions"
+  short_description: "Explain failed public GitHub Actions runs"
+  default_prompt: "Use $diagnose-github-actions to diagnose this public failed GitHub Actions run before changing code or retrying CI."

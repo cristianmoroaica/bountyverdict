@@ -1,0 +1,62 @@
+{
+  "product": "RunVerdict",
+  "version": "1.0",
+  "verdict": "RETRY",
+  "summary": "2 failed jobs; primary evidence indicates timeout.",
+  "retryability": "LIKELY",
+  "run": {
+    "url": "https://github.com/acme/widget/actions/runs/123456789",
+    "repository": "acme/widget",
+    "id": "123456789",
+    "attempt": 1,
+    "workflow": "CI",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "0123456789abcdef0123456789abcdef01234567",
+    "created_at": "2026-07-20T10:00:00Z",
+    "updated_at": "2026-07-20T10:05:00Z"
+  },
+  "diagnosis": {
+    "primary_family": "TIMEOUT",
+    "confidence": "high",
+    "root_causes": [{
+      "family": "TIMEOUT",
+      "confidence": "high",
+      "summary": "A command, test, or service exceeded its time budget.",
+      "jobs": ["tests / linux"],
+      "evidence": ["Error: timed out waiting for the test service"]
+    }]
+  },
+  "failed_jobs": [{
+    "id": 987654321,
+    "name": "tests / linux",
+    "conclusion": "failure",
+    "failed_steps": ["Run tests"],
+    "root_cause_candidate": true,
+    "families": ["TIMEOUT"],
+    "evidence": ["Error: timed out waiting for the test service"],
+    "evidence_url": "https://github.com/acme/widget/actions/runs/123456789/job/987654321",
+    "log_status": "scanned"
+  }],
+  "next_actions": [
+    "Inspect the cited timeout evidence in the primary failed jobs before changing code.",
+    "Retry the failed jobs once; if the same evidence repeats, treat it as deterministic rather than transient."
+  ],
+  "coverage": {
+    "jobs_reported": 8,
+    "jobs_total": 8,
+    "failed_jobs": 2,
+    "failed_jobs_selected_for_logs": 1,
+    "logs_scanned": 1,
+    "logs_unavailable": 0,
+    "log_bytes_read": 18240,
+    "logs_truncated": 0,
+    "jobs_truncated": false,
+    "github_rate_limit_remaining": 4990
+  },
+  "checked_at": "2026-07-20T12:00:00.000Z",
+  "limitations": [
+    "RunVerdict reads only public GitHub Actions metadata and bounded failed-job logs; it never reruns jobs or executes repository code."
+  ]
+}

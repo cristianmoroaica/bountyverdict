@@ -1,11 +1,12 @@
 import { outputSchema, portfolioOutputSchema } from "./discovery.ts";
 import { harnessOutputSchema } from "./harness-discovery.ts";
 import { skillOutputSchema } from "./skill-discovery.ts";
+import { runOutputSchema } from "./run-discovery.ts";
 
 export function createOpenApi(
   origin: string,
   network: string,
-  prices: { single: string; portfolio: string; harness: string; skill: string },
+  prices: { single: string; portfolio: string; harness: string; skill: string; run: string },
 ) {
   return {
     openapi: "3.1.0",
@@ -236,6 +237,45 @@ export function createOpenApi(
           },
         },
       },
+      "/api/run/sample": {
+        get: {
+          summary: "Inspect a representative RunVerdict diagnosis without payment",
+          operationId: "getRunVerdictSample",
+          responses: {
+            "200": {
+              description: "Representative GitHub Actions diagnosis",
+              content: { "application/json": { schema: { type: "object", ...runOutputSchema } } },
+            },
+          },
+        },
+      },
+      "/api/run": {
+        get: {
+          summary: "Diagnose a public GitHub Actions workflow run",
+          description: "Reads exact-attempt job metadata and bounded failed-job logs without executing or rerunning code. Separates primary failures from aggregate result jobs, redacts secret-like evidence, classifies root-cause families, and returns retryability plus next actions.",
+          operationId: "diagnoseRunVerdict",
+          parameters: [{
+            name: "run_url",
+            in: "query",
+            required: true,
+            description: "Canonical public GitHub Actions workflow run URL",
+            schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" },
+            example: "https://github.com/openai/codex/actions/runs/29728148711",
+          }],
+          responses: {
+            "200": {
+              description: "Bounded evidence-linked run diagnosis after x402 settlement",
+              content: { "application/json": { schema: { type: "object", ...runOutputSchema } } },
+            },
+            "402": { description: "Payment required; inspect the PAYMENT-REQUIRED header" },
+            "400": { description: "Invalid workflow run URL; verified payment is not settled" },
+            "404": { description: "Public workflow run not found; verified payment is not settled" },
+            "502": { description: "GitHub upstream failure; verified payment is not settled" },
+            "503": { description: "Temporary capacity or service configuration failure" },
+          },
+          "x-x402": { version: 2, scheme: "exact", network, price: prices.run, currency: "USDC" },
+        },
+      },
     },
   };
 }
@@ -264,6 +304,10 @@ export function createLlmsText(origin: string): string {
 - Paid SkillVerdict: GET ${origin}/api/skill?repo_url=<PUBLIC_GITHUB_REPOSITORY_URL>&skill_path=<SKILL_DIRECTORY>
 - SkillVerdict price: $0.06 USDC per successful commit-pinned pre-install audit
 - Skill verdicts: LOW_RISK, REVIEW, BLOCK
+- Free RunVerdict sample: ${origin}/api/run/sample
+- Paid RunVerdict: GET ${origin}/api/run?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>
+- RunVerdict price: $0.04 USDC per bounded exact-attempt diagnosis
+- Run verdicts: PASS, WAIT, RETRY, FIX, INVESTIGATE
 - Failed or invalid checks are not settled
 
 ## Differentiation
@@ -275,6 +319,8 @@ The portfolio product runs the full check on every submitted candidate, ranks VI
 HarnessVerdict audits the repository's recognized coding-agent instruction surfaces without cloning or executing its code. It reports stale path references, oversized always-loaded context, machine-local paths, malformed skill frontmatter, secret-like material, and client portability across Codex, Claude Code, Gemini CLI, GitHub Copilot, and Cursor. Every result is pinned to the audited commit SHA.
 
 SkillVerdict audits a requested public SKILL.md plus its bounded directory and repository context without execution. It detects high-confidence supply-chain hazards, redacts secret-like values, discloses observed capabilities and external domains, and pins every finding to the exact reviewed commit. LOW_RISK is not a safety guarantee; retain least privilege and inspect coverage before installation.
+
+RunVerdict diagnoses one public GitHub Actions run from exact-attempt job metadata and bounded failed-job logs. It distinguishes primary failures from downstream summary jobs, returns redacted evidence and root-cause families, and recommends whether to fix, investigate, wait, or retry without mutating CI.
 
 ## Safety
 
