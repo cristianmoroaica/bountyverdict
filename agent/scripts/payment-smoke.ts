@@ -27,6 +27,7 @@ const issueUrls = process.env.ISSUE_URLS
   ? process.env.ISSUE_URLS.split(",").map((value) => value.trim()).filter(Boolean)
   : defaultPortfolio;
 const contract = PRODUCT_CATALOG[product];
+const ownerProbeUserAgent = "bountyverdict-payment-smoke/1.0";
 const url = new URL(contract.path, baseUrl);
 if (product === "single") url.searchParams.set("issue_url", issueUrl);
 if (product === "harness") url.searchParams.set("repo_url", process.env.REPO_URL || defaultRepo);
@@ -48,18 +49,18 @@ if (product === "flake") {
 const requestInit: RequestInit = product === "portfolio"
   ? {
       method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": ownerProbeUserAgent },
       body: JSON.stringify({ issue_urls: issueUrls }),
       redirect: "error",
     }
   : product === "mcpdrift"
     ? {
         method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": ownerProbeUserAgent },
         body: JSON.stringify(mcpDriftExampleInput),
         redirect: "error",
       }
-    : { headers: { Accept: "application/json" }, redirect: "error" };
+    : { headers: { Accept: "application/json", "User-Agent": ownerProbeUserAgent }, redirect: "error" };
 
 function decodeHeader(value: string): any {
   return JSON.parse(Buffer.from(value, "base64").toString("utf8"));

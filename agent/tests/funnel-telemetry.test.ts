@@ -97,6 +97,12 @@ test("separates owner automation from external challenge counts", () => {
   const snapshot = recordFunnelObservation(createFunnelSnapshot(), observation);
   assert.equal(snapshot.by_source.owner_automation.challenges_402, 1);
   assert.equal(snapshot.by_source.known_directory.challenges_402, 0);
+  const paymentProbe = classifyFunnelTailEvent(event(
+    "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Facme%2Frepo%2Fissues%2F1",
+    402,
+    { "user-agent": "bountyverdict-payment-smoke/1.0" },
+  ));
+  assert.equal(paymentProbe?.source, "owner_automation");
 });
 
 test("learns only coarse channel, client, input, payment, and response dimensions", () => {

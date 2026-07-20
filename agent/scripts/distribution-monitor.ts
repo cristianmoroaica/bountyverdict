@@ -49,6 +49,8 @@ const experimentStateFile = process.env.EXPERIMENT_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/acquisition-experiment.json`;
 const funnelStateFile = process.env.FUNNEL_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/funnel-telemetry.json`;
+const trustedFunnelBaselineFile = process.env.TRUSTED_FUNNEL_BASELINE_FILE ||
+  `${homedir()}/.local/state/bountyverdict/funnel-trusted-baseline.json`;
 const monitorNoteFile = process.env.MONITOR_NOTE_FILE || `${homedir()}/notes/mimirx402.md`;
 const trackedCostsInput = process.env.TRACKED_COSTS_USDC || "0";
 const historicalTestGasEth = process.env.HISTORICAL_TEST_GAS_ETH || "0.00000525";
@@ -964,13 +966,71 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       Object.entries(sources).filter(([source]) => source !== "owner_automation")
         .reduce((sum, [, counters]) => sum + counters.requests, 0),
     ]));
-    const learningStage = externalDiscoveryRequests === 0 && externalChallenges === 0 && externalSignedRequests === 0
+    const currentTrustedCounters = {
+      external_discovery_requests: externalDiscoveryRequests,
+      external_402_challenges: externalChallenges,
+      signed_payment_attempts: externalSignedRequests,
+      successful_signed_responses: externalSignedSuccesses,
+    };
+    let trustedBaseline: Record<string, any>;
+    try {
+      trustedBaseline = JSON.parse(await readFile(trustedFunnelBaselineFile, "utf8"));
+      if (trustedBaseline.schema_version !== 1 || typeof trustedBaseline.initialized_at !== "string" ||
+        !trustedBaseline.counters || !trustedBaseline.external_by_product || !trustedBaseline.by_channel ||
+        !trustedBaseline.by_client_class || !trustedBaseline.external_discovery_by_surface) {
+        throw new Error("Trusted funnel baseline is malformed.");
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      trustedBaseline = {
+        schema_version: 1,
+        initialized_at: new Date().toISOString(),
+        reason: "Owner release probes were not identifiable before this boundary; earlier external-or-unattributed totals are retained but not used for conversion rates.",
+        counters: currentTrustedCounters,
+        external_by_product: externalByProduct,
+        by_channel: state.by_channel,
+        by_client_class: state.by_client_class,
+        external_discovery_by_surface: externalDiscoveryBySurface,
+      };
+      await atomicWrite(trustedFunnelBaselineFile, `${JSON.stringify(trustedBaseline, null, 2)}\n`);
+    }
+    const trustedExternalByProduct = Object.fromEntries(EXPECTED_PRODUCTS.map((product) => {
+      const current = externalByProduct[product];
+      const baseline = trustedBaseline.external_by_product?.[product] || {};
+      return [product, Object.fromEntries(Object.entries(current).map(([key, value]) => [
+        key,
+        Math.max(0, Number(value || 0) - Number(baseline[key] || 0)),
+      ]))];
+    }));
+    const trusted = Object.fromEntries(Object.entries(currentTrustedCounters).map(([key, value]) => [
+      key,
+      Math.max(0, Number(value) - Number(trustedBaseline.counters[key] || 0)),
+    ]));
+    const trustedByChannel = Object.fromEntries(Object.entries(state.by_channel).map(([channel, current]) => [
+      channel,
+      Object.fromEntries(Object.entries(current).map(([key, value]) => [
+        key,
+        Math.max(0, Number(value || 0) - Number(trustedBaseline.by_channel?.[channel]?.[key] || 0)),
+      ])),
+    ]));
+    const trustedByClientClass = Object.fromEntries(Object.entries(state.by_client_class).map(([client, current]) => [
+      client,
+      Object.fromEntries(Object.entries(current).map(([key, value]) => [
+        key,
+        Math.max(0, Number(value || 0) - Number(trustedBaseline.by_client_class?.[client]?.[key] || 0)),
+      ])),
+    ]));
+    const trustedExternalDiscoveryBySurface = Object.fromEntries(Object.entries(externalDiscoveryBySurface).map(([surface, count]) => [
+      surface,
+      Math.max(0, Number(count || 0) - Number(trustedBaseline.external_discovery_by_surface?.[surface] || 0)),
+    ]));
+    const trustedLearningStage = trusted.external_discovery_requests === 0 && trusted.external_402_challenges === 0 && trusted.signed_payment_attempts === 0
       ? "reach_not_observed"
-      : externalChallenges === 0 && externalSignedRequests === 0
+      : trusted.external_402_challenges === 0 && trusted.signed_payment_attempts === 0
         ? "discovery_surface_without_paid_route"
-      : externalSignedRequests === 0
+      : trusted.signed_payment_attempts === 0
         ? "discovery_without_payment_attempt"
-        : externalSignedSuccesses === 0
+        : trusted.successful_signed_responses === 0
           ? "signed_payment_friction"
           : "signed_conversion_observed";
     return {
@@ -986,13 +1046,24 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       enhanced_external_402_challenges: enhancedExternalChallenges,
       signed_payment_attempts: externalSignedRequests,
       successful_signed_responses: externalSignedSuccesses,
-      challenge_to_signed_attempt_percent: externalChallenges > 0
-        ? Math.round(externalSignedRequests / externalChallenges * 1_000) / 10
+      trusted_capture_started_at: trustedBaseline.initialized_at,
+      trusted_external_discovery_requests: trusted.external_discovery_requests,
+      trusted_external_402_challenges: trusted.external_402_challenges,
+      trusted_signed_payment_attempts: trusted.signed_payment_attempts,
+      trusted_successful_signed_responses: trusted.successful_signed_responses,
+      trusted_external_by_product: trustedExternalByProduct,
+      trusted_by_channel: trustedByChannel,
+      trusted_by_client_class: trustedByClientClass,
+      trusted_external_discovery_by_surface: trustedExternalDiscoveryBySurface,
+      pre_trusted_external_402_challenges: Number(trustedBaseline.counters.external_402_challenges || 0),
+      pre_trusted_measurement_note: trustedBaseline.reason,
+      challenge_to_signed_attempt_percent: trusted.external_402_challenges > 0
+        ? Math.round(trusted.signed_payment_attempts / trusted.external_402_challenges * 1_000) / 10
         : null,
-      signed_attempt_success_percent: externalSignedRequests > 0
-        ? Math.round(externalSignedSuccesses / externalSignedRequests * 1_000) / 10
+      signed_attempt_success_percent: trusted.signed_payment_attempts > 0
+        ? Math.round(trusted.successful_signed_responses / trusted.signed_payment_attempts * 1_000) / 10
         : null,
-      learning_stage: learningStage,
+      learning_stage: trustedLearningStage,
       owner_automation_requests: owner.requests,
       by_product: state.by_product,
       by_source: state.by_source,
@@ -1056,14 +1127,14 @@ function renderMonitorNote(report: Record<string, any>): string {
     ? `${Number(buyerQuerySummary.found_queries || 0)} / ${Number(buyerQuerySummary.query_count)} unbranded buyer-query variants found; ${Number(buyerQuerySummary.top_three_queries || 0)} rank in the top 3`
     : "unavailable";
   const funnel = report.funnel || {};
-  const externalProductFunnel = funnel.external_by_product || {};
-  const activeChannels = Object.entries(funnel.by_channel || {})
+  const externalProductFunnel = funnel.trusted_external_by_product || {};
+  const activeChannels = Object.entries(funnel.trusted_by_channel || {})
     .filter(([channel, counters]: [string, any]) => !["owner_automation", "legacy_unclassified"].includes(channel) && Number(counters?.requests || 0) > 0)
     .sort((left: [string, any], right: [string, any]) => Number(right[1]?.requests || 0) - Number(left[1]?.requests || 0));
-  const activeClients = Object.entries(funnel.by_client_class || {})
+  const activeClients = Object.entries(funnel.trusted_by_client_class || {})
     .filter(([client, counters]: [string, any]) => !["owner_automation", "legacy_unclassified"].includes(client) && Number(counters?.requests || 0) > 0)
     .sort((left: [string, any], right: [string, any]) => Number(right[1]?.requests || 0) - Number(left[1]?.requests || 0));
-  const externalDiscoverySurfaces = Object.entries(funnel.external_discovery_by_surface || {})
+  const externalDiscoverySurfaces = Object.entries(funnel.trusted_external_discovery_by_surface || {})
     .filter(([, count]) => Number(count || 0) > 0)
     .sort((left, right) => Number(right[1] || 0) - Number(left[1] || 0));
   const indexed = report.discovery?.indexed_products || {};
@@ -1079,7 +1150,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${totalPurchases} / 10 genuine external purchases
 - **Neutral buyer-query retrieval:** ${buyerBenchmarkSummary}
-- **Agent edge funnel:** ${funnel.available ? `${Number(funnel.external_discovery_requests || 0)} external discovery-surface hits; ${Number(funnel.external_402_challenges || 0)} lifetime external/unattributed 402 challenges (${Number(funnel.enhanced_external_402_challenges || 0)} classifiable since enhanced capture); ${Number(funnel.signed_payment_attempts || 0)} signed attempts; ${Number(funnel.successful_signed_responses || 0)} signed successes` : `capture unavailable (${funnel.error || "not started"})`}
+- **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external discovery hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
 - **Current funnel diagnosis:** ${funnel.learning_stage || "unavailable"}
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
 - **Experiment next action:** ${experiment.next_action?.code || "unavailable"} — ${experiment.next_action?.reason || "No classified action available."}
@@ -1173,8 +1244,8 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - NEAR Agent Market listings: ${report.marketplaces?.near?.service_count ?? "unavailable"} / 6 (automated JSON fulfillment; SkillVerdict excluded)
 - PayanAgent offers: ${report.marketplaces?.payan?.offer_count ?? "unavailable"} / 6 (Base x402 proxy; SkillVerdict excluded)
 - Agentic Market automatic endpoints: ${report.marketplaces?.agentic_market?.endpoint_count ?? "unavailable"} / 7 (CDP Bazaar mirror; reported quality counters excluded from purchase and revenue accounting)
-- Edge funnel capture: ${funnel.available ? `${Number(funnel.paid_route_requests || 0)} paid-route requests; ${Number(funnel.external_402_challenges || 0)} lifetime external/unattributed challenges; ${Number(funnel.enhanced_external_402_challenges || 0)} classifiable external challenges since the enhanced schema; ${Number(funnel.signed_payment_attempts || 0)} signed attempts` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
-- Discovery-surface capture: ${funnel.available ? `${Number(funnel.discovery_surface_requests || 0)} total; ${Number(funnel.external_discovery_requests || 0)} external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
+- Edge funnel capture: ${funnel.available ? `${Number(funnel.trusted_external_402_challenges || 0)} trusted external challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts since ${funnel.trusted_capture_started_at || "the clean boundary"}; ${Number(funnel.external_402_challenges || 0)} older/lifetime external-or-unattributed challenges retained but excluded from rates` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
+- Discovery-surface capture: ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external since the clean boundary; ${Number(funnel.external_discovery_requests || 0)} lifetime external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
 - External discovery surfaces observed: ${externalDiscoverySurfaces.length ? externalDiscoverySurfaces.map(([surface, count]) => `${surface} (${Number(count)})`).join(", ") : "none yet"}
 - Enhanced learning dimensions active since: ${funnel.enhanced_capture_started_at || "unavailable"}
 - External channels observed: ${activeChannels.length ? activeChannels.map(([channel, counters]: [string, any]) => `${channel} (${Number(counters.requests || 0)})`).join(", ") : "none yet"}
@@ -1183,7 +1254,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Signed-attempt → successful-response rate: ${funnel.signed_attempt_success_percent === null || funnel.signed_attempt_success_percent === undefined ? "not measurable yet" : `${funnel.signed_attempt_success_percent}%`}
 - Current learning diagnosis: ${funnel.learning_stage || "unavailable"}
 
-### External paid-route learning by product
+### Trusted external paid-route learning by product
 
 | Product | Requests | 402 challenges | Signed attempts | Signed successes | Input rejections | Server errors |
 |---|---:|---:|---:|---:|---:|---:|
@@ -1192,7 +1263,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
   return `| ${PRODUCT_CATALOG[product].service} | ${Number(row.requests || 0)} | ${Number(row.challenges_402 || 0)} | ${Number(row.signed_requests || 0)} | ${Number(row.signed_successes || 0)} | ${Number(row.preflight_rejections || 0)} | ${Number(row.server_errors || 0)} |`;
 }).join("\n")}
 
-Input readiness, channel, client class, response preference, x402 header generation, hourly and daily trends, and product×source aggregates are retained in the private machine-readable state. Pre-upgrade requests remain in lifetime totals but are never fabricated into enhanced dimensions. No raw request content or visitor identifier is retained.
+Input readiness, channel, client class, response preference, x402 header generation, hourly and daily trends, and product×source aggregates are retained in the private machine-readable state. The immutable clean boundary excludes older owner-probe contamination from conversion rates without fabricating a retroactive attribution; lifetime totals remain available and explicitly labeled. No raw request content or visitor identifier is retained.
 - Experiment status: ${experiment.status || "unavailable"}
 - Experiment baseline: 8 total installs, 2 router installs, 1 SkillVerdict workflow install, 0 genuine purchases
 - Experiment delta: ${Number(experiment.delta?.installs?.total || 0)} total installs, ${Number(experiment.delta?.installs?.router || 0)} router installs, ${Number(experiment.delta?.installs?.skillverdict || 0)} SkillVerdict workflow installs, ${Number(experiment.delta?.genuine_purchases || 0)} genuine purchases
