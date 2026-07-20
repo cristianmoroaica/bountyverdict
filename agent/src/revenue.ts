@@ -6,6 +6,7 @@ export const KNOWN_NON_REVENUE_TX_HASHES = [
   // Capped production interoperability proofs funded by the project owner.
   "0x6d308dcf6a53aae946b3a5ee55ab5afab8579acfbde7147fa18734ebb11fc7d4",
   "0x7387f1de74c7441d3d82416e4ece1df8cfd27075ddeb692dda5250ef971d12cd",
+  "0x5cb517f6e3c621f7ba0bc99f70ee9e4be0e9d464accba7482b7fda8f6ccbbf10",
 ] as const;
 
 export interface SettlementTransfer {

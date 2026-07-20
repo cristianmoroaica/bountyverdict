@@ -110,28 +110,44 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
   const merchant = await merchantResponse.json() as { resources?: Array<{ resource?: string }> };
   const resources = merchant.resources || [];
 
-  const searchUrl = new URL(`${CDP_DISCOVERY}/search`);
-  searchUrl.searchParams.set("query", "BountyVerdict GitHub bounty due diligence");
-  searchUrl.searchParams.set("network", NETWORK);
-  searchUrl.searchParams.set("payTo", wallet);
-  searchUrl.searchParams.set("limit", "20");
-  const searchResponse = await monitoredFetch(searchUrl.href);
-  if (!searchResponse.ok) {
-    throw new Error(`CDP semantic discovery returned HTTP ${searchResponse.status}.`);
-  }
-  const search = await searchResponse.json() as {
-    resources?: Array<{ resource?: string }>;
-    searchMethod?: string;
+  const searches = await Promise.all([
+    "BountyVerdict GitHub bounty due diligence",
+    "HarnessVerdict AGENTS.md CLAUDE.md repository instruction audit",
+  ].map(async (query) => {
+    const searchUrl = new URL(`${CDP_DISCOVERY}/search`);
+    searchUrl.searchParams.set("query", query);
+    searchUrl.searchParams.set("network", NETWORK);
+    searchUrl.searchParams.set("payTo", wallet);
+    searchUrl.searchParams.set("limit", "20");
+    const response = await monitoredFetch(searchUrl.href);
+    if (!response.ok) throw new Error(`CDP semantic discovery returned HTTP ${response.status}.`);
+    return response.json() as Promise<{
+      resources?: Array<{ resource?: string }>;
+      searchMethod?: string;
+    }>;
+  }));
+  const semanticResources = [...new Set(searches.flatMap(({ resources: found = [] }) =>
+    found.map(({ resource }) => resource).filter((resource): resource is string => Boolean(resource))
+  ))];
+  const merchantResources = new Set(resources.map(({ resource }) => resource).filter(Boolean));
+  const expectedResources = {
+    single: `${api}/api/verdict`,
+    portfolio: `${api}/api/portfolio`,
+    harness: `${api}/api/harness`,
   };
-  const semanticResources = search.resources || [];
-  const expectedPrefix = `${api}/api/`;
+  const indexedProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
+    [name, merchantResources.has(resource)]
+  ));
+  const semanticProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
+    [name, semanticResources.includes(resource)]
+  ));
   return {
-    indexed: resources.some(({ resource }) => resource?.startsWith(expectedPrefix)),
+    indexed: Object.values(indexedProducts).every(Boolean),
+    indexed_products: indexedProducts,
+    semantic_products: semanticProducts,
     merchant_resource_count: resources.length,
-    semantic_match_count: semanticResources.filter(({ resource }) =>
-      resource?.startsWith(expectedPrefix)
-    ).length,
-    search_method: search.searchMethod || null,
+    semantic_match_count: semanticResources.filter((resource) => resource.startsWith(`${api}/api/`)).length,
+    search_method: [...new Set(searches.map(({ searchMethod }) => searchMethod).filter(Boolean))],
     resources: resources.map(({ resource }) => resource).filter(Boolean),
   };
 }

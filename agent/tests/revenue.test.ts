@@ -25,8 +25,9 @@ test("revenue summary recognizes only exact product settlements", () => {
 });
 
 test("revenue summary excludes the owner-funded production proofs", () => {
+  const proofAmounts = [SINGLE_PAYMENT_ATOMIC, PORTFOLIO_PAYMENT_ATOMIC, HARNESS_PAYMENT_ATOMIC];
   const proofs = KNOWN_NON_REVENUE_TX_HASHES.map((transaction_hash, index) => ({
-    amount: index === 0 ? SINGLE_PAYMENT_ATOMIC : PORTFOLIO_PAYMENT_ATOMIC,
+    amount: proofAmounts[index]!,
     transaction_hash,
     log_index: index,
   }));
