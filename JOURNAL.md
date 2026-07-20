@@ -20,3 +20,5 @@ Installed a weekly user-level settlement timer with independent payee, asset, ne
 - Owner-funded settlements remain excluded: **1 / $0.07**
 
 Paused new-product development after verifying all seven production tools. The next milestone is ten genuine external purchases through self-serve agent distribution. Work now focuses on trust disclosures, standard marketplace metadata, intent-specific discovery ranking, the agent-facing landing page, directory submissions, and a reproducible public release. No eighth product will be built before the ten-purchase gate.
+
+Published v1.0.0 with an agent-first README, dedicated seven-product catalog, standard OpenAPI payment metadata, synchronized Pages/Worker `llms.txt`, corrected skill trust disclosures, and expanded GitHub topics. AgentTool accepted the listing for scanning. AgentSkill found all seven skills but imported none because its own database exceeded its storage quota; a daily unattended retry is installed. x402scan remains unregistered because its add-API flow requires a wallet-authenticated browser session that the restricted agent wallet cannot safely provide.

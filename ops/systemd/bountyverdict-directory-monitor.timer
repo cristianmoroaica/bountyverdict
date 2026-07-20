@@ -1,0 +1,12 @@
+[Unit]
+Description=Check BountyVerdict agent directories daily
+
+[Timer]
+OnActiveSec=1d
+OnUnitActiveSec=1d
+RandomizedDelaySec=30min
+Persistent=true
+Unit=bountyverdict-directory-monitor.service
+
+[Install]
+WantedBy=timers.target
