@@ -86,6 +86,17 @@ test("epoch stability ignores owner automation but changes on external counters"
   recordFunnelObservation(original, owner);
   const afterOwner = captureTrustedFunnelBaseline(original, "2026-07-20T21:01:00Z", "A sufficiently descriptive boundary reason for testing.", 2);
   assert.equal(trustedBoundaryFingerprint(afterOwner), trustedBoundaryFingerprint(first));
+  const knownDirectoryDiscovery = classifyDiscoveryTailEvent(event("/openapi.json", 200, "Agent402/1.0"));
+  const knownDirectoryProbe = classifyFunnelTailEvent(event(
+    "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Facme%2Frepo%2Fissues%2F1",
+    402,
+    "x402-observer/1.0",
+  ));
+  assert.ok(knownDirectoryDiscovery && knownDirectoryProbe);
+  recordDiscoveryObservation(original, knownDirectoryDiscovery);
+  recordFunnelObservation(original, knownDirectoryProbe);
+  const afterHealthPolls = captureTrustedFunnelBaseline(original, "2026-07-20T21:01:30Z", "A sufficiently descriptive boundary reason for testing.", 2);
+  assert.equal(trustedBoundaryFingerprint(afterHealthPolls), trustedBoundaryFingerprint(first));
   const external = classifyFunnelTailEvent(event(
     "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Facme%2Frepo%2Fissues%2F1",
     402,

@@ -22,6 +22,8 @@ export type TrustedFunnelBaseline = {
   external_by_product: Record<ProductKey, ProductCounters>;
   by_channel: FunnelSnapshot["by_channel"];
   by_client_class: FunnelSnapshot["by_client_class"];
+  by_discovery_channel: FunnelSnapshot["by_discovery_channel"];
+  by_discovery_client_class: FunnelSnapshot["by_discovery_client_class"];
   external_discovery_by_surface: Record<string, number>;
 };
 
@@ -96,6 +98,8 @@ export function captureTrustedFunnelBaseline(
     external_by_product: externalByProduct,
     by_channel: structuredClone(state.by_channel),
     by_client_class: structuredClone(state.by_client_class),
+    by_discovery_channel: structuredClone(state.by_discovery_channel),
+    by_discovery_client_class: structuredClone(state.by_discovery_client_class),
     external_discovery_by_surface: externalDiscoveryBySurface,
   };
 }
@@ -118,21 +122,31 @@ export function trustedFunnelBaseline(value: unknown): TrustedFunnelBaseline | n
     funnel_observed_through: typeof baseline.funnel_observed_through === "string"
       ? baseline.funnel_observed_through
       : baseline.initialized_at,
+    by_discovery_channel: baseline.by_discovery_channel || {} as FunnelSnapshot["by_discovery_channel"],
+    by_discovery_client_class: baseline.by_discovery_client_class || {} as FunnelSnapshot["by_discovery_client_class"],
   } as TrustedFunnelBaseline;
 }
 
 export function trustedBoundaryFingerprint(baseline: TrustedFunnelBaseline): string {
-  const externalChannels = Object.fromEntries(Object.entries(baseline.by_channel)
-    .filter(([channel]) => channel !== "owner_automation"));
-  const externalClients = Object.fromEntries(Object.entries(baseline.by_client_class)
-    .filter(([client]) => client !== "owner_automation"));
+  const healthChannels = new Set([
+    "owner_automation", "coinbase_bazaar", "index_402", "x402scan", "x402gle",
+    "agent402", "x402_observer", "registry_or_directory",
+  ]);
+  const healthClients = new Set(["owner_automation", "agent402", "x402_observer", "registry_crawler"]);
+  const buyerRelevantPaidChannels = Object.fromEntries(Object.entries(baseline.by_channel)
+    .filter(([channel]) => !healthChannels.has(channel)));
+  const buyerRelevantPaidClients = Object.fromEntries(Object.entries(baseline.by_client_class)
+    .filter(([client]) => !healthClients.has(client)));
+  const buyerRelevantDiscoveryChannels = Object.fromEntries(Object.entries(baseline.by_discovery_channel || {})
+    .filter(([channel]) => !healthChannels.has(channel)));
+  const buyerRelevantDiscoveryClients = Object.fromEntries(Object.entries(baseline.by_discovery_client_class || {})
+    .filter(([client]) => !healthClients.has(client)));
   return JSON.stringify({
     funnel_capture_started_at: baseline.funnel_capture_started_at,
     funnel_schema_version: baseline.funnel_schema_version,
-    counters: baseline.counters,
-    external_by_product: baseline.external_by_product,
-    external_channels: externalChannels,
-    external_clients: externalClients,
-    external_discovery_by_surface: baseline.external_discovery_by_surface,
+    buyer_relevant_paid_channels: buyerRelevantPaidChannels,
+    buyer_relevant_paid_clients: buyerRelevantPaidClients,
+    buyer_relevant_discovery_channels: buyerRelevantDiscoveryChannels,
+    buyer_relevant_discovery_clients: buyerRelevantDiscoveryClients,
   });
 }
