@@ -86,7 +86,10 @@ jobs:
 
       - name: Verify live free and paid contracts
         run: |
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/" | node -e '
+          owner_curl() {
+            command curl --user-agent "bountyverdict-owner-audit/1.0" "$@"
+          }
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const value = JSON.parse(body);
               const expected = [
@@ -102,19 +105,19 @@ jobs:
               if (value.status !== "available" || JSON.stringify(actual) !== JSON.stringify(expected)) process.exit(1);
             });
           '
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/sample" >/dev/null
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/portfolio/sample" >/dev/null
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/harness/sample" >/dev/null
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/skill/sample" >/dev/null
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/run/sample" >/dev/null
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/flake/sample" | node -e '
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/sample" >/dev/null
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/portfolio/sample" >/dev/null
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/harness/sample" >/dev/null
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/skill/sample" >/dev/null
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/run/sample" >/dev/null
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/flake/sample" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const value = JSON.parse(body);
               const verdicts = ["CONFIRMED_FLAKE", "LIKELY_FLAKE", "RECURRING_FAILURE", "NEW_FAILURE", "INCONCLUSIVE", "NOT_FAILED"];
               if (value.product !== "FlakeVerdict" || value.version !== "1.0" || !verdicts.includes(value.verdict)) process.exit(1);
             });
           '
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/mcp-drift/sample" | node -e '
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/mcp-drift/sample" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const value = JSON.parse(body);
               if (value.service !== "MCPDriftVerdict" || value.contract_version !== "mcp-drift/1" || value.verdict !== "SAFE_ADDITIVE" || value.coverage?.truncated !== false) process.exit(1);
@@ -123,7 +126,7 @@ jobs:
           # A newly added route can briefly resolve to the previous Worker at a
           # different edge after deploy. Retry only this additive route before
           # declaring the release unhealthy.
-          curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/.well-known/x402" | node -e '
+          owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/.well-known/x402" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const value = JSON.parse(body);
               const expected = ["/api/verdict", "/api/portfolio", "/api/harness", "/api/skill", "/api/run", "/api/flake", "/api/mcp-drift"]
@@ -133,7 +136,7 @@ jobs:
               if (value.payment?.x402?.primaryNetwork !== "eip155:8453" || !/^0x[a-fA-F0-9]{40}$/.test(value.payment?.x402?.payTo || "")) process.exit(1);
             });
           '
-          curl --fail --silent --show-error "$PRODUCTION_API_URL/openapi.json" | node -e '
+          owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/openapi.json" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const spec = JSON.parse(body);
               const paid = spec.paths?.["/api/flake"]?.get;

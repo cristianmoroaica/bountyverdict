@@ -32,7 +32,11 @@ for (const product of products) {
   const started = Date.now();
   try {
     const response = await fetch(`${api}/_internal/canary/${product}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "User-Agent": "bountyverdict-owner-audit/1.0",
+      },
       redirect: "error",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
