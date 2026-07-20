@@ -14,10 +14,10 @@ A paid, deterministic decision suite for autonomous coding agents. It checks pub
 - Portfolio size: 2–10 unique public GitHub issue URLs; at 10 candidates the effective price is $0.04 each
 - Payment: x402 v2, exact scheme
 - Output: typed GitHub verdicts plus MCP `UNCHANGED`, `SAFE_ADDITIVE`, `REVIEW`, `INCONCLUSIVE`, `BREAKING`, or `SECURITY_REGRESSION`, always with explicit coverage and reuse guidance
-- Discovery: x402 Bazaar extension with a strict input schema and realistic output example
+- Discovery: x402 Bazaar extension with a strict input schema and realistic output example, plus `/.well-known/x402` with an exact seven-route paid-resource allowlist
 - Failure behavior: invalid inputs, GitHub failures, and handler errors are not settled
 
-`GET /` returns all product contracts without payment. Free representative results are available from every product sample route, including `/api/mcp-drift/sample`.
+`GET /` returns all product contracts without payment. Free representative results are available from every product sample route, including `/api/mcp-drift/sample`. Every unpaid 402 JSON body also returns the exact method, URL, validated body when applicable, atomic price cap, and a safe Agentic Wallet argument vector. Consumers must execute the vector directly and must not join it into a shell string.
 
 FlakeVerdict is a read-only retry gate for completed public GitHub Actions failures. It compares the selected attempt with other attempts of the same run, same-SHA outcomes, and up to 12 earlier comparable workflow runs, scanning no more than 8 selected failed-job logs or 4 MiB of log data. It never executes repository code and never triggers, reruns, cancels, approves, or otherwise mutates CI. Only a current `CONFIRMED_FLAKE` may recommend one retry; all other failed outcomes require investigation or repair rather than an automatic retry.
 
@@ -66,9 +66,9 @@ PRODUCT=mcpdrift RESOURCE_SERVER_URL=http://127.0.0.1:8787 npm run payment:inspe
 To execute a Base Sepolia payment, the preferred buyer is Coinbase Agentic Wallet. It authenticates once through email/OTP, keeps signing keys outside this repository, and supports strict per-request caps:
 
 ```bash
-npx awal@2.12.1 status
-npx awal@2.12.1 balance --chain base-sepolia --json
-npx awal@2.12.1 x402 pay https://your-test-worker.workers.dev/api/verdict \
+npx awal@2.12.0 status
+npx awal@2.12.0 balance --chain base-sepolia --json
+npx awal@2.12.0 x402 pay https://your-test-worker.workers.dev/api/verdict \
   --query '{"issue_url":"https://github.com/typeorm/typeorm/issues/3357"}' \
   --max-amount 50000 --json
 ```
@@ -76,7 +76,7 @@ npx awal@2.12.1 x402 pay https://your-test-worker.workers.dev/api/verdict \
 Exercise the portfolio contract with its exact 400,000-atomic-unit cap:
 
 ```bash
-npx awal@2.12.1 x402 pay https://your-test-worker.workers.dev/api/portfolio \
+npx awal@2.12.0 x402 pay https://your-test-worker.workers.dev/api/portfolio \
   --method POST \
   --data '{"issue_urls":["https://github.com/godotengine/godot/issues/70796","https://github.com/typeorm/typeorm/issues/3357"]}' \
   --max-amount 400000 --json
@@ -100,7 +100,7 @@ Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.02, $0.03, $0.
 
 ## Continuous distribution monitoring
 
-The production monitor verifies all free routes, all seven exact mainnet payment challenges, Coinbase Bazaar merchant visibility and a disclosed unbranded buyer-query benchmark, on-chain Base USDC revenue, the402 catalog/jobs/earnings, 402 Index presence, privacy-safe aggregate discovery and paid-route arrivals, and the freshness of the latest authenticated functional-canary pass in one run. The benchmark measures retrieval robustness, not marketplace search volume; CDP does not expose seller query-impression analytics. Edge telemetry classifies discovery surface, product, coarse source/channel and client class, input readiness, response preference, payment-header generation, outcome, and hourly/daily trends. It discards raw URLs, query values, request bodies, headers, payment payloads, IP addresses, geolocation, and full user-agent strings:
+The production monitor verifies all free routes, all seven exact mainnet payment challenges, Coinbase Bazaar merchant visibility, Agent402 listing health, disclosed unbranded buyer-query benchmarks, on-chain Base USDC revenue, the402 catalog/jobs/earnings, 402 Index presence, privacy-safe aggregate discovery and paid-route arrivals, and the freshness of the latest authenticated functional-canary pass in one run. Benchmarks measure retrieval robustness, not marketplace search volume or impressions. Edge telemetry classifies discovery surface, product, coarse source/channel and client class, input readiness, response preference, payment-header generation, outcome, and hourly/daily trends. It discards raw URLs, query values, request bodies, headers, payment payloads, IP addresses, geolocation, and full user-agent strings:
 
 ```bash
 npm run distribution:monitor

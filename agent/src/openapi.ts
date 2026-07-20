@@ -510,6 +510,7 @@ export function createLlmsText(origin: string): string {
 ## Decide if this tool is useful
 
 - Free representative result: ${origin}/api/sample
+- x402 seller manifest: ${origin}/.well-known/x402
 - OpenAPI 3.1 contract: ${origin}/openapi.json
 - Umbrella routing skill: https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md
 - Install router: npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y

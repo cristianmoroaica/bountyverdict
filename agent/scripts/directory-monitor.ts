@@ -9,6 +9,7 @@ const skillsUrl = "https://skills.sh/cristianmoroaica/bountyverdict";
 const securityDirectoryPrUrl = "https://github.com/LLMSecurity/awesome-agent-skills-security/pull/38";
 const x402DirectoryPrUrl = "https://github.com/xpaysh/awesome-x402/pull/934";
 const x402ScoutUrl = "https://x402scout.com/catalog";
+const agent402Api = "https://agent402.tools/api";
 const productionOrigin = "https://bountyverdict-agent-production.mimirslab.workers.dev";
 const x402ScanUrl = "https://www.x402scan.com";
 const x402gleHostUrl = "https://x402gle.com/servers/bountyverdict-agent-production.mimirslab.workers.dev";
@@ -40,6 +41,15 @@ const x402ScoutIds = Object.freeze([
   "dfc4f4e3-b1ea-440d-b9c1-a416296e4fdd",
   "10bf30eb-c3f7-4231-ab23-fc16d02a0e7c",
   "98fed8fa-da74-436d-9fbe-22a500abf298",
+]);
+const agent402BuyerQueries = Object.freeze([
+  { product: "single", path: "/api/verdict", query: "check whether github bounty issue is still open claimed or worth coding" },
+  { product: "portfolio", path: "/api/portfolio", query: "compare and rank github bounty issues to choose the best candidate" },
+  { product: "harness", path: "/api/harness", query: "audit repository coding agent instructions AGENTS.md CLAUDE.md" },
+  { product: "skill", path: "/api/skill", query: "security audit an agent skill before installation" },
+  { product: "run", path: "/api/run", query: "diagnose failed github actions workflow run root cause" },
+  { product: "flake", path: "/api/flake", query: "decide whether failed github actions run is flaky and should retry" },
+  { product: "mcpdrift", path: "/api/mcp-drift", query: "check MCP tools list schema drift compatibility breaking change" },
 ]);
 const stateFile = process.env.DIRECTORY_STATE_FILE || `${homedir()}/.local/state/bountyverdict/directories.json`;
 const timeoutMs = 30_000;
@@ -102,6 +112,83 @@ async function agentToolStatus(): Promise<Record<string, unknown>> {
     return {
       url: agentToolUrl,
       api_url: apiUrl,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function agent402Status(): Promise<Record<string, unknown>> {
+  try {
+    const [indexResponse, ...routeResponses] = await Promise.all([
+      fetch(`${agent402Api}/index`, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      ...agent402BuyerQueries.map(({ query }) => fetch(`${agent402Api}/route`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "bountyverdict-directory-monitor",
+        },
+        body: JSON.stringify({ query, top: 25, include: "external" }),
+        signal: AbortSignal.timeout(timeoutMs),
+      })),
+    ]);
+    if (!indexResponse.ok) {
+      return { url: "https://agent402.tools/marketplace", http_status: indexResponse.status, listed: false, status: "unexpected_response" };
+    }
+    const index = await indexResponse.json() as {
+      totals?: Record<string, unknown>;
+      sellers?: Array<Record<string, unknown>>;
+    };
+    const seller = (index.sellers || []).find((entry) => entry.origin === productionOrigin);
+    const queries = await Promise.all(routeResponses.map(async (response, queryIndex) => {
+      const expected = agent402BuyerQueries[queryIndex];
+      if (!response.ok) {
+        return { ...expected, found: false, rank: null, http_status: response.status, status: "unexpected_response" };
+      }
+      const payload = await response.json() as { results?: Array<Record<string, unknown>> };
+      const results = Array.isArray(payload.results) ? payload.results : [];
+      const rankIndex = results.findIndex((entry) =>
+        entry.seller === productionOrigin && entry.route === expected.path
+      );
+      const match = rankIndex >= 0 ? results[rankIndex] : null;
+      return {
+        ...expected,
+        found: rankIndex >= 0,
+        rank: rankIndex >= 0 ? rankIndex + 1 : null,
+        score: match && typeof match.score === "number" ? match.score : null,
+        price_usd: match && (typeof match.priceUsd === "number" || typeof match.priceUsd === "string")
+          ? match.priceUsd
+          : null,
+        returned_results: results.length,
+      };
+    }));
+    const foundQueries = queries.filter(({ found }) => found).length;
+    const topThreeQueries = queries.filter(({ rank }) => typeof rank === "number" && rank <= 3).length;
+    return {
+      url: "https://agent402.tools/marketplace",
+      api_url: `${agent402Api}/index`,
+      http_status: indexResponse.status,
+      listed: Boolean(seller),
+      status: seller ? "listed" : "missing",
+      routable: seller?.routable === true,
+      health: typeof seller?.health === "number" ? seller.health : null,
+      listing_source: seller?.source || null,
+      native_manifest: seller?.source === "manifest",
+      observed_tool_count: typeof seller?.toolCount === "number" ? seller.toolCount : null,
+      ecosystem_sellers: index.totals?.sellers ?? null,
+      query_count: queries.length,
+      found_queries: foundQueries,
+      top_three_queries: topThreeQueries,
+      query_benchmark: queries,
+      measurement: "owner_run_unbranded_retrieval_benchmark_not_search_impressions_or_customer_purchases",
+    };
+  } catch (error) {
+    return {
+      url: "https://agent402.tools/marketplace",
       listed: false,
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
@@ -477,6 +564,7 @@ const [
   agenttool,
   securityDirectoryPr,
   x402DirectoryPr,
+  agent402,
   x402scout,
   x402scan,
   x402gle,
@@ -488,6 +576,7 @@ const [
   agentToolStatus(),
   githubPrStatus("LLMSecurity", "awesome-agent-skills-security", 38, securityDirectoryPrUrl),
   githubPrStatus("xpaysh", "awesome-x402", 934, x402DirectoryPrUrl),
+  agent402Status(),
   x402ScoutStatus(),
   x402ScanStatus(),
   x402gleStatus(),
@@ -517,6 +606,7 @@ const state = {
   agentskill,
   security_directory_pr: securityDirectoryPr,
   x402_directory_pr: x402DirectoryPr,
+  agent402,
   x402scout,
   x402scan,
   x402gle,

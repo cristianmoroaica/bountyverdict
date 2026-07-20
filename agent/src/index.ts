@@ -2,6 +2,7 @@ import { createFacilitatorConfig } from "@coinbase/x402";
 import {
   HTTPFacilitatorClient,
   type FacilitatorClient,
+  type HTTPRequestContext,
   type RouteConfig,
 } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -38,6 +39,7 @@ import {
   mcpDriftExampleInput,
 } from "./mcp-drift-discovery.ts";
 import { PRODUCT_CATALOG } from "./product-catalog.ts";
+import { createX402ServiceManifest } from "./x402-service-manifest.ts";
 import {
   canaryErrorCode,
   isCanaryProduct,
@@ -119,10 +121,21 @@ type UnpaidDecisionPreview = {
   method: "GET" | "POST";
 };
 
-function unpaidDecisionBody(preview: UnpaidDecisionPreview) {
+async function unpaidDecisionBody(preview: UnpaidDecisionPreview, context: HTTPRequestContext) {
   const requestHint = preview.method === "GET"
     ? "Use the exact request URL, including its encoded query string."
     : "Use POST with the exact validated JSON body; payment binds to those request bytes.";
+  const requestUrl = context.adapter.getUrl();
+  const requestBody = preview.method === "POST" && context.adapter.getBody
+    ? await context.adapter.getBody()
+    : undefined;
+  const maxAmountAtomic = String(Math.round(Number(preview.price.replace(/^\$/, "")) * 1_000_000));
+  const awalArgv = ["awal@2.12.0", "x402", "pay", requestUrl];
+  if (preview.method === "POST") {
+    awalArgv.push("-X", "POST");
+    if (requestBody !== undefined) awalArgv.push("-d", JSON.stringify(requestBody));
+  }
+  awalArgv.push("--max-amount", maxAmountAtomic, "--json");
   return {
     contentType: "application/json",
     body: {
@@ -142,9 +155,26 @@ function unpaidDecisionBody(preview: UnpaidDecisionPreview) {
         protocol: "x402 v2",
         network: "Base",
         asset: "USDC",
+        max_amount_atomic: maxAmountAtomic,
         inspect_challenge_before_signing: true,
         request_binding: requestHint,
-        client_hint: "Any x402 v2 client can pay. Coinbase Agentic Wallet users can use `npx awal@2.12.0 x402 pay` with the exact request and a maximum amount cap.",
+        exact_request: {
+          method: preview.method,
+          url: requestUrl,
+          ...(requestBody === undefined ? {} : { body: requestBody }),
+        },
+        agentic_wallet: {
+          executable: "npx",
+          argv: awalArgv,
+          execute_as_argument_vector: true,
+          do_not_join_into_shell_string: true,
+        },
+        retry_semantics: {
+          reuse_exact_method_url_and_body: true,
+          payment_header: "Payment-Signature",
+          expected_success_status: 200,
+          never_raise_max_amount_without_new_authorization: true,
+        },
       },
     },
   };
@@ -209,7 +239,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "BountyVerdict",
     tags: ["github", "bounty", "eligibility", "claimability", "already-claimed", "assignment-status", "due-diligence"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => unpaidDecisionBody({
+    unpaidResponseBody: (context) => unpaidDecisionBody({
       product: "BountyVerdict",
       price: SINGLE_PRICE_USD,
       description: "Pay once to receive a fresh evidence-linked bounty risk verdict.",
@@ -220,7 +250,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       samplePath: "/api/sample",
       skillName: "preflight-github-bounties",
       method: "GET",
-    }),
+    }, context),
   };
   const portfolioRouteConfig: RouteConfig = {
     accepts: {
@@ -234,7 +264,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "BountyVerdict Portfolio",
     tags: ["compare-bounties", "best-candidate", "candidate-selection", "opportunity-ranking", "github-bounties", "portfolio"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => unpaidDecisionBody({
+    unpaidResponseBody: (context) => unpaidDecisionBody({
       product: "BountyVerdict Portfolio",
       price: PORTFOLIO_PRICE_USD,
       description: "Pay once to rank up to ten bounty candidates with full evidence-linked verdicts.",
@@ -245,7 +275,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       samplePath: "/api/portfolio/sample",
       skillName: "preflight-github-bounties",
       method: "POST",
-    }),
+    }, context),
   };
   const harnessRouteConfig: RouteConfig = {
     accepts: {
@@ -259,7 +289,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "HarnessVerdict",
     tags: ["github", "agents-md", "claude-md", "agent-harness", "developer-tools", "lint"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => unpaidDecisionBody({
+    unpaidResponseBody: (context) => unpaidDecisionBody({
       product: "HarnessVerdict",
       price: HARNESS_PRICE_USD,
       description: "Pay once for a commit-pinned, evidence-linked repository instruction audit.",
@@ -270,7 +300,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       samplePath: "/api/harness/sample",
       skillName: "audit-agent-harness",
       method: "GET",
-    }),
+    }, context),
   };
   const skillRouteConfig: RouteConfig = {
     accepts: {
@@ -284,7 +314,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "SkillVerdict",
     tags: ["agent-skills", "skill-md", "security", "supply-chain", "prompt-injection", "pre-install"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => unpaidDecisionBody({
+    unpaidResponseBody: (context) => unpaidDecisionBody({
       product: "SkillVerdict",
       price: SKILL_PRICE_USD,
       description: "Pay once for a commit-pinned, non-executing security audit before installing a public agent skill.",
@@ -295,7 +325,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       samplePath: "/api/skill/sample",
       skillName: "preflight-agent-skills",
       method: "GET",
-    }),
+    }, context),
   };
   const runRouteConfig: RouteConfig = {
     accepts: {
@@ -309,7 +339,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "RunVerdict",
     tags: ["workflow-failure", "why-failed", "root-cause", "failed-run", "next-action", "github-actions"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => unpaidDecisionBody({
+    unpaidResponseBody: (context) => unpaidDecisionBody({
       product: "RunVerdict",
       price: RUN_PRICE_USD,
       description: "Pay once to learn why a public GitHub Actions run failed and what to do next.",
@@ -320,7 +350,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       samplePath: "/api/run/sample",
       skillName: "diagnose-github-actions",
       method: "GET",
-    }),
+    }, context),
   };
   const flakeRouteConfig: RouteConfig = {
     accepts: {
@@ -334,7 +364,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "FlakeVerdict",
     tags: ["flaky-ci", "should-i-retry", "retry-or-fix", "workflow-attempts", "historical-run-comparison", "github-actions"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => unpaidDecisionBody({
+    unpaidResponseBody: (context) => unpaidDecisionBody({
       product: "FlakeVerdict",
       price: FLAKE_PRICE_USD,
       description: "Pay once to decide whether one public GitHub Actions failure merits exactly one retry or needs a fix.",
@@ -345,7 +375,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       samplePath: PRODUCT_CATALOG.flake.samplePath,
       skillName: "classify-github-flakes",
       method: "GET",
-    }),
+    }, context),
   };
   const mcpDriftRouteConfig: RouteConfig = {
     accepts: {
@@ -359,7 +389,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "MCPDriftVerdict",
     tags: ["mcp", "tools-list", "schema-drift", "breaking-change", "agent-compatibility", "server-upgrade", "required-argument"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => unpaidDecisionBody({
+    unpaidResponseBody: (context) => unpaidDecisionBody({
       product: "MCPDriftVerdict",
       price: MCP_DRIFT_PRICE_USD,
       description: "Pay once to receive the already-computed compatibility verdict for this exact MCP tools/list snapshot pair.",
@@ -370,7 +400,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       samplePath: PRODUCT_CATALOG.mcpdrift.samplePath,
       skillName: "check-mcp-tool-drift",
       method: "POST",
-    }),
+    }, context),
   };
   const middleware = paymentMiddleware(
     {
@@ -476,6 +506,7 @@ app.get("/", (c) =>
     sample: "/api/sample",
     openapi: "/openapi.json",
     llms: "/llms.txt",
+    x402_manifest: "/.well-known/x402",
     agent_manifest: MANIFEST_URL,
     agent_skill: SKILL_URL,
     install_skill: "npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y",
@@ -490,6 +521,15 @@ app.get("/api/skill/sample", (c) => c.json(skillExample));
 app.get("/api/run/sample", (c) => c.json(runExample));
 app.get("/api/flake/sample", (c) => c.json(flakeExample));
 app.get("/api/mcp-drift/sample", (c) => c.json(mcpDriftExample));
+
+app.get("/.well-known/x402", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(createX402ServiceManifest(
+    origin,
+    c.env.X402_NETWORK || TESTNET_NETWORK,
+    c.env.PAY_TO_ADDRESS,
+  ));
+});
 
 app.get("/openapi.json", (c) => {
   const origin = new URL(c.req.url).origin;

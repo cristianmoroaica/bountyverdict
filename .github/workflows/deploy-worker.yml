@@ -120,6 +120,16 @@ jobs:
               if (value.service !== "MCPDriftVerdict" || value.contract_version !== "mcp-drift/1" || value.verdict !== "SAFE_ADDITIVE" || value.coverage?.truncated !== false) process.exit(1);
             });
           '
+          curl --fail --silent --show-error "$PRODUCTION_API_URL/.well-known/x402" | node -e '
+            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+              const value = JSON.parse(body);
+              const expected = ["/api/verdict", "/api/portfolio", "/api/harness", "/api/skill", "/api/run", "/api/flake", "/api/mcp-drift"]
+                .map((path) => `${process.env.PRODUCTION_API_URL}${path}`);
+              if (value.spec !== "agent402-service-manifest/1" || value.version !== 1) process.exit(1);
+              if (JSON.stringify(value.resources) !== JSON.stringify(expected)) process.exit(1);
+              if (value.payment?.x402?.primaryNetwork !== "eip155:8453" || !/^0x[a-fA-F0-9]{40}$/.test(value.payment?.x402?.payTo || "")) process.exit(1);
+            });
+          '
           curl --fail --silent --show-error "$PRODUCTION_API_URL/openapi.json" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const spec = JSON.parse(body);

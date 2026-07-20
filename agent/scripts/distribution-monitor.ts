@@ -915,6 +915,7 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
       agentskill: state.agentskill || null,
       security_directory_pr: state.security_directory_pr || null,
       x402_directory_pr: state.x402_directory_pr || null,
+      agent402: state.agent402 || null,
       x402scout: state.x402scout || null,
       x402scan: state.x402scan || null,
       x402gle: state.x402gle || null,
@@ -1089,6 +1090,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **NEAR Agent Market listings:** ${report.marketplaces?.near?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"}
 - **PayanAgent offers:** ${report.marketplaces?.payan?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"} (${payanAttributedSales} delivered sales, attributed inside direct onchain totals)
 - **Agentic Market automatic directory:** ${report.marketplaces?.agentic_market?.exact_contracts_verified ? `${report.marketplaces.agentic_market.endpoint_count} / 7 exact contracts indexed` : "unavailable or drifted"}${agenticMissing.length ? `; pending ${agenticMissing.join(", ")}` : ""}
+- **Agent402 open router:** ${report.acquisition?.agent402?.listed ? `${report.acquisition.agent402.found_queries ?? 0} / ${report.acquisition.agent402.query_count ?? 7} unbranded buyer queries retrieve the exact route; ${report.acquisition.agent402.top_three_queries ?? 0} top-three` : "unavailable or missing"} (${report.acquisition?.agent402?.listing_source || "unknown source"}; owner-run benchmark, not impressions)
 - **x402scan registry:** ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} paid endpoints (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence only, never a purchase)
 - **x402gle/OpenDexter:** ${report.acquisition?.x402gle?.synthesized_skills ?? "unavailable"} / ${report.acquisition?.x402gle?.expected_products ?? 7} synthesized agent skills (${report.acquisition?.x402gle?.status || "unavailable"}; platform audition/listing activity is never an organic purchase)
 - **Monetize Your Agent:** ${report.acquisition?.monetize_your_agent?.status || "unavailable"} (submission ${report.acquisition?.monetize_your_agent?.submission_id ?? "unavailable"})
@@ -1103,13 +1105,13 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent with exact machine-readable contracts, all seven paid endpoints are registered through x402scan, and six method-compatible endpoints are live on 402 Index. Search reporting now uses four short, unbranded candidate buyer-language queries per product and exposes coverage plus median and worst results; the earlier one-query "best rank" display was removed because it overstated retrieval quality. x402gle publishes the origin's generated host Skill, A2A card, and synthesized product skills; Monetize Your Agent and 402directory submissions are under independent review. Privacy-safe edge capture now separates external 402 challenges from signed payment attempts without retaining IPs, headers, URLs, query values, bodies, geolocation, or user-agent strings. Agentic Market's owner-contaminated quality counters remain excluded from commerce totals. Distribution is the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers.
+The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent with exact machine-readable contracts, all seven paid endpoints are registered through x402scan, and six method-compatible endpoints are live on 402 Index. Agent402 indexing and seven fixed unbranded buyer-language retrieval checks are now monitored separately from organic impressions. Search reporting uses multiple unbranded candidate buyer-language queries and exposes coverage plus rank quality; the earlier one-query "best rank" display was removed because it overstated retrieval quality. x402gle publishes the origin's generated host Skill, A2A card, and synthesized product skills; Monetize Your Agent and 402directory submissions are under independent review. Privacy-safe edge capture now separates external 402 challenges from signed payment attempts without retaining IPs, headers, URLs, query values, bodies, geolocation, or user-agent strings. Agentic Market's owner-contaminated quality counters remain excluded from commerce totals. Distribution is the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers.
 
 ## What is next
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
 2. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
-3. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, all seven x402scan routes, six 402 Index listings, x402gle synthesized skills, Monetize Your Agent and 402directory reviews, Agentic Market's automatic mirror, guarded buyer-request feed, edge challenges, and exact receipt attribution.
+3. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, Agent402 listing and unbranded retrieval, all seven x402scan routes, six 402 Index listings, x402gle synthesized skills, Monetize Your Agent and 402directory reviews, Agentic Market's automatic mirror, guarded buyer-request feed, edge challenges, and exact receipt attribution.
 4. Use the neutral buyer-query benchmark and edge funnel—not best-case phrase ranks—to decide the next distribution change after the frozen experiment. Do not build an eighth product before ten external purchases are recognized.
 
 ## Production health
@@ -1160,6 +1162,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - AgentSkill: ${report.acquisition?.agentskill?.status || (report.acquisition?.agentskill?.listed ? "listed" : "unavailable")}
 - Agent security directory PR: ${report.acquisition?.security_directory_pr?.status || "unavailable"} (${report.acquisition?.security_directory_pr?.url || "not recorded"})
 - x402 ecosystem directory PR: ${report.acquisition?.x402_directory_pr?.status || "unavailable"} (${report.acquisition?.x402_directory_pr?.url || "not recorded"})
+- Agent402 open router: ${report.acquisition?.agent402?.listed ? "listed" : "unavailable"}; exact-route retrieval ${report.acquisition?.agent402?.found_queries ?? 0} / ${report.acquisition?.agent402?.query_count ?? 7}, top-three ${report.acquisition?.agent402?.top_three_queries ?? 0} (${report.acquisition?.agent402?.listing_source || "unknown source"}; fixed owner-run queries are not impressions)
 - x402Scout GET listings: ${report.acquisition?.x402scout?.listed_entries ?? "unavailable"} / ${report.acquisition?.x402scout?.expected_entries ?? 5} (${report.acquisition?.x402scout?.status || "unavailable"}; positions ${Array.isArray(report.acquisition?.x402scout?.catalog_positions) ? report.acquisition.x402scout.catalog_positions.join(", ") : "unavailable"} of ${report.acquisition?.x402scout?.catalog_entries ?? "unavailable"}; ${typeof report.acquisition?.x402scout?.total_query_count === "number" ? report.acquisition.x402scout.total_query_count : "unavailable"} catalog queries)
 - x402scan paid endpoints: ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence is not counted as purchase activity)
 - x402gle/OpenDexter synthesized skills: ${report.acquisition?.x402gle?.synthesized_skills ?? "unavailable"} / ${report.acquisition?.x402gle?.expected_products ?? 7} (${report.acquisition?.x402gle?.status || "unavailable"}; public host Skill and A2A card: ${report.acquisition?.x402gle?.listed ? "available" : "unavailable"})
@@ -1237,7 +1240,7 @@ let agenticMarket: Record<string, unknown> = {};
 let funnel: Record<string, unknown> = {};
 
 try {
-  const [root, sample, portfolioSample, harnessSample, skillSample, runSample, flakeSample, mcpDriftSample, openapi, llms] = await Promise.all([
+  const [root, sample, portfolioSample, harnessSample, skillSample, runSample, flakeSample, mcpDriftSample, x402Manifest, openapi, llms] = await Promise.all([
     requireStatus("/"),
     requireStatus("/api/sample"),
     requireStatus("/api/portfolio/sample"),
@@ -1246,10 +1249,11 @@ try {
     requireStatus("/api/run/sample"),
     requireStatus("/api/flake/sample"),
     requireStatus("/api/mcp-drift/sample"),
+    requireStatus("/.well-known/x402"),
     requireStatus("/openapi.json"),
     requireStatus("/llms.txt"),
   ]);
-  health = { root, sample, portfolio_sample: portfolioSample, harness_sample: harnessSample, skill_sample: skillSample, run_sample: runSample, flake_sample: flakeSample, mcp_drift_sample: mcpDriftSample, openapi, llms };
+  health = { root, sample, portfolio_sample: portfolioSample, harness_sample: harnessSample, skill_sample: skillSample, run_sample: runSample, flake_sample: flakeSample, mcp_drift_sample: mcpDriftSample, x402_manifest: x402Manifest, openapi, llms };
   // Probe protected routes sequentially. A fresh deployment may place concurrent
   // requests on separate cold isolates, causing redundant facilitator syncs and
   // a false whole-suite timeout. Incremental assignment also preserves the

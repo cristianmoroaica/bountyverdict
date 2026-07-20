@@ -78,6 +78,26 @@ for (const preview of cases) {
     assert.equal(body.payment.network, "Base");
     assert.equal(body.payment.asset, "USDC");
     assert.equal(body.payment.inspect_challenge_before_signing, true);
+    assert.match(body.payment.max_amount_atomic, /^\d+$/);
+    assert.equal(body.payment.exact_request.method, preview.method);
+    assert.match(body.payment.exact_request.url, new RegExp(preview.url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    if (preview.method === "POST") assert.deepEqual(body.payment.exact_request.body, preview.body);
+    assert.equal(body.payment.agentic_wallet.executable, "npx");
+    assert.deepEqual(body.payment.agentic_wallet.argv.slice(0, 4), [
+      "awal@2.12.0",
+      "x402",
+      "pay",
+      body.payment.exact_request.url,
+    ]);
+    assert.deepEqual(body.payment.agentic_wallet.argv.slice(-3), [
+      "--max-amount",
+      body.payment.max_amount_atomic,
+      "--json",
+    ]);
+    assert.equal(body.payment.agentic_wallet.execute_as_argument_vector, true);
+    assert.equal(body.payment.agentic_wallet.do_not_join_into_shell_string, true);
+    assert.equal(body.payment.retry_semantics.payment_header, "Payment-Signature");
+    assert.equal(body.payment.retry_semantics.never_raise_max_amount_without_new_authorization, true);
   });
 }
 
@@ -115,5 +135,8 @@ test("MCPDriftVerdict unpaid response identifies the compatibility boundary", as
   assert.deepEqual(body.decision_returned, ["UNCHANGED", "SAFE_ADDITIVE", "REVIEW", "INCONCLUSIVE", "BREAKING", "SECURITY_REGRESSION"]);
   assert.match(body.not_for, /Malware or prompt-injection scanning/);
   assert.match(body.payment.request_binding, /exact validated JSON body/);
+  assert.deepEqual(body.payment.exact_request.body, mcpDriftExampleInput);
+  assert.ok(body.payment.agentic_wallet.argv.includes(JSON.stringify(mcpDriftExampleInput)));
+  assert.equal(body.payment.max_amount_atomic, "20000");
   assert.equal(body.skill, "https://cristianmoroaica.github.io/bountyverdict/skills/check-mcp-tool-drift/SKILL.md");
 });

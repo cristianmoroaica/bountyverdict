@@ -81,3 +81,16 @@ Registered the six probe-compatible paid routes on 402 Index at no cost. All six
 Expanded the edge collector so every legitimate hit can teach us where the funnel breaks without turning visitors into trackable identities. It now retains aggregate discovery surfaces, product and product×source funnels, coarse referral channel and client class, GET input readiness, response preference, x402 v2 versus legacy payment-header generation, HTTP outcome, and bounded hourly/daily trends. It also recognizes probes for OpenAPI, `llms.txt`, free samples, `/.well-known/x402`, `/.well-known/agent.json`, `/SKILL.md`, and `/agent-manifest.json`, including failed convention probes that reveal what autonomous crawlers expect. Raw URLs, query values, bodies, headers, payment payloads, IPs, geolocation, and full user-agent strings are discarded.
 
 Preserved pre-upgrade aggregate counts without inventing dimensions that were never observed. The monitor distinguishes lifetime external/unattributed challenges from post-upgrade classifiable activity and diagnoses the current stage as no reach, discovery without a paid-route visit, 402 exposure without a signed attempt, signed-payment friction, or successful signed conversion. Anonymous crawler probes remain reach evidence only; only an attributable non-owner Base settlement becomes a genuine purchase.
+
+## 2026-07-21 — Turning hits into funnel evidence
+
+- Genuine external purchases: **0 / 10**
+- Customer revenue: **$0.00**
+- Tracked acquisition costs: **$1.01**
+- Current recognized-USDC profit before historic gas conversion: **-$1.01**
+
+Followed the first observed `Agent402/1.0` discovery sequence instead of treating it as a vanity hit. Agent402 had already found the origin through its OpenAPI fallback and reported it healthy and routable. A fixed seven-query, unbranded benchmark retrieved every exact paid route, with five in the top three; the individual ranks were 2, 1, 6, 3, 1, 5, and 1. These are owner-run retrieval checks, not organic search impressions, buyer counts, or purchases.
+
+Published an explicit `agent402-service-manifest/1` at `/.well-known/x402` with exactly the seven paid resource URLs, public identity, OpenAPI and skill discovery links, Base USDC payment metadata, and no secret material. The directory monitor now tracks Agent402 listing source, health, routability, and exact-route ranks while keeping its own benchmark traffic out of demand and revenue accounting.
+
+Used the edge funnel to identify the closest conversion failure: a conservative uncontaminated baseline of 15 external-or-unattributed valid 402 challenges had produced zero `Payment-Signature` attempts and zero customer settlements, with no endpoint-error signal. Every existing product's unpaid response now carries the caller's exact method, URL, validated body when applicable, exact atomic USDC cap, and an `npx` plus `awal@2.12.0` argument vector that must be executed directly rather than joined into a shell string. It also states the signed retry header, expected success status, and prohibition on silently raising the spend cap. This changes no price, product, external system, or frozen SkillVerdict positioning; it makes the already-observed challenge-to-payment step executable and measurable.
