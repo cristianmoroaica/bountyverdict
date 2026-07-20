@@ -188,6 +188,8 @@ test("agent landing page exposes all seven self-serve products", async () => {
   assert.match(page, /npx awal@2\.12\.0 x402 details/);
   assert.match(page, /npx awal@2\.12\.0 x402 pay/);
   assert.match(page, /--max-amount/);
+  assert.match(page, /blob\/main\/SECURITY\.md/);
+  assert.match(page, /blob\/main\/PRIVACY\.md/);
   for (const product of ["BountyVerdict", "Portfolio", "HarnessVerdict", "SkillVerdict", "RunVerdict", "FlakeVerdict", "MCPDriftVerdict"]) {
     assert.match(page, new RegExp(product));
   }
@@ -195,6 +197,22 @@ test("agent landing page exposes all seven self-serve products", async () => {
     assert.match(page, new RegExp(`\\$${price}`));
   }
   assert.equal((page.match(/https:\/\/skills\.sh\/cristianmoroaica\/bountyverdict\//g) || []).length, 7);
+});
+
+test("public trust disclosures cover payment, retention, and private reporting", async () => {
+  const security = await readFile(new URL("../SECURITY.md", import.meta.url), "utf8");
+  const privacy = await readFile(new URL("../PRIVACY.md", import.meta.url), "utf8");
+  const securityTxt = await readFile(new URL("../security.txt", import.meta.url), "utf8");
+  assert.match(security, /private vulnerability reporting/);
+  assert.match(security, /does not execute repository code/);
+  assert.match(security, /x402 v2 on Base USDC/);
+  assert.match(privacy, /does not write customer request bodies/);
+  for (const provider of ["Cloudflare", "GitHub", "Coinbase Developer Platform", "Base"]) {
+    assert.match(privacy, new RegExp(provider));
+  }
+  assert.match(privacy, /does not sell personal data/);
+  assert.match(securityTxt, /^Contact: https:\/\/github\.com\/cristianmoroaica\/bountyverdict\/security\/advisories\/new$/m);
+  assert.match(securityTxt, /^Canonical: https:\/\/cristianmoroaica\.github\.io\/bountyverdict\/security\.txt$/m);
 });
 
 test("skills.sh groups every published skill exactly once", async () => {

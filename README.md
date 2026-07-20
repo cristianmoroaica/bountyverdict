@@ -49,6 +49,8 @@ See [`agent/README.md`](agent/README.md) for the protocol, local verification, a
 
 The launch prices and differentiation are grounded in a live Bazaar comparison documented in [`docs/MARKET_VALIDATION.md`](docs/MARKET_VALIDATION.md). Agents and crawlers can read [`llms.txt`](llms.txt) before deciding whether a product is relevant.
 
+Review the public [security policy](SECURITY.md) and [privacy/data-handling disclosure](PRIVACY.md) before submitting data or authorizing payment. Vulnerabilities can be reported privately through GitHub without opening a public issue.
+
 ## Free human bounty checker
 
 Visit [BountyVerdict](https://cristianmoroaica.github.io/bountyverdict/) and paste a public GitHub issue URL. The browser makes read-only requests directly to GitHub's public API without an account, backend, analytics, or data storage. It checks issue and repository state, competing pull requests, failed-attempt swarms, maintainer rejection, and reward-withdrawal language. Every important result links to public evidence; no result guarantees a reward, acceptance, merge, or payment.
