@@ -115,10 +115,10 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
   const resources = merchant.resources || [];
 
   const searches = await Promise.all([
-    "BountyVerdict GitHub bounty due diligence",
-    "HarnessVerdict AGENTS.md CLAUDE.md repository instruction audit",
-    "SkillVerdict SKILL.md security supply chain pre-install audit",
-    "RunVerdict GitHub Actions failed run logs root cause diagnosis",
+    "GitHub bounty due diligence stale issue competing pull requests AI contribution policy",
+    "AGENTS.md CLAUDE.md repository instruction audit stale paths portability",
+    "agent SKILL.md security supply chain pre-install audit credential exfiltration",
+    "GitHub Actions failed run job logs root cause diagnosis retry",
   ].map(async (query) => {
     const searchUrl = new URL(`${CDP_DISCOVERY}/search`);
     searchUrl.searchParams.set("query", query);
