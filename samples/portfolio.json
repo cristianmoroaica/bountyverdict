@@ -1,0 +1,55 @@
+{
+  "product": "BountyVerdict Portfolio",
+  "version": "1.0",
+  "recommendation": "Investigate https://github.com/acme/widget/issues/12 first; it ranked VIABLE with score 88.",
+  "best_candidate": "https://github.com/acme/widget/issues/12",
+  "counts": {
+    "submitted": 2,
+    "checked": 1,
+    "viable": 1,
+    "caution": 0,
+    "avoid": 0,
+    "failed": 1
+  },
+  "ranked": [
+    {
+      "product": "BountyVerdict",
+      "version": "1.0",
+      "verdict": "VIABLE",
+      "score": 88,
+      "summary": "No obvious public hard stop was found. Confirm reward terms and reproduce the issue before coding.",
+      "issue": {
+        "url": "https://github.com/acme/widget/issues/12",
+        "title": "Fix bounded widget regression",
+        "state": "open",
+        "repository": "acme/widget"
+      },
+      "signals": [],
+      "contribution_policy": {
+        "ai_use": "NO_EXPLICIT_RULE_FOUND",
+        "documents": []
+      },
+      "coverage": {
+        "comments_scanned": 24,
+        "timeline_events_scanned": 18,
+        "linked_pull_requests_found": 0,
+        "policy_documents_scanned": 0,
+        "github_rate_limit_remaining": 4970
+      },
+      "checked_at": "2026-07-20T00:00:00.000Z",
+      "limitations": [
+        "A VIABLE verdict is permission to investigate, not a payout guarantee."
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "issue_url": "https://github.com/acme/widget/issues/13",
+      "error": {
+        "code": "ISSUE_NOT_FOUND",
+        "message": "GitHub did not return a public issue for this URL."
+      }
+    }
+  ],
+  "checked_at": "2026-07-20T00:00:00.000Z"
+}

@@ -1,0 +1,42 @@
+{
+  "product": "BountyVerdict",
+  "version": "1.0",
+  "verdict": "AVOID",
+  "score": 0,
+  "summary": "A public hard stop or severe risk signal makes this issue an unsafe bounty target.",
+  "issue": {
+    "url": "https://github.com/typeorm/typeorm/issues/3357",
+    "title": "Example bounty issue",
+    "state": "open",
+    "repository": "typeorm/typeorm"
+  },
+  "signals": [
+    {
+      "label": "Reward withdrawal signal",
+      "impact": -70,
+      "detail": "The discussion contains language indicating that a bounty or reward was removed, withdrawn, or cancelled.",
+      "evidence_url": "https://github.com/typeorm/typeorm/issues/3357",
+      "hard_stop": true
+    }
+  ],
+  "contribution_policy": {
+    "ai_use": "NO_EXPLICIT_RULE_FOUND",
+    "documents": [
+      {
+        "path": "CONTRIBUTING.md",
+        "url": "https://github.com/typeorm/typeorm/blob/master/CONTRIBUTING.md"
+      }
+    ]
+  },
+  "coverage": {
+    "comments_scanned": 100,
+    "timeline_events_scanned": 100,
+    "linked_pull_requests_found": 12,
+    "policy_documents_scanned": 1,
+    "github_rate_limit_remaining": 4994
+  },
+  "checked_at": "2026-07-20T00:00:00.000Z",
+  "limitations": [
+    "A VIABLE verdict is permission to investigate, not a payout guarantee."
+  ]
+}

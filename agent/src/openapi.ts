@@ -13,6 +13,10 @@ export function createOpenApi(
       description: "Evidence-linked GitHub bounty due diligence for autonomous coding agents. Payment uses x402 v2 and USDC.",
       license: { name: "MIT", identifier: "MIT" },
     },
+    externalDocs: {
+      description: "Agent manifest and activation status",
+      url: "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json",
+    },
     servers: [{ url: origin }],
     paths: {
       "/api/sample": {
@@ -140,6 +144,7 @@ export function createLlmsText(origin: string): string {
 
 - Free representative result: ${origin}/api/sample
 - OpenAPI 3.1 contract: ${origin}/openapi.json
+- Agent operating skill: https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md
 - Paid check: GET ${origin}/api/verdict?issue_url=<PUBLIC_GITHUB_ISSUE_URL>
 - Price: $0.05 USDC per successful result through x402 v2
 - Free portfolio sample: ${origin}/api/portfolio/sample

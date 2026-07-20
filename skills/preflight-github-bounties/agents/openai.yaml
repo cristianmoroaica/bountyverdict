@@ -1,0 +1,4 @@
+interface:
+  display_name: "Preflight GitHub Bounties"
+  short_description: "Rank bounty risks before spending compute"
+  default_prompt: "Use $preflight-github-bounties to assess these GitHub bounty issues before starting work."

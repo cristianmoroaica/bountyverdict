@@ -33,6 +33,8 @@ const TESTNET_FACILITATOR = "https://x402.org/facilitator";
 const CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402";
 const PRODUCT_URL = "https://cristianmoroaica.github.io/bountyverdict/";
 const ICON_URL = `${PRODUCT_URL}favicon.svg`;
+const MANIFEST_URL = `${PRODUCT_URL}agent-manifest.json`;
+const SKILL_URL = `${PRODUCT_URL}skills/preflight-github-bounties/SKILL.md`;
 
 const middlewareCache = new Map<string, MiddlewareHandler>();
 
@@ -157,6 +159,8 @@ app.get("/", (c) =>
     sample: "/api/sample",
     openapi: "/openapi.json",
     llms: "/llms.txt",
+    agent_manifest: MANIFEST_URL,
+    agent_skill: SKILL_URL,
     human_checker: PRODUCT_URL,
   }),
 );

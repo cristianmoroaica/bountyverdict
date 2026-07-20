@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "product": "BountyVerdict",
+  "status": "awaiting_production",
+  "production_api": null,
+  "marketplace": "Coinbase x402 Bazaar",
+  "network": "eip155:8453",
+  "currency": "USDC",
+  "products": [
+    {
+      "name": "BountyVerdict",
+      "method": "GET",
+      "path": "/api/verdict",
+      "price_usdc": "0.05",
+      "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/verdict.json"
+    },
+    {
+      "name": "BountyVerdict Portfolio",
+      "method": "POST",
+      "path": "/api/portfolio",
+      "price_usdc": "0.40",
+      "minimum_candidates": 2,
+      "maximum_candidates": 10,
+      "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/portfolio.json"
+    }
+  ],
+  "skill": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
+  "source": "https://github.com/cristianmoroaica/bountyverdict/tree/main/agent",
+  "updated_at": "2026-07-20T00:00:00.000Z"
+}

@@ -25,7 +25,7 @@ No account, token, backend, analytics, or data storage is used. Your browser mak
 
 The `agent/` directory contains the paid, machine-readable product surface. It is a Cloudflare Worker with two x402-protected products: a **$0.05 USDC** fresh verdict and a **$0.40 USDC** portfolio that ranks 2–10 candidates. Both declare strict input/output schemas through the Bazaar discovery extension. The paid checks also read official contribution documents for explicit AI-work bans or disclosure requirements.
 
-Agents can inspect free single and portfolio samples, see exact prices in the HTTP 402 response, then independently decide whether to buy. Invalid inputs and upstream failures return an error without settlement.
+Agents can inspect free single and portfolio samples, see exact prices in the HTTP 402 response, then independently decide whether to buy. Invalid inputs and upstream failures return an error without settlement. The public [`agent-manifest.json`](agent-manifest.json) is the authoritative activation record, and [`skills/preflight-github-bounties/SKILL.md`](skills/preflight-github-bounties/SKILL.md) provides a guarded purchase workflow for agent consumers.
 
 See [`agent/README.md`](agent/README.md) for the protocol, local verification, and deployment configuration.
 
