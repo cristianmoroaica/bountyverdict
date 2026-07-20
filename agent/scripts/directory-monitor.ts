@@ -11,6 +11,11 @@ const x402DirectoryPrUrl = "https://github.com/xpaysh/awesome-x402/pull/934";
 const x402ScoutUrl = "https://x402scout.com/catalog";
 const productionOrigin = "https://bountyverdict-agent-production.mimirslab.workers.dev";
 const x402ScanUrl = "https://www.x402scan.com";
+const x402gleHostUrl = "https://x402gle.com/servers/bountyverdict-agent-production.mimirslab.workers.dev";
+const monetizeYourAgentApi = "https://monetizeyouragent.fun/api/v1";
+const monetizeYourAgentSubmissionId = 234;
+const directory402Api = "https://402directory.com/api";
+const directory402SubmissionIds = Object.freeze([50, 51, 52, 53, 54, 55, 56]);
 const x402ScanResources = Object.freeze([
   { url: `${productionOrigin}/api/verdict`, method: "GET" },
   { url: `${productionOrigin}/api/portfolio`, method: "POST" },
@@ -260,6 +265,119 @@ async function x402ScanStatus(): Promise<Record<string, unknown>> {
   }
 }
 
+async function x402gleStatus(): Promise<Record<string, unknown>> {
+  const skillsUrl = `${x402gleHostUrl}/skills.json`;
+  try {
+    const response = await fetch(skillsUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) {
+      return { url: x402gleHostUrl, skills_url: skillsUrl, http_status: response.status, listed: false, status: "unexpected_response" };
+    }
+    const payload = await response.json() as {
+      ok?: unknown;
+      host?: unknown;
+      skill_count?: unknown;
+      skills?: Array<Record<string, unknown>>;
+    };
+    const skills = Array.isArray(payload.skills) ? payload.skills : [];
+    const names = skills.map(({ skill_name }) => skill_name).filter((value): value is string => typeof value === "string");
+    const valid = payload.ok === true && payload.host === new URL(productionOrigin).host &&
+      Number(payload.skill_count) === skills.length && new Set(names).size === names.length;
+    if (!valid) throw new Error("x402gle returned malformed or mismatched skill telemetry.");
+    return {
+      url: x402gleHostUrl,
+      skills_url: skillsUrl,
+      skill_url: `${x402gleHostUrl}/SKILL.md`,
+      agent_card_url: `${x402gleHostUrl}/.well-known/agent.json`,
+      http_status: response.status,
+      listed: skills.length > 0,
+      status: skills.length >= 7 ? "listed" : skills.length ? "listed_partial" : "missing",
+      expected_products: 7,
+      synthesized_skills: skills.length,
+      skill_names: names,
+      measurement: "public_agent_skill_listing_not_customer_purchase",
+    };
+  } catch (error) {
+    return {
+      url: x402gleHostUrl,
+      skills_url: skillsUrl,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function monetizeYourAgentStatus(): Promise<Record<string, unknown>> {
+  const apiUrl = `${monetizeYourAgentApi}/entries?limit=250`;
+  try {
+    const response = await fetch(apiUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) {
+      return { url: "https://monetizeyouragent.fun/", api_url: apiUrl, http_status: response.status, listed: false, status: "unexpected_response" };
+    }
+    const payload = await response.json() as { data?: Array<Record<string, unknown>> };
+    if (!Array.isArray(payload.data)) throw new Error("Monetize Your Agent returned malformed directory telemetry.");
+    const entry = payload.data.find(({ name, url }) =>
+      name === "BountyVerdict Agent Decision APIs" && url === productionOrigin
+    );
+    return {
+      url: "https://monetizeyouragent.fun/",
+      api_url: apiUrl,
+      http_status: response.status,
+      listed: Boolean(entry),
+      status: entry ? String(entry.status || "listed") : "pending_review",
+      submission_id: monetizeYourAgentSubmissionId,
+      entry: entry || null,
+      measurement: "public_directory_listing_not_customer_purchase",
+    };
+  } catch (error) {
+    return {
+      url: "https://monetizeyouragent.fun/",
+      api_url: apiUrl,
+      listed: false,
+      status: "request_failed",
+      submission_id: monetizeYourAgentSubmissionId,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function directory402Status(): Promise<Record<string, unknown>> {
+  const apiUrl = `${directory402Api}/directory`;
+  try {
+    const response = await fetch(apiUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) {
+      return { url: "https://www.402directory.com/", api_url: apiUrl, http_status: response.status, listed: false, status: "unexpected_response" };
+    }
+    const payload = await response.json() as { entries?: Array<Record<string, unknown>> };
+    if (!Array.isArray(payload.entries)) throw new Error("402directory returned malformed directory telemetry.");
+    const expected = new Set(x402ScanResources.map(({ url }) => url));
+    const entries = payload.entries.filter(({ endpoint }) => expected.has(String(endpoint)));
+    const exact = entries.length === expected.size && new Set(entries.map(({ endpoint }) => endpoint)).size === expected.size;
+    return {
+      url: "https://www.402directory.com/",
+      api_url: apiUrl,
+      http_status: response.status,
+      listed: exact,
+      status: exact ? "listed" : entries.length ? "partial" : "pending_review",
+      expected_endpoints: expected.size,
+      listed_endpoints: entries.length,
+      submission_ids: directory402SubmissionIds,
+      entries,
+      measurement: "public_directory_listing_not_customer_purchase",
+    };
+  } catch (error) {
+    return {
+      url: "https://www.402directory.com/",
+      api_url: apiUrl,
+      listed: false,
+      status: "request_failed",
+      expected_endpoints: x402ScanResources.length,
+      submission_ids: directory402SubmissionIds,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function submitAgentSkill(): Promise<Record<string, unknown>> {
   try {
     const response = await fetch("https://agentskill.sh/api/skills/submit", {
@@ -300,13 +418,26 @@ try {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 }
 
-const [skills, agenttool, securityDirectoryPr, x402DirectoryPr, x402scout, x402scan] = await Promise.all([
+const [
+  skills,
+  agenttool,
+  securityDirectoryPr,
+  x402DirectoryPr,
+  x402scout,
+  x402scan,
+  x402gle,
+  monetizeYourAgent,
+  directory402,
+] = await Promise.all([
   skillsShStatus(),
   agentToolStatus(),
   githubPrStatus("LLMSecurity", "awesome-agent-skills-security", 38, securityDirectoryPrUrl),
   githubPrStatus("xpaysh", "awesome-x402", 934, x402DirectoryPrUrl),
   x402ScoutStatus(),
   x402ScanStatus(),
+  x402gleStatus(),
+  monetizeYourAgentStatus(),
+  directory402Status(),
 ]);
 if (Number(x402scan.listed_resources || 0) > 0) {
   x402scan.exposed_at = previous.x402scan?.exposed_at || new Date().toISOString();
@@ -332,6 +463,9 @@ const state = {
   x402_directory_pr: x402DirectoryPr,
   x402scout,
   x402scan,
+  x402gle,
+  monetize_your_agent: monetizeYourAgent,
+  directory_402: directory402,
 };
 await atomicWrite(stateFile, `${JSON.stringify(state, null, 2)}\n`);
 console.log(JSON.stringify(state, null, 2));

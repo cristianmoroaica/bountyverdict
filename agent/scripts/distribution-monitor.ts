@@ -847,6 +847,9 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
       x402_directory_pr: state.x402_directory_pr || null,
       x402scout: state.x402scout || null,
       x402scan: state.x402scan || null,
+      x402gle: state.x402gle || null,
+      monetize_your_agent: state.monetize_your_agent || null,
+      directory_402: state.directory_402 || null,
       note: "Anonymous install telemetry is an acquisition signal, not proof of a genuine buyer or customer purchase.",
     };
   } catch (error) {
@@ -914,6 +917,9 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **PayanAgent offers:** ${report.marketplaces?.payan?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"} (${payanAttributedSales} delivered sales, attributed inside direct onchain totals)
 - **Agentic Market automatic directory:** ${report.marketplaces?.agentic_market?.exact_contracts_verified ? `${report.marketplaces.agentic_market.endpoint_count} / 7 exact contracts indexed` : "unavailable or drifted"}${agenticMissing.length ? `; pending ${agenticMissing.join(", ")}` : ""}
 - **x402scan registry:** ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} paid endpoints (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence only, never a purchase)
+- **x402gle/OpenDexter:** ${report.acquisition?.x402gle?.synthesized_skills ?? "unavailable"} / ${report.acquisition?.x402gle?.expected_products ?? 7} synthesized agent skills (${report.acquisition?.x402gle?.status || "unavailable"}; platform audition/listing activity is never an organic purchase)
+- **Monetize Your Agent:** ${report.acquisition?.monetize_your_agent?.status || "unavailable"} (submission ${report.acquisition?.monetize_your_agent?.submission_id ?? "unavailable"})
+- **402directory:** ${report.acquisition?.directory_402?.listed_endpoints ?? 0} / ${report.acquisition?.directory_402?.expected_endpoints ?? 7} endpoints listed (${report.acquisition?.directory_402?.status || "unavailable"}; submissions ${Array.isArray(report.acquisition?.directory_402?.submission_ids) ? report.acquisition.directory_402.submission_ids.join(", ") : "unavailable"})
 - **skills.sh anonymous CLI installs:** ${Number.isFinite(Number(totalSkillInstalls)) ? Number(totalSkillInstalls) : "unavailable"} (acquisition signal only; 8-install baseline on 2026-07-20)
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
 - **Unrelated incoming transfers:** ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
@@ -923,13 +929,13 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent with exact machine-readable contracts, and all seven paid endpoints are registered through x402scan's OpenAPI discovery path. A controlled literal-intent copy pass moved 14 of 15 measured marketplace-query cells to #1 while preserving every ID, price, schema, and endpoint; the remaining cell improved from #7 to #3. Direct x402/OpenAPI discovery metadata for BountyVerdict and MCPDriftVerdict now leads with their measured buyer phrases, ready for the next genuine settlement-driven Coinbase refresh without an owner purchase. Agentic Market mirrors settled CDP Bazaar endpoints automatically; its owner-contaminated quality counters are excluded from commerce totals. SkillVerdict remains isolated from independently registered channels that require separate seller fulfillment. Distribution is now the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers. Owner-funded checks remain excluded.
+The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent with exact machine-readable contracts, and all seven paid endpoints are registered through x402scan's OpenAPI discovery path. A controlled literal-intent copy pass moved 14 of 15 measured marketplace-query cells to #1 while preserving every ID, price, schema, and endpoint; the remaining cell improved from #7 to #3. Direct x402/OpenAPI discovery metadata for BountyVerdict and MCPDriftVerdict now leads with their measured buyer phrases, ready for the next genuine settlement-driven Coinbase refresh without an owner purchase. x402gle now publishes the origin's generated host Skill, A2A card, and synthesized product skills; Monetize Your Agent and 402directory submissions are under independent review. Agentic Market mirrors settled CDP Bazaar endpoints automatically; its owner-contaminated quality counters are excluded from commerce totals. SkillVerdict remains isolated from independently registered channels that require separate seller fulfillment. Distribution is now the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers. Owner-funded checks and platform validation activity remain excluded.
 
 ## What is next
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
 2. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
-3. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, all seven x402scan routes, Agentic Market's automatic mirror, guarded buyer-request feed, exact receipt attribution, and Coinbase Bazaar while keeping SkillVerdict out of separately fulfilled channels until its isolated experiment ends.
+3. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, all seven x402scan routes, x402gle synthesized skills, Monetize Your Agent and 402directory reviews, Agentic Market's automatic mirror, guarded buyer-request feed, exact receipt attribution, and Coinbase Bazaar while keeping SkillVerdict out of separately fulfilled channels until its isolated experiment ends.
 4. Hold the newly ranked marketplace copy and all prices stable while monitoring genuine calls and exact-fit buyer requests. Do not build an eighth product before ten external purchases are recognized.
 
 ## Production health
@@ -965,6 +971,9 @@ ${errors}
 - x402 ecosystem directory PR: ${report.acquisition?.x402_directory_pr?.status || "unavailable"} (${report.acquisition?.x402_directory_pr?.url || "not recorded"})
 - x402Scout GET listings: ${report.acquisition?.x402scout?.listed_entries ?? "unavailable"} / ${report.acquisition?.x402scout?.expected_entries ?? 5} (${report.acquisition?.x402scout?.status || "unavailable"}; positions ${Array.isArray(report.acquisition?.x402scout?.catalog_positions) ? report.acquisition.x402scout.catalog_positions.join(", ") : "unavailable"} of ${report.acquisition?.x402scout?.catalog_entries ?? "unavailable"}; ${typeof report.acquisition?.x402scout?.total_query_count === "number" ? report.acquisition.x402scout.total_query_count : "unavailable"} catalog queries)
 - x402scan paid endpoints: ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence is not counted as purchase activity)
+- x402gle/OpenDexter synthesized skills: ${report.acquisition?.x402gle?.synthesized_skills ?? "unavailable"} / ${report.acquisition?.x402gle?.expected_products ?? 7} (${report.acquisition?.x402gle?.status || "unavailable"}; public host Skill and A2A card: ${report.acquisition?.x402gle?.listed ? "available" : "unavailable"})
+- Monetize Your Agent suite entry: ${report.acquisition?.monetize_your_agent?.status || "unavailable"} (submission ${report.acquisition?.monetize_your_agent?.submission_id ?? "unavailable"})
+- 402directory endpoints: ${report.acquisition?.directory_402?.listed_endpoints ?? 0} / ${report.acquisition?.directory_402?.expected_endpoints ?? 7} (${report.acquisition?.directory_402?.status || "unavailable"}; seven review submissions are not purchases)
 - the402 listings: ${report.marketplaces?.the402?.service_count ?? "unavailable"} / 6 (${report.marketplaces?.the402?.webhook_healthy ? "signed webhook healthy" : "unavailable"}; SkillVerdict excluded during isolated experiment)
 - NEAR Agent Market listings: ${report.marketplaces?.near?.service_count ?? "unavailable"} / 6 (automated JSON fulfillment; SkillVerdict excluded)
 - PayanAgent offers: ${report.marketplaces?.payan?.offer_count ?? "unavailable"} / 6 (Base x402 proxy; SkillVerdict excluded)
