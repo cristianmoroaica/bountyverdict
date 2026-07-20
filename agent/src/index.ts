@@ -42,6 +42,13 @@ import {
   runFunctionalCanary,
   verifyCanaryAuthorization,
 } from "./canary.ts";
+import {
+  fulfillThe402Product,
+  parseThe402JobDispatch,
+  parseThe402ServiceMap,
+  reportThe402Result,
+  verifyThe402Webhook,
+} from "./the402.ts";
 
 interface Env {
   PAY_TO_ADDRESS?: string;
@@ -51,6 +58,9 @@ interface Env {
   CDP_API_KEY_ID?: string;
   CDP_API_KEY_SECRET?: string;
   CANARY_TOKEN?: string;
+  THE402_API_KEY?: string;
+  THE402_WEBHOOK_SECRET?: string;
+  THE402_SERVICE_MAP?: string;
   CANARY_RATE_LIMITER?: RateLimit;
   FLAKE_RATE_LIMITER?: RateLimit;
 }
@@ -482,6 +492,64 @@ app.get("/openapi.json", (c) => {
 app.get("/llms.txt", (c) => {
   const origin = new URL(c.req.url).origin;
   return c.text(createLlmsText(origin), 200, { "Content-Type": "text/plain; charset=utf-8" });
+});
+
+app.post("/api/the402/webhook", async (c) => {
+  c.header("Cache-Control", "no-store");
+  c.header("X-Robots-Tag", "noindex, nofollow");
+  const declaredLength = c.req.header("Content-Length");
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > 65_536) {
+    return c.json({ error: "NOT_FOUND" }, 404);
+  }
+  const rawBody = await c.req.text();
+  const verified = await verifyThe402Webhook({
+    raw_body: rawBody,
+    api_key_header: c.req.header("X-Platform-Secret"),
+    signature_header: c.req.header("X-Webhook-Signature"),
+    timestamp_header: c.req.header("X-Webhook-Timestamp"),
+    api_key: c.env.THE402_API_KEY,
+    webhook_secret: c.env.THE402_WEBHOOK_SECRET,
+  });
+  if (!verified || !c.env.THE402_API_KEY) return c.json({ error: "NOT_FOUND" }, 404);
+
+  let job;
+  try {
+    job = parseThe402JobDispatch(rawBody, parseThe402ServiceMap(c.env.THE402_SERVICE_MAP));
+  } catch (error) {
+    console.error("Rejected authenticated the402 webhook:", error instanceof Error ? error.message : "invalid payload");
+    return c.json({ error: "INVALID_WEBHOOK" }, 400);
+  }
+  if (!job) return c.json({ accepted: true, action: "ignored" });
+
+  const apiKey = c.env.THE402_API_KEY;
+  c.executionCtx.waitUntil((async () => {
+    try {
+      const deliverables = await fulfillThe402Product(job, {
+        GITHUB_TOKEN: c.env.GITHUB_TOKEN,
+        FLAKE_RATE_LIMITER: c.env.FLAKE_RATE_LIMITER,
+      });
+      await reportThe402Result({
+        callback_url: job.callback_url,
+        api_key: apiKey,
+        status: "completed",
+        deliverables,
+        notes: `${job.product} fulfilled automatically by BountyVerdict.`,
+      });
+    } catch (error) {
+      console.error(`the402 ${job.product} fulfillment failed:`, error instanceof Error ? error.message : "unknown error");
+      try {
+        await reportThe402Result({
+          callback_url: job.callback_url,
+          api_key: apiKey,
+          status: "failed",
+          notes: "BountyVerdict could not fulfill this request; the input may be invalid or upstream capacity unavailable.",
+        });
+      } catch (callbackError) {
+        console.error("the402 failure callback failed:", callbackError instanceof Error ? callbackError.message : "unknown error");
+      }
+    }
+  })());
+  return c.json({ accepted: true, job_id: job.job_id });
 });
 
 app.get("/_internal/canary/:product", async (c) => {
