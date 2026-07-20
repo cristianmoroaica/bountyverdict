@@ -13,6 +13,7 @@ export type TrustedFunnelBaseline = {
   funnel_capture_started_at: string;
   funnel_schema_version: number;
   funnel_observed_through: string;
+  cohort_capture_started_at: string;
   counters: {
     external_discovery_requests: number;
     external_402_challenges: number;
@@ -25,6 +26,8 @@ export type TrustedFunnelBaseline = {
   by_discovery_channel: FunnelSnapshot["by_discovery_channel"];
   by_discovery_client_class: FunnelSnapshot["by_discovery_client_class"];
   external_discovery_by_surface: Record<string, number>;
+  by_cohort: FunnelSnapshot["by_cohort"];
+  by_discovery_cohort: FunnelSnapshot["by_discovery_cohort"];
 };
 
 function subtractOwner(total: number, owner: number, label: string): number {
@@ -73,6 +76,7 @@ export function captureTrustedFunnelBaseline(
     funnel_capture_started_at: state.capture_started_at,
     funnel_schema_version: state.schema_version,
     funnel_observed_through: state.updated_at,
+    cohort_capture_started_at: state.cohort_capture_started_at,
     counters: {
       external_discovery_requests: subtractOwner(
         state.discovery_totals.requests,
@@ -101,6 +105,8 @@ export function captureTrustedFunnelBaseline(
     by_discovery_channel: structuredClone(state.by_discovery_channel),
     by_discovery_client_class: structuredClone(state.by_discovery_client_class),
     external_discovery_by_surface: externalDiscoveryBySurface,
+    by_cohort: structuredClone(state.by_cohort),
+    by_discovery_cohort: structuredClone(state.by_discovery_cohort),
   };
 }
 
@@ -122,8 +128,13 @@ export function trustedFunnelBaseline(value: unknown): TrustedFunnelBaseline | n
     funnel_observed_through: typeof baseline.funnel_observed_through === "string"
       ? baseline.funnel_observed_through
       : baseline.initialized_at,
+    cohort_capture_started_at: typeof baseline.cohort_capture_started_at === "string"
+      ? baseline.cohort_capture_started_at
+      : "legacy_unknown",
     by_discovery_channel: baseline.by_discovery_channel || {} as FunnelSnapshot["by_discovery_channel"],
     by_discovery_client_class: baseline.by_discovery_client_class || {} as FunnelSnapshot["by_discovery_client_class"],
+    by_cohort: baseline.by_cohort || {},
+    by_discovery_cohort: baseline.by_discovery_cohort || {},
   } as TrustedFunnelBaseline;
 }
 
@@ -132,21 +143,15 @@ export function trustedBoundaryFingerprint(baseline: TrustedFunnelBaseline): str
     "owner_automation", "coinbase_bazaar", "index_402", "x402scan", "x402gle",
     "agent402", "x402_observer", "registry_or_directory",
   ]);
-  const healthClients = new Set(["owner_automation", "agent402", "x402_observer", "registry_crawler"]);
-  const buyerRelevantPaidChannels = Object.fromEntries(Object.entries(baseline.by_channel)
-    .filter(([channel]) => !healthChannels.has(channel)));
-  const buyerRelevantPaidClients = Object.fromEntries(Object.entries(baseline.by_client_class)
-    .filter(([client]) => !healthClients.has(client)));
-  const buyerRelevantDiscoveryChannels = Object.fromEntries(Object.entries(baseline.by_discovery_channel || {})
-    .filter(([channel]) => !healthChannels.has(channel)));
-  const buyerRelevantDiscoveryClients = Object.fromEntries(Object.entries(baseline.by_discovery_client_class || {})
-    .filter(([client]) => !healthClients.has(client)));
+  const buyerRelevantPaidCohorts = Object.fromEntries(Object.entries(baseline.by_cohort || {})
+    .filter(([key]) => !healthChannels.has(key.split("|")[1] || "")));
+  const buyerRelevantDiscoveryCohorts = Object.fromEntries(Object.entries(baseline.by_discovery_cohort || {})
+    .filter(([key]) => !healthChannels.has(key.split("|")[1] || "")));
   return JSON.stringify({
     funnel_capture_started_at: baseline.funnel_capture_started_at,
     funnel_schema_version: baseline.funnel_schema_version,
-    buyer_relevant_paid_channels: buyerRelevantPaidChannels,
-    buyer_relevant_paid_clients: buyerRelevantPaidClients,
-    buyer_relevant_discovery_channels: buyerRelevantDiscoveryChannels,
-    buyer_relevant_discovery_clients: buyerRelevantDiscoveryClients,
+    cohort_capture_started_at: baseline.cohort_capture_started_at,
+    buyer_relevant_paid_cohorts: buyerRelevantPaidCohorts,
+    buyer_relevant_discovery_cohorts: buyerRelevantDiscoveryCohorts,
   });
 }

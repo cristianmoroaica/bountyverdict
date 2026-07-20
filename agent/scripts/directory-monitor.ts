@@ -8,6 +8,8 @@ const agentToolUrl = "https://agenttool.sh/tools/bountyverdict-agent-decision-ap
 const skillsUrl = "https://skills.sh/cristianmoroaica/bountyverdict";
 const securityDirectoryPrUrl = "https://github.com/LLMSecurity/awesome-agent-skills-security/pull/38";
 const x402DirectoryPrUrl = "https://github.com/xpaysh/awesome-x402/pull/934";
+const agentPluginsPrUrl = "https://github.com/dmgrok/agent-plugins/pull/97";
+const agentPluginsCatalogUrl = "https://cdn.jsdelivr.net/gh/dmgrok/agent-plugins@main/catalog.json";
 const x402ScoutUrl = "https://x402scout.com/catalog";
 const agent402Api = "https://agent402.tools/api";
 const productionOrigin = "https://bountyverdict-agent-production.mimirslab.workers.dev";
@@ -145,6 +147,34 @@ async function skillsShStatus(): Promise<Record<string, unknown>> {
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+async function agentPluginsCatalogStatus(): Promise<Record<string, unknown>> {
+  const response = await fetch(agentPluginsCatalogUrl, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!response.ok) throw new Error(`Agent Plugins catalog returned HTTP ${response.status}.`);
+  const payload = await response.json() as Record<string, unknown>;
+  if (!Array.isArray(payload.skills) || !payload.providers || typeof payload.providers !== "object" ||
+    !Number.isSafeInteger(payload.total_skills) || Number(payload.total_skills) !== payload.skills.length) {
+    throw new Error("Agent Plugins catalog returned malformed telemetry.");
+  }
+  const matching = (payload.skills as Array<Record<string, any>>).filter((skill) =>
+    skill?.source?.repo === repository && PUBLISHED_SKILLS.includes(skill.name));
+  return {
+    url: "https://dmgrok.github.io/agent-plugins/",
+    catalog_url: agentPluginsCatalogUrl,
+    listed: matching.length === PUBLISHED_SKILLS.length,
+    listed_skills: matching.length,
+    expected_skills: PUBLISHED_SKILLS.length,
+    total_catalog_skills: payload.skills.length,
+    generated_at: typeof payload.generated_at === "string" ? payload.generated_at : null,
+    skills: matching.map(({ id, name, quality_score, maintenance_status }) => ({
+      id,
+      name,
+      quality_score,
+      maintenance_status,
+    })),
+    measurement: "catalog_presence_and_quality_metadata_not_impressions_installs_or_purchases",
+  };
 }
 
 async function agentToolStatus(): Promise<Record<string, unknown>> {
@@ -614,6 +644,8 @@ const [
   agenttool,
   securityDirectoryPr,
   x402DirectoryPr,
+  agentPluginsPr,
+  agentPluginsCatalog,
   agent402,
   x402scout,
   x402scan,
@@ -626,6 +658,8 @@ const [
   agentToolStatus(),
   githubPrStatus("LLMSecurity", "awesome-agent-skills-security", 38, securityDirectoryPrUrl),
   githubPrStatus("xpaysh", "awesome-x402", 934, x402DirectoryPrUrl),
+  githubPrStatus("dmgrok", "agent-plugins", 97, agentPluginsPrUrl),
+  agentPluginsCatalogStatus(),
   agent402Status(),
   x402ScoutStatus(),
   x402ScanStatus(),
@@ -656,6 +690,8 @@ const state = {
   agentskill,
   security_directory_pr: securityDirectoryPr,
   x402_directory_pr: x402DirectoryPr,
+  agent_plugins_pr: agentPluginsPr,
+  agent_plugins_catalog: agentPluginsCatalog,
   agent402,
   x402scout,
   x402scan,

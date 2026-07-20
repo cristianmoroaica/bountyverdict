@@ -71,6 +71,7 @@ test("records signed successes as funnel evidence rather than purchase proof", (
   assert.equal(snapshot.by_payment_carrier.payment_signature_v2.requests, 1);
   assert.equal(snapshot.by_response_preference.unspecified_or_other.requests, 1);
   assert.equal(snapshot.by_product_source.portfolio.automated_client.signed_successes, 1);
+  assert.equal(snapshot.by_cohort["portfolio|direct_or_hidden|agent_runtime|body_unobservable|payment_signature_v2|unspecified_or_other"].signed_successes, 1);
   assert.equal(snapshot.by_day["2026-07-20"].signed_successes, 1);
   assert.equal(snapshot.by_hour["2026-07-20T20"].signed_successes, 1);
   assert.doesNotMatch(JSON.stringify(snapshot), /sensitive|payment-signature/);
@@ -130,6 +131,16 @@ test("learns only coarse channel, client, input, payment, and response dimension
   assert.equal(observation.response_preference, "json");
   const serialized = JSON.stringify(observation);
   assert.doesNotMatch(serialized, /acme|secret-repo|reviewer|private-id|token|private-build|do-not-store/);
+});
+
+test("attributes Agent Plugins catalog referrals without retaining the page", () => {
+  const observation = classifyFunnelTailEvent(event(
+    "/api/run?run_url=https%3A%2F%2Fgithub.com%2Facme%2Frepo%2Factions%2Fruns%2F123",
+    402,
+    { referer: "https://dmgrok.github.io/agent-plugins/?q=private-search" },
+  ));
+  assert.equal(observation?.channel, "agent_plugins");
+  assert.doesNotMatch(JSON.stringify(observation), /private-search|dmgrok/);
 });
 
 test("distinguishes missing and malformed GET inputs without retaining values", () => {
@@ -211,6 +222,8 @@ test("learns agent discovery surfaces including useful missing-convention probes
   assert.equal(snapshot.by_discovery_surface.well_known_x402_probe.preflight_rejections, 1);
   assert.equal(snapshot.by_discovery_client_class.agent402.requests, 1);
   assert.equal(snapshot.by_discovery_surface_source.well_known_x402_probe.known_directory.requests, 1);
+  assert.equal(snapshot.by_discovery_cohort["openapi|x402_observer|x402_observer|json"].requests, 1);
+  assert.equal(snapshot.by_discovery_cohort["well_known_x402_probe|other_referrer|agent402|unspecified_or_other"].preflight_rejections, 1);
   assert.equal(snapshot.discovery_by_day["2026-07-20"].requests, 2);
   assert.equal(snapshot.discovery_by_hour["2026-07-20T20"].requests, 2);
   assert.doesNotMatch(JSON.stringify(snapshot), /private|example\.net/);
@@ -229,10 +242,16 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   recordDiscoveryObservation(snapshot as never, observation);
   delete snapshot.by_hour;
   delete snapshot.discovery_by_hour;
+  delete snapshot.cohort_capture_started_at;
+  delete snapshot.by_cohort;
+  delete snapshot.by_discovery_cohort;
   const loaded = loadFunnelSnapshot(snapshot, "2026-07-21T00:00:00.000Z");
   assert.ok(loaded);
   assert.equal(loaded.discovery_totals.requests, 1);
   assert.equal(loaded.by_discovery_surface.llms.requests, 1);
   assert.deepEqual(loaded.by_hour, {});
   assert.deepEqual(loaded.discovery_by_hour, {});
+  assert.equal(loaded.cohort_capture_started_at, "2026-07-21T00:00:00.000Z");
+  assert.deepEqual(loaded.by_cohort, {});
+  assert.deepEqual(loaded.by_discovery_cohort, {});
 });

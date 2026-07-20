@@ -30,6 +30,7 @@ export const FUNNEL_CHANNELS = Object.freeze([
   "near_market",
   "payan",
   "skills_sh",
+  "agent_plugins",
   "github",
   "web_search",
   "agent402",
@@ -133,6 +134,7 @@ export type FunnelSnapshot = {
   schema_version: typeof FUNNEL_SCHEMA_VERSION;
   capture_started_at: string;
   enhanced_capture_started_at: string;
+  cohort_capture_started_at: string;
   updated_at: string;
   privacy: string;
   totals: FunnelCounters;
@@ -144,6 +146,7 @@ export type FunnelSnapshot = {
   by_payment_carrier: Record<FunnelPaymentCarrier, FunnelCounters>;
   by_response_preference: Record<FunnelResponsePreference, FunnelCounters>;
   by_product_source: Record<ProductKey, Record<FunnelSourceCategory, FunnelCounters>>;
+  by_cohort: Record<string, FunnelCounters>;
   by_day: Record<string, FunnelCounters>;
   by_hour: Record<string, FunnelCounters>;
   discovery_totals: FunnelCounters;
@@ -152,6 +155,7 @@ export type FunnelSnapshot = {
   by_discovery_client_class: Record<FunnelClientClass, FunnelCounters>;
   by_discovery_channel: Record<FunnelChannel, FunnelCounters>;
   by_discovery_surface_source: Record<FunnelDiscoverySurface, Record<FunnelSourceCategory, FunnelCounters>>;
+  by_discovery_cohort: Record<string, FunnelCounters>;
   discovery_by_day: Record<string, FunnelCounters>;
   discovery_by_hour: Record<string, FunnelCounters>;
 };
@@ -291,6 +295,7 @@ function channelCategory(headers: Record<string, string>, client: FunnelClientCl
     if (host === "market.near.ai") return "near_market";
     if (host === "payanagent.com" || host.endsWith(".payanagent.com")) return "payan";
     if (host === "skills.sh" || host.endsWith(".skills.sh")) return "skills_sh";
+    if (host === "dmgrok.github.io") return "agent_plugins";
     if (host === "github.com" || host.endsWith(".github.com") || host.endsWith(".github.io")) return "github";
     if (/(?:^|\.)(?:google|bing|duckduckgo|brave|kagi)\./.test(host)) return "web_search";
     return "other_referrer";
@@ -437,8 +442,9 @@ export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnap
     schema_version: FUNNEL_SCHEMA_VERSION,
     capture_started_at: now,
     enhanced_capture_started_at: now,
+    cohort_capture_started_at: now,
     updated_at: now,
-    privacy: "Aggregate paid-route counts only; raw URLs, query values, bodies, headers, payment payloads, IP addresses, geolocation, and full user-agent strings are discarded.",
+    privacy: "Aggregate paid-route and coarse cohort counts only; raw URLs, query values, bodies, headers, payment payloads, IP addresses, geolocation, visitor IDs, and full user-agent strings are discarded.",
     totals: emptyCounters(),
     by_product: countersRecord(PRODUCT_KEYS),
     by_source: countersRecord(FUNNEL_SOURCE_CATEGORIES),
@@ -448,6 +454,7 @@ export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnap
     by_payment_carrier: countersRecord(FUNNEL_PAYMENT_CARRIERS),
     by_response_preference: countersRecord(FUNNEL_RESPONSE_PREFERENCES),
     by_product_source: productSourceRecord(),
+    by_cohort: {},
     by_day: {},
     by_hour: {},
     discovery_totals: emptyCounters(),
@@ -456,9 +463,30 @@ export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnap
     by_discovery_client_class: countersRecord(FUNNEL_CLIENT_CLASSES),
     by_discovery_channel: countersRecord(FUNNEL_CHANNELS),
     by_discovery_surface_source: discoverySurfaceSourceRecord(),
+    by_discovery_cohort: {},
     discovery_by_day: {},
     discovery_by_hour: {},
   };
+}
+
+function paidCohortKey(observation: FunnelObservation): string {
+  return [
+    observation.product,
+    observation.channel,
+    observation.client_class,
+    observation.input_profile,
+    observation.payment_carrier,
+    observation.response_preference,
+  ].join("|");
+}
+
+function discoveryCohortKey(observation: FunnelDiscoveryObservation): string {
+  return [
+    observation.surface,
+    observation.channel,
+    observation.client_class,
+    observation.response_preference,
+  ].join("|");
 }
 
 function increment(counters: FunnelCounters, observation: Pick<FunnelObservation, "signed_request" | "outcome">): void {
@@ -483,6 +511,9 @@ export function recordFunnelObservation(snapshot: FunnelSnapshot, observation: F
   increment(snapshot.by_payment_carrier[observation.payment_carrier], observation);
   increment(snapshot.by_response_preference[observation.response_preference], observation);
   increment(snapshot.by_product_source[observation.product][observation.source], observation);
+  const cohort = paidCohortKey(observation);
+  snapshot.by_cohort[cohort] ||= emptyCounters();
+  increment(snapshot.by_cohort[cohort], observation);
   const day = observation.observed_at.slice(0, 10);
   const hour = observation.observed_at.slice(0, 13);
   snapshot.by_day[day] ||= emptyCounters();
@@ -502,6 +533,9 @@ export function recordDiscoveryObservation(snapshot: FunnelSnapshot, observation
   increment(snapshot.by_discovery_client_class[observation.client_class], observation);
   increment(snapshot.by_discovery_channel[observation.channel], observation);
   increment(snapshot.by_discovery_surface_source[observation.surface][observation.source], observation);
+  const cohort = discoveryCohortKey(observation);
+  snapshot.by_discovery_cohort[cohort] ||= emptyCounters();
+  increment(snapshot.by_discovery_cohort[cohort], observation);
   const day = observation.observed_at.slice(0, 10);
   const hour = observation.observed_at.slice(0, 13);
   snapshot.discovery_by_day[day] ||= emptyCounters();
@@ -530,7 +564,8 @@ export function isFunnelSnapshot(value: unknown): value is FunnelSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const snapshot = value as Partial<FunnelSnapshot>;
   if (snapshot.schema_version !== FUNNEL_SCHEMA_VERSION || typeof snapshot.capture_started_at !== "string" ||
-    typeof snapshot.enhanced_capture_started_at !== "string" || typeof snapshot.updated_at !== "string" ||
+    typeof snapshot.enhanced_capture_started_at !== "string" || typeof snapshot.cohort_capture_started_at !== "string" ||
+    typeof snapshot.updated_at !== "string" ||
     typeof snapshot.privacy !== "string" || !countersValid(snapshot.totals)) return false;
   if (!keyedCountersValid(snapshot.by_product, PRODUCT_KEYS) ||
     !keyedCountersValid(snapshot.by_source, FUNNEL_SOURCE_CATEGORIES) ||
@@ -549,6 +584,10 @@ export function isFunnelSnapshot(value: unknown): value is FunnelSnapshot {
       keyedCountersValid(snapshot.by_discovery_surface_source?.[surface], FUNNEL_SOURCE_CATEGORIES))) return false;
   if (!snapshot.by_product_source || typeof snapshot.by_product_source !== "object" ||
     !PRODUCT_KEYS.every((product) => keyedCountersValid(snapshot.by_product_source?.[product], FUNNEL_SOURCE_CATEGORIES))) return false;
+  const cohortRecordValid = (cohorts: unknown, parts: number) => Boolean(cohorts && typeof cohorts === "object" &&
+    !Array.isArray(cohorts) && Object.entries(cohorts).every(([key, counters]) =>
+      key.split("|").length === parts && countersValid(counters)));
+  if (!cohortRecordValid(snapshot.by_cohort, 6) || !cohortRecordValid(snapshot.by_discovery_cohort, 4)) return false;
   const bucketValid = (buckets: unknown, pattern: RegExp) => Boolean(buckets && typeof buckets === "object" && !Array.isArray(buckets) &&
     Object.entries(buckets).every(([bucket, counters]) => pattern.test(bucket) && countersValid(counters)));
   return bucketValid(snapshot.by_day, /^\d{4}-\d{2}-\d{2}$/) &&
@@ -583,11 +622,15 @@ export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString(
     const upgraded = {
       ...existing,
       discovery_totals: existing.discovery_totals || emptyCounters(),
+      by_channel: { ...countersRecord(FUNNEL_CHANNELS), ...((existing.by_channel as object) || {}) },
       by_discovery_surface: existing.by_discovery_surface || countersRecord(FUNNEL_DISCOVERY_SURFACES),
       by_discovery_source: existing.by_discovery_source || countersRecord(FUNNEL_SOURCE_CATEGORIES),
       by_discovery_client_class: existing.by_discovery_client_class || countersRecord(FUNNEL_CLIENT_CLASSES),
-      by_discovery_channel: existing.by_discovery_channel || countersRecord(FUNNEL_CHANNELS),
+      by_discovery_channel: { ...countersRecord(FUNNEL_CHANNELS), ...((existing.by_discovery_channel as object) || {}) },
       by_discovery_surface_source: existing.by_discovery_surface_source || discoverySurfaceSourceRecord(),
+      cohort_capture_started_at: existing.cohort_capture_started_at || now,
+      by_cohort: existing.by_cohort || {},
+      by_discovery_cohort: existing.by_discovery_cohort || {},
       discovery_by_day: existing.discovery_by_day || {},
       discovery_by_hour: existing.discovery_by_hour || {},
       by_hour: existing.by_hour || {},

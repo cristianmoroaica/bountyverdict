@@ -945,6 +945,8 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
       agentskill: state.agentskill || null,
       security_directory_pr: state.security_directory_pr || null,
       x402_directory_pr: state.x402_directory_pr || null,
+      agent_plugins_pr: state.agent_plugins_pr || null,
+      agent_plugins_catalog: state.agent_plugins_catalog || null,
       agent402: state.agent402 || null,
       x402scout: state.x402scout || null,
       x402scan: state.x402scan || null,
@@ -1032,6 +1034,8 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
         by_channel: state.by_channel,
         by_client_class: state.by_client_class,
         external_discovery_by_surface: externalDiscoveryBySurface,
+        by_cohort: state.by_cohort,
+        by_discovery_cohort: state.by_discovery_cohort,
       };
       await atomicWrite(trustedFunnelBaselineFile, `${JSON.stringify(trustedBaseline, null, 2)}\n`);
     }
@@ -1081,6 +1085,23 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       surface,
       monotonicDelta(count, trustedBaseline.external_discovery_by_surface?.[surface], `Discovery surface ${surface}`),
     ]));
+    const cohortDelta = (
+      current: Record<string, Record<string, unknown>>,
+      baseline: Record<string, Record<string, unknown>> | undefined,
+      label: string,
+    ) => Object.fromEntries(Object.entries(current).map(([cohort, counters]) => [
+      cohort,
+      Object.fromEntries(Object.entries(counters).map(([key, value]) => [
+        key,
+        monotonicDelta(value, baseline?.[cohort]?.[key], `${label} ${cohort} ${key}`),
+      ])),
+    ]).filter(([, counters]) => Object.values(counters).some((value) => Number(value) > 0)));
+    const trustedByCohort = cohortDelta(state.by_cohort, trustedBaseline.by_cohort, "Paid cohort");
+    const trustedByDiscoveryCohort = cohortDelta(
+      state.by_discovery_cohort,
+      trustedBaseline.by_discovery_cohort,
+      "Discovery cohort",
+    );
     const measurementEligible = epochRotation?.status !== "draining";
     const effectiveTrusted = measurementEligible
       ? trusted
@@ -1094,6 +1115,8 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
     const effectiveDiscoveryBySurface = measurementEligible
       ? trustedExternalDiscoveryBySurface
       : Object.fromEntries(Object.keys(trustedExternalDiscoveryBySurface).map((surface) => [surface, 0]));
+    const effectiveByCohort = measurementEligible ? trustedByCohort : {};
+    const effectiveByDiscoveryCohort = measurementEligible ? trustedByDiscoveryCohort : {};
     const trustedLearningStage = !measurementEligible
       ? "measurement_draining"
       : effectiveTrusted.external_discovery_requests === 0 && effectiveTrusted.external_402_challenges === 0 && effectiveTrusted.signed_payment_attempts === 0
@@ -1109,6 +1132,7 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       available: true,
       capture_started_at: state.capture_started_at,
       enhanced_capture_started_at: state.enhanced_capture_started_at,
+      cohort_capture_started_at: state.cohort_capture_started_at,
       updated_at: state.updated_at,
       paid_route_requests: state.totals.requests,
       discovery_surface_requests: state.discovery_totals.requests,
@@ -1130,6 +1154,8 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       trusted_by_channel: effectiveByChannel,
       trusted_by_client_class: effectiveByClient,
       trusted_external_discovery_by_surface: effectiveDiscoveryBySurface,
+      trusted_by_cohort: effectiveByCohort,
+      trusted_by_discovery_cohort: effectiveByDiscoveryCohort,
       provisional_external_discovery_requests: trusted.external_discovery_requests,
       provisional_external_402_challenges: trusted.external_402_challenges,
       provisional_signed_payment_attempts: trusted.signed_payment_attempts,
@@ -1152,12 +1178,14 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       by_input_profile: state.by_input_profile,
       by_payment_carrier: state.by_payment_carrier,
       by_response_preference: state.by_response_preference,
+      by_cohort: state.by_cohort,
       by_day: state.by_day,
       by_hour: state.by_hour,
       by_discovery_surface: state.by_discovery_surface,
       by_discovery_source: state.by_discovery_source,
       by_discovery_client_class: state.by_discovery_client_class,
       by_discovery_channel: state.by_discovery_channel,
+      by_discovery_cohort: state.by_discovery_cohort,
       discovery_by_day: state.discovery_by_day,
       discovery_by_hour: state.discovery_by_hour,
       privacy: state.privacy,
@@ -1252,6 +1280,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **402 Index:** ${report.acquisition?.index_402?.active_resources ?? 0} / ${report.acquisition?.index_402?.expected_resources ?? 6} endpoints live (${report.acquisition?.index_402?.status || "unavailable"}; registry presence is never a purchase)
 - **skills.sh anonymous CLI installs:** ${Number.isFinite(Number(totalSkillInstalls)) ? Number(totalSkillInstalls) : "unavailable"} (acquisition signal only; 8-install baseline on 2026-07-20)
 - **skills.sh global search:** ${Number(skillsShSearch.exact_found || 0)} / ${Number(skillsShSearch.exact_expected || 7)} exact names; ${Number(skillsShSearch.natural_found || 0)} / ${Number(skillsShSearch.natural_expected || 7)} natural buyer queries (owner-run corpus check, not impressions)
+- **Agent Plugins catalog:** ${report.acquisition?.agent_plugins_catalog?.listed_skills ?? 0} / 7 skills listed; provider PR ${report.acquisition?.agent_plugins_pr?.status || "unavailable"} (${report.acquisition?.agent_plugins_pr?.url || "submission not recorded"})
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
 - **Unrelated incoming transfers:** ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
 - **Last refreshed:** ${report.checked_at}
@@ -1260,12 +1289,12 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent with exact machine-readable contracts, all seven paid endpoints are registered through x402scan, and six method-compatible endpoints are live on 402 Index. Agent402 indexing and seven fixed unbranded buyer-language retrieval checks are now monitored separately from organic impressions. Search reporting uses multiple unbranded candidate buyer-language queries and exposes coverage plus rank quality; the earlier one-query "best rank" display was removed because it overstated retrieval quality. x402gle publishes the origin's generated host Skill, A2A card, and synthesized product skills; Monetize Your Agent and 402directory submissions are under independent review. Privacy-safe edge capture now separates external 402 challenges from signed payment attempts without retaining IPs, headers, URLs, query values, bodies, geolocation, or user-agent strings. Agentic Market's owner-contaminated quality counters remain excluded from commerce totals. Distribution is the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers.
+The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent with exact machine-readable contracts, all seven paid endpoints are registered through x402scan, and six method-compatible endpoints are live on 402 Index. Agent402 indexing and seven fixed unbranded buyer-language retrieval checks are now monitored separately from organic impressions. Search reporting uses multiple unbranded candidate buyer-language queries and exposes coverage plus rank quality; the earlier one-query "best rank" display was removed because it overstated retrieval quality. x402gle publishes the origin's generated host Skill, A2A card, and synthesized product skills; Agent Plugins has an approved automated provider PR, while Monetize Your Agent and 402directory submissions are under independent review. Privacy-safe edge capture now separates external 402 challenges from signed payment attempts and retains coarse cross-dimensional conversion cohorts without storing IPs, headers, URLs, query values, bodies, geolocation, visitor IDs, or user-agent strings. Agentic Market's owner-contaminated quality counters remain excluded from commerce totals. Distribution is the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers.
 
 ## What is next
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
-2. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
+2. Monitor GitHub Skill, AgentTool, AgentSkill, Agent Plugins PR/catalog activation, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
 3. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, Agent402 listing and unbranded retrieval, all seven x402scan routes, six 402 Index listings, x402gle synthesized skills, Monetize Your Agent and 402directory reviews, Agentic Market's automatic mirror, guarded buyer-request feed, edge challenges, and exact receipt attribution.
 4. Use the neutral buyer-query benchmark and edge funnel—not best-case phrase ranks—to decide the next distribution change after the frozen experiment. Do not build an eighth product before ten external purchases are recognized.
 
@@ -1321,6 +1350,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - AgentSkill: ${report.acquisition?.agentskill?.status || (report.acquisition?.agentskill?.listed ? "listed" : "unavailable")}
 - Agent security directory PR: ${report.acquisition?.security_directory_pr?.status || "unavailable"} (${report.acquisition?.security_directory_pr?.url || "not recorded"})
 - x402 ecosystem directory PR: ${report.acquisition?.x402_directory_pr?.status || "unavailable"} (${report.acquisition?.x402_directory_pr?.url || "not recorded"})
+- Agent Plugins: ${report.acquisition?.agent_plugins_catalog?.listed_skills ?? 0} / 7 skills in the daily catalog; provider PR ${report.acquisition?.agent_plugins_pr?.status || "unavailable"} (${report.acquisition?.agent_plugins_pr?.url || "not recorded"}; catalog placement and quality metadata are not purchases)
 - Agent402 open router: ${report.acquisition?.agent402?.listed ? "listed" : "unavailable"}; exact-route retrieval ${report.acquisition?.agent402?.found_queries ?? 0} / ${report.acquisition?.agent402?.query_count ?? 7}, top-three ${report.acquisition?.agent402?.top_three_queries ?? 0} (${report.acquisition?.agent402?.listing_source || "unknown source"}; fixed owner-run queries are not impressions)
 - x402Scout GET listings: ${report.acquisition?.x402scout?.listed_entries ?? "unavailable"} / ${report.acquisition?.x402scout?.expected_entries ?? 5} (${report.acquisition?.x402scout?.status || "unavailable"}; positions ${Array.isArray(report.acquisition?.x402scout?.catalog_positions) ? report.acquisition.x402scout.catalog_positions.join(", ") : "unavailable"} of ${report.acquisition?.x402scout?.catalog_entries ?? "unavailable"}; ${typeof report.acquisition?.x402scout?.total_query_count === "number" ? report.acquisition.x402scout.total_query_count : "unavailable"} catalog queries)
 - x402scan paid endpoints: ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence is not counted as purchase activity)
@@ -1336,6 +1366,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Discovery-surface capture: ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external since the clean boundary; ${Number(funnel.external_discovery_requests || 0)} lifetime external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
 - External discovery surfaces observed: ${externalDiscoverySurfaces.length ? externalDiscoverySurfaces.map(([surface, count]) => `${surface} (${Number(count)})`).join(", ") : "none yet"}
 - Enhanced learning dimensions active since: ${funnel.enhanced_capture_started_at || "unavailable"}
+- Cross-dimensional product/channel/input/payment cohorts active since: ${funnel.cohort_capture_started_at || "unavailable"}
 - External channels observed: ${activeChannels.length ? activeChannels.map(([channel, counters]: [string, any]) => `${channel} (${Number(counters.requests || 0)})`).join(", ") : "none yet"}
 - External client classes observed: ${activeClients.length ? activeClients.map(([client, counters]: [string, any]) => `${client} (${Number(counters.requests || 0)})`).join(", ") : "none yet"}
 - Challenge → signed-attempt rate: ${funnel.challenge_to_signed_attempt_percent === null || funnel.challenge_to_signed_attempt_percent === undefined ? "not measurable yet" : `${funnel.challenge_to_signed_attempt_percent}%`}
@@ -1351,7 +1382,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
   return `| ${PRODUCT_CATALOG[product].service} | ${Number(row.requests || 0)} | ${Number(row.challenges_402 || 0)} | ${Number(row.signed_requests || 0)} | ${Number(row.signed_successes || 0)} | ${Number(row.preflight_rejections || 0)} | ${Number(row.server_errors || 0)} |`;
 }).join("\n")}
 
-Input readiness, channel, client class, response preference, x402 header generation, hourly and daily trends, and product×source aggregates are retained in the private machine-readable state. The immutable clean boundary excludes older owner-probe contamination from conversion rates without fabricating a retroactive attribution; lifetime totals remain available and explicitly labeled. No raw request content or visitor identifier is retained.
+Input readiness, channel, client class, response preference, x402 header generation, hourly and daily trends, product×source aggregates, and coarse product×channel×client×input×payment×response cohorts are retained in the private machine-readable state. The immutable clean boundary excludes older owner-probe contamination from conversion rates without fabricating a retroactive attribution; lifetime totals remain available and explicitly labeled. No raw request content or visitor identifier is retained.
 - Experiment status: ${experiment.status || "unavailable"}
 - Experiment baseline: 8 total installs, 2 router installs, 1 SkillVerdict workflow install, 0 genuine purchases
 - Experiment delta: ${Number(experiment.delta?.installs?.total || 0)} total installs, ${Number(experiment.delta?.installs?.router || 0)} router installs, ${Number(experiment.delta?.installs?.skillverdict || 0)} SkillVerdict workflow installs, ${Number(experiment.delta?.genuine_purchases || 0)} genuine purchases
@@ -1525,6 +1556,7 @@ try {
     placements: [
       acquisition.security_directory_pr as Record<string, unknown>,
       acquisition.x402_directory_pr as Record<string, unknown>,
+      acquisition.agent_plugins_pr as Record<string, unknown>,
       acquisition.x402scout as Record<string, unknown>,
     ],
   });

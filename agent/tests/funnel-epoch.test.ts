@@ -97,6 +97,10 @@ test("epoch stability ignores owner automation but changes on external counters"
   recordFunnelObservation(original, knownDirectoryProbe);
   const afterHealthPolls = captureTrustedFunnelBaseline(original, "2026-07-20T21:01:30Z", "A sufficiently descriptive boundary reason for testing.", 2);
   assert.equal(trustedBoundaryFingerprint(afterHealthPolls), trustedBoundaryFingerprint(first));
+  // Marginal client totals cannot safely identify a health event when a crawler
+  // supplies a generic user agent. The joint cohort's channel remains authoritative.
+  afterHealthPolls.by_client_class.unknown.requests += 1;
+  assert.equal(trustedBoundaryFingerprint(afterHealthPolls), trustedBoundaryFingerprint(first));
   const external = classifyFunnelTailEvent(event(
     "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Facme%2Frepo%2Fissues%2F1",
     402,
