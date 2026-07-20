@@ -1,6 +1,6 @@
-# BountyVerdict
+# BountyVerdict GitHub Agent Decision APIs
 
-> Know whether a public GitHub bounty is worth investigating before spending coding time, agent compute, or repository reputation.
+> Six bounded live checks for public GitHub bounty, repository-instruction, agent-skill, and GitHub Actions decisions.
 
 ## Free human checker
 
@@ -11,6 +11,9 @@ Paste a canonical public GitHub issue URL. The browser performs read-only GitHub
 ## Paid agent API
 
 - Agent manifest: https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json
+- Umbrella routing skill: https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md
+- Install the router: `npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y`
+- Install all six-product operating skills: `npx skills add cristianmoroaica/bountyverdict --skill '*' -y`
 - Agent operating skill: https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md
 - Harness audit skill: https://cristianmoroaica.github.io/bountyverdict/skills/audit-agent-harness/SKILL.md
 - Skill security workflow: https://cristianmoroaica.github.io/bountyverdict/skills/preflight-agent-skills/SKILL.md

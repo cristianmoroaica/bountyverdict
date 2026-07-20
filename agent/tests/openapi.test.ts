@@ -11,6 +11,8 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
     run: "$0.04",
     flake: "$0.07",
   });
+  assert.match(spec.info.title, /GitHub Agent Decision APIs/);
+  assert.match(spec.info.description, /Six bounded/);
   const operation = spec.paths["/api/verdict"].get;
   assert.equal(operation["x-x402"].price, "$0.05");
   assert.equal(operation["x-x402"].network, "eip155:8453");
@@ -53,6 +55,7 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.match(llms, /FlakeVerdict/);
   assert.match(llms, /RECURRING_FAILURE/);
   assert.match(llms, /service_reuse guidance/);
-  assert.match(llms, /preflight-github-bounties\/SKILL\.md/);
+  assert.match(llms, /route-github-agent-checks\/SKILL\.md/);
+  assert.match(llms, /Install all operating skills/);
   assert.match(llms, /AI-work bans/);
 });

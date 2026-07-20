@@ -14,6 +14,11 @@
   "marketplace": "Coinbase x402 Bazaar",
   "network": "eip155:8453",
   "currency": "USDC",
+  "payment": {
+    "scheme": "exact",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "recipient": "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614"
+  },
   "reliability": {
     "scheduled_functional_canaries": true,
     "canary_interval_hours": 6,
@@ -27,6 +32,9 @@
       "path": "/api/verdict",
       "price_usdc": "0.05",
       "reusable": true,
+      "use_when": "Decide whether one public GitHub bounty issue is worth pursuing before coding.",
+      "skill_url": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
+      "install_command": "npx skills add cristianmoroaica/bountyverdict --skill preflight-github-bounties -y",
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/verdict.json"
     },
     {
@@ -35,6 +43,9 @@
       "path": "/api/portfolio",
       "price_usdc": "0.40",
       "reusable": true,
+      "use_when": "Rank two to ten public GitHub bounty candidates with partial-failure handling.",
+      "skill_url": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
+      "install_command": "npx skills add cristianmoroaica/bountyverdict --skill preflight-github-bounties -y",
       "minimum_candidates": 2,
       "maximum_candidates": 10,
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/portfolio.json"
@@ -45,6 +56,9 @@
       "path": "/api/harness",
       "price_usdc": "0.03",
       "reusable": true,
+      "use_when": "Audit a public repository's coding-agent instruction stack before autonomous coding.",
+      "skill_url": "https://cristianmoroaica.github.io/bountyverdict/skills/audit-agent-harness/SKILL.md",
+      "install_command": "npx skills add cristianmoroaica/bountyverdict --skill audit-agent-harness -y",
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/harness.json"
     },
     {
@@ -53,6 +67,9 @@
       "path": "/api/skill",
       "price_usdc": "0.06",
       "reusable": true,
+      "use_when": "Audit a public SKILL.md bundle before loading, installing, or executing it.",
+      "skill_url": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-agent-skills/SKILL.md",
+      "install_command": "npx skills add cristianmoroaica/bountyverdict --skill preflight-agent-skills -y",
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/skill.json"
     },
     {
@@ -61,6 +78,9 @@
       "path": "/api/run",
       "price_usdc": "0.04",
       "reusable": true,
+      "use_when": "Diagnose the root cause and next action for one public GitHub Actions run.",
+      "skill_url": "https://cristianmoroaica.github.io/bountyverdict/skills/diagnose-github-actions/SKILL.md",
+      "install_command": "npx skills add cristianmoroaica/bountyverdict --skill diagnose-github-actions -y",
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/run.json"
     },
     {
@@ -73,6 +93,9 @@
       },
       "price_usdc": "0.07",
       "reusable": true,
+      "use_when": "Decide whether one completed failed public GitHub Actions run merits exactly one retry.",
+      "skill_url": "https://cristianmoroaica.github.io/bountyverdict/skills/classify-github-flakes/SKILL.md",
+      "install_command": "npx skills add cristianmoroaica/bountyverdict --skill classify-github-flakes -y",
       "verdicts": [
         "CONFIRMED_FLAKE",
         "LIKELY_FLAKE",
@@ -92,14 +115,19 @@
       "sample": "https://cristianmoroaica.github.io/bountyverdict/samples/flake.json"
     }
   ],
-  "skill": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
+  "skill": "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md",
+  "install": {
+    "router": "npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y",
+    "all": "npx skills add cristianmoroaica/bountyverdict --skill '*' -y"
+  },
   "skills": {
+    "route_github_agent_checks": "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md",
     "preflight_github_bounties": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
     "audit_agent_harness": "https://cristianmoroaica.github.io/bountyverdict/skills/audit-agent-harness/SKILL.md",
     "preflight_agent_skills": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-agent-skills/SKILL.md",
     "diagnose_github_actions": "https://cristianmoroaica.github.io/bountyverdict/skills/diagnose-github-actions/SKILL.md",
     "classify_github_flakes": "https://cristianmoroaica.github.io/bountyverdict/skills/classify-github-flakes/SKILL.md"
   },
-  "source": "https://github.com/cristianmoroaica/bountyverdict/tree/main/agent",
-  "updated_at": "2026-07-20T12:51:26.000Z"
+  "source": "https://github.com/cristianmoroaica/bountyverdict",
+  "updated_at": "2026-07-20T13:45:00.000Z"
 }

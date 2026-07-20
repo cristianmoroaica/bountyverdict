@@ -369,15 +369,15 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The reusable-result reliability release is live across all six Base-mainnet products. FlakeVerdict adds a bounded, read-only historical CI retry gate with six truthful outcomes, while every successful semantic result carries a precise \`service_reuse\` contract. Authenticated six-hour canaries exercise all real handlers behind an edge rate limit, and the 15-minute monitor verifies free routes, exact x402 challenges, global Bazaar discovery, and on-chain revenue.
+The six-product suite now has one installable routing skill, per-product install commands and use-case triggers, and umbrella API/OpenAPI positioning. An agent can install one router, select exactly one bounded GitHub decision check, validate its unpaid x402 challenge, and follow the product-specific result contract. Five products are indexed and currently rank near the top of their measured intent queries; FlakeVerdict remains live but awaits its first policy-bound catalog settlement before Bazaar indexing.
 
 ## What is next
 
 1. Replace both broad CDP typed-data policies with the prepared seller-and-$0.40-bound rule in the dashboard, then provision and fund the policy-bound buyer before enabling the once-weekly real-settlement canary.
-2. Measure FlakeVerdict's unbranded Bazaar rank and genuine paid calls; tune its discovery copy from observed demand, never owner-funded proofs.
-3. Improve unbranded marketplace rank for BountyVerdict and Portfolio while measuring only genuine customer settlements.
-4. Provision a one-account Cloudflare Workers Scripts Write CI token when available; production remains deployable through the authenticated local control plane.
-5. Reach the first unique paying agent, then optimize from observed calls and continue the next underserved-tool build.
+2. Use the policy-bound buyer once to index FlakeVerdict and refresh the five stale catalog schemas; exclude every owner operation from revenue and verify cache propagation and unbranded rank.
+3. Verify the public router install from GitHub, measure registry/search presence, and keep the per-product install paths current.
+4. Re-evaluate the two research-backed next-product candidates after distribution is complete: MergeVerdict for public PR merge gates or MCPDriftVerdict for semantic tools/list compatibility.
+5. Reach the first genuine paying agent, then optimize from observed calls rather than owner-funded proofs.
 
 ## Production health
 

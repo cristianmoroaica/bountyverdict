@@ -60,7 +60,8 @@ const CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402";
 const PRODUCT_URL = "https://cristianmoroaica.github.io/bountyverdict/";
 const ICON_URL = `${PRODUCT_URL}favicon.svg`;
 const MANIFEST_URL = `${PRODUCT_URL}agent-manifest.json`;
-const SKILL_URL = `${PRODUCT_URL}skills/preflight-github-bounties/SKILL.md`;
+const SKILLS_URL = `${PRODUCT_URL}skills/`;
+const SKILL_URL = `${SKILLS_URL}route-github-agent-checks/SKILL.md`;
 
 const middlewareCache = new Map<string, MiddlewareHandler>();
 
@@ -272,7 +273,7 @@ app.get("/", (c) =>
   c.json({
     product: "BountyVerdict",
     status: "available",
-    purpose: "Preflight GitHub bounties before an autonomous agent spends compute or reputation.",
+    purpose: "Six bounded GitHub decision APIs for coding agents: bounty due diligence, instruction and skill audits, CI diagnosis, and flake retry gates.",
     currency: "USDC",
     products: [
       {
@@ -280,6 +281,8 @@ app.get("/", (c) =>
         price: SINGLE_PRICE_USD,
         endpoint: SINGLE_ENDPOINT,
         method: "GET",
+        use_when: "Decide whether one public GitHub bounty issue is worth pursuing before coding.",
+        skill: `${SKILLS_URL}preflight-github-bounties/SKILL.md`,
         input: { issue_url: "https://github.com/owner/repository/issues/123" },
       },
       {
@@ -287,6 +290,8 @@ app.get("/", (c) =>
         price: PORTFOLIO_PRICE_USD,
         endpoint: PORTFOLIO_ENDPOINT,
         method: "POST",
+        use_when: "Rank two to ten public GitHub bounty candidates.",
+        skill: `${SKILLS_URL}preflight-github-bounties/SKILL.md`,
         input: { issue_urls: ["https://github.com/owner/repository/issues/123", "https://github.com/owner/repository/issues/456"] },
       },
       {
@@ -294,6 +299,8 @@ app.get("/", (c) =>
         price: HARNESS_PRICE_USD,
         endpoint: HARNESS_ENDPOINT,
         method: "GET",
+        use_when: "Audit repository coding-agent instructions before autonomous work.",
+        skill: `${SKILLS_URL}audit-agent-harness/SKILL.md`,
         input: { repo_url: "https://github.com/owner/repository" },
       },
       {
@@ -301,6 +308,8 @@ app.get("/", (c) =>
         price: SKILL_PRICE_USD,
         endpoint: SKILL_ENDPOINT,
         method: "GET",
+        use_when: "Audit a public SKILL.md bundle before installation or execution.",
+        skill: `${SKILLS_URL}preflight-agent-skills/SKILL.md`,
         input: { repo_url: "https://github.com/owner/skills", skill_path: "skills/example" },
       },
       {
@@ -308,6 +317,8 @@ app.get("/", (c) =>
         price: RUN_PRICE_USD,
         endpoint: RUN_ENDPOINT,
         method: "GET",
+        use_when: "Diagnose the root cause and next action for one public workflow run.",
+        skill: `${SKILLS_URL}diagnose-github-actions/SKILL.md`,
         input: { run_url: "https://github.com/owner/repository/actions/runs/123456789" },
       },
       {
@@ -315,6 +326,8 @@ app.get("/", (c) =>
         price: FLAKE_PRICE_USD,
         endpoint: FLAKE_ENDPOINT,
         method: "GET",
+        use_when: "Decide whether a completed failed workflow run merits exactly one retry.",
+        skill: `${SKILLS_URL}classify-github-flakes/SKILL.md`,
         input: { run_url: "https://github.com/owner/repository/actions/runs/123456789", attempt: 1 },
       },
     ],
@@ -323,6 +336,7 @@ app.get("/", (c) =>
     llms: "/llms.txt",
     agent_manifest: MANIFEST_URL,
     agent_skill: SKILL_URL,
+    install_skill: "npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y",
     human_checker: PRODUCT_URL,
   }),
 );

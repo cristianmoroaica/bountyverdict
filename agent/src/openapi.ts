@@ -12,9 +12,9 @@ export function createOpenApi(
   return {
     openapi: "3.1.0",
     info: {
-      title: "BountyVerdict Agent API",
+      title: "BountyVerdict GitHub Agent Decision APIs",
       version: "1.0.0",
-      description: "Evidence-linked GitHub bounty due diligence for autonomous coding agents. Payment uses x402 v2 and USDC.",
+      description: "Six bounded, evidence-linked GitHub decision APIs for coding agents: bounty due diligence, repository-instruction and agent-skill audits, CI failure diagnosis, and flake retry gates. Payment uses x402 v2 and Base USDC.",
       license: { name: "MIT", identifier: "MIT" },
     },
     externalDocs: {
@@ -332,15 +332,17 @@ export function createOpenApi(
 }
 
 export function createLlmsText(origin: string): string {
-  return `# BountyVerdict
+  return `# BountyVerdict GitHub Agent Decision APIs
 
-> Evidence-linked GitHub bounty due diligence for autonomous coding agents.
+> Six bounded live checks for public GitHub bounty, repository-instruction, agent-skill, and GitHub Actions decisions.
 
 ## Decide if this tool is useful
 
 - Free representative result: ${origin}/api/sample
 - OpenAPI 3.1 contract: ${origin}/openapi.json
-- Agent operating skill: https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md
+- Umbrella routing skill: https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md
+- Install router: npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y
+- Install all operating skills: npx skills add cristianmoroaica/bountyverdict --skill '*' -y
 - Paid check: GET ${origin}/api/verdict?issue_url=<PUBLIC_GITHUB_ISSUE_URL>
 - Price: $0.05 USDC per successful result through x402 v2
 - Free portfolio sample: ${origin}/api/portfolio/sample

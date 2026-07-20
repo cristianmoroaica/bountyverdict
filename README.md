@@ -27,7 +27,15 @@ The `agent/` directory contains the paid, machine-readable product surface. It i
 
 Agents can inspect free samples, see exact prices in the HTTP 402 response, then independently decide whether to buy. Invalid inputs and upstream failures return an error without settlement. The public [`agent-manifest.json`](agent-manifest.json) is the authoritative activation record. Guarded purchase workflows live under [`skills/`](skills/).
 
-The bounty contracts were exercised end to end on Base Sepolia and Base mainnet. The production manifest is active and Coinbase Bazaar indexes the live resources. Owner-funded launch proofs are interoperability tests, not earned revenue, and are explicitly excluded from the revenue ledger.
+Install the umbrella router, which selects the right bounded check and loads its product-specific safeguards:
+
+```bash
+npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y
+```
+
+Install every operating skill with `npx skills add cristianmoroaica/bountyverdict --skill '*' -y`. Each product entry in the manifest also publishes its direct `skill_url`, exact install command, and `use_when` trigger.
+
+The bounty contracts were exercised end to end on Base Sepolia and Base mainnet. The production manifest is active and Coinbase Bazaar indexes five established resources; the live FlakeVerdict resource still awaits its first policy-bound catalog settlement. Owner-funded launch proofs are interoperability tests, not earned revenue, and are explicitly excluded from the revenue ledger.
 
 HarnessVerdict pins the repository default branch to an immutable commit and audits recognized `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, Copilot, Cursor, and `SKILL.md` surfaces without cloning or executing repository code. It reports evidence-linked path, scope, portability, context-budget, skill-frontmatter, and secret-like-material findings.
 

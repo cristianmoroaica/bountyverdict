@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Agent Checks"
+  short_description: "Route GitHub decisions to the right live check"
+  default_prompt: "Use $route-github-agent-checks to choose and safely call the right GitHub decision API for this task."

@@ -83,6 +83,8 @@ h1 em { color: transparent; -webkit-text-stroke: 2px var(--ink); font-style: nor
 .price strong { font-size: 4rem; color: var(--acid); letter-spacing: -.05em; }
 .price span { font: .75rem var(--mono); color: #bdc8bd; }
 .agent-offer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 30px; }
+.install-command { margin: 28px 0; overflow-wrap: anywhere; }
+.install-command code { display: inline-block; padding: 12px 14px; border: 1px solid #3f4a3f; background: #0b0f0b; color: var(--acid); font: .75rem/1.5 var(--mono); }
 .agent-link { display: inline-flex; align-items: center; min-height: 48px; padding: 0 18px; border: 1px solid var(--acid); color: var(--acid); font: 700 .78rem var(--mono); text-decoration: none; }
 .agent-link:hover { background: var(--acid); color: var(--ink); }
 .footer { display: flex; justify-content: space-between; gap: 30px; padding: 30px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: .78rem; }

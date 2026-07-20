@@ -23,11 +23,22 @@ test("agent manifest is honest and links inspectable products", async () => {
   assert.ok(manifest.products.every((product) => product.reusable === true));
   assert.equal(manifest.reliability.result_guidance_field, "service_reuse");
   assert.equal(manifest.reliability.scheduled_functional_canaries, true);
-  assert.match(manifest.skill, /\/SKILL\.md$/);
+  assert.match(manifest.skill, /route-github-agent-checks\/SKILL\.md$/);
+  assert.equal(manifest.payment.scheme, "exact");
+  assert.equal(manifest.payment.asset, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  assert.equal(manifest.payment.recipient, "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614");
+  assert.match(manifest.install.router, /--skill route-github-agent-checks -y$/);
+  assert.match(manifest.install.all, /--skill '\*' -y$/);
+  assert.match(manifest.skills.route_github_agent_checks, /route-github-agent-checks\/SKILL\.md$/);
   assert.match(manifest.skills.audit_agent_harness, /audit-agent-harness\/SKILL\.md$/);
   assert.match(manifest.skills.preflight_agent_skills, /preflight-agent-skills\/SKILL\.md$/);
   assert.match(manifest.skills.diagnose_github_actions, /diagnose-github-actions\/SKILL\.md$/);
   assert.match(manifest.skills.classify_github_flakes, /classify-github-flakes\/SKILL\.md$/);
+  for (const product of manifest.products) {
+    assert.match(product.use_when, /\.$/);
+    assert.match(product.skill_url, /^https:\/\/.+\/SKILL\.md$/);
+    assert.match(product.install_command, /^npx skills add cristianmoroaica\/bountyverdict --skill [a-z0-9-]+ -y$/);
+  }
   const flake = manifest.products.find((product) => product.name === "FlakeVerdict");
   assert.equal(flake.method, "GET");
   assert.equal(flake.path, "/api/flake");
@@ -35,6 +46,26 @@ test("agent manifest is honest and links inspectable products", async () => {
   assert.equal(flake.bounds.maximum_earlier_comparable_runs, 12);
   assert.equal(flake.reuse_guidance, flakeReuseGuidance);
   assert.deepEqual(flake.verdicts, ["CONFIRMED_FLAKE", "LIKELY_FLAKE", "RECURRING_FAILURE", "NEW_FAILURE", "INCONCLUSIVE", "NOT_FAILED"]);
+});
+
+test("umbrella routing skill selects one product and preserves payment safety", async () => {
+  const skill = await readFile(
+    new URL("../skills/route-github-agent-checks/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(skill, /^---\nname: route-github-agent-checks\ndescription: .+\n---/);
+  for (const product of ["BountyVerdict", "BountyVerdict Portfolio", "HarnessVerdict", "SkillVerdict", "RunVerdict", "FlakeVerdict"]) {
+    assert.match(skill, new RegExp(product));
+  }
+  for (const cap of ["50,000", "400,000", "30,000", "60,000", "40,000", "70,000"]) {
+    assert.match(skill, new RegExp(cap));
+  }
+  assert.match(skill, /one payment option only/);
+  assert.match(skill, /challenge\.resource\.url/);
+  assert.match(skill, /bountyverdict-agent-production\.mimirslab\.workers\.dev/);
+  assert.match(skill, /example input as documentation/);
+  assert.match(skill, /Never reveal wallet secrets/);
+  assert.match(skill, /service_reuse/);
 });
 
 test("public samples remain valid JSON with the declared product contracts", async () => {
