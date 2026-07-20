@@ -387,10 +387,10 @@ The seven-product suite now includes MCPDriftVerdict, a deterministic MCP tools/
 
 ## What is next
 
-1. Replace both broad CDP typed-data policies with the prepared seller-and-$0.40-bound rule in the dashboard, then provision and fund the policy-bound buyer before enabling the once-weekly real-settlement canary.
-2. Use the policy-bound buyer once per pending resource to index FlakeVerdict and MCPDriftVerdict and refresh stale catalog schemas; exclude every owner operation from revenue and verify cache propagation and unbranded rank.
-3. Verify the public router install from GitHub, measure registry/search presence, and keep the per-product install paths current.
-4. Re-evaluate the next research-backed product only after MCPDriftVerdict distribution data exists; MergeVerdict remains the leading public-PR gate candidate.
+1. Add a restricted Cloudflare Workers API token as the GitHub repository secret \`CLOUDFLARE_API_TOKEN\`; local authenticated deployment works, but unattended GitHub production deployments fail closed without it.
+2. Replace both broad CDP typed-data policies with the prepared seller-and-$0.40-bound rule in the dashboard, then provision and fund the policy-bound buyer before enabling the once-weekly real-settlement canary.
+3. Use the policy-bound buyer once per pending resource to index FlakeVerdict and MCPDriftVerdict and refresh stale catalog schemas; exclude every owner operation from revenue and verify cache propagation and unbranded rank.
+4. Keep the verified public router and per-product install paths current, then re-evaluate the next research-backed product after MCPDriftVerdict distribution data exists; MergeVerdict remains the leading public-PR gate candidate.
 5. Reach the first genuine paying agent, then optimize from observed calls rather than owner-funded proofs.
 
 ## Production health
