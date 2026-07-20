@@ -13,7 +13,7 @@ import {
 import { PRODUCT_CATALOG, productForAtomicAmount, type ProductKey } from "../src/product-catalog.ts";
 import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
 import { evaluateEarnedPlacementExperiment } from "../src/acquisition.ts";
-import { isFunnelSnapshot } from "../src/funnel-telemetry.ts";
+import { loadFunnelSnapshot } from "../src/funnel-telemetry.ts";
 import {
   THE402_API,
   THE402_LISTINGS,
@@ -933,20 +933,82 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
 
 async function funnelStatus(): Promise<Record<string, unknown>> {
   try {
-    const state = JSON.parse(await readFile(funnelStateFile, "utf8"));
-    if (!isFunnelSnapshot(state)) throw new Error("Funnel telemetry state is malformed.");
+    const state = loadFunnelSnapshot(JSON.parse(await readFile(funnelStateFile, "utf8")));
+    if (!state) throw new Error("Funnel telemetry state is malformed.");
     const owner = state.by_source.owner_automation;
+    const externalByProduct = Object.fromEntries(EXPECTED_PRODUCTS.map((product) => {
+      const sources = state.by_product_source[product];
+      const external = Object.entries(sources)
+        .filter(([source]) => source !== "owner_automation")
+        .reduce((sum, [, counters]) => ({
+          requests: sum.requests + counters.requests,
+          challenges_402: sum.challenges_402 + counters.challenges_402,
+          signed_requests: sum.signed_requests + counters.signed_requests,
+          signed_successes: sum.signed_successes + counters.signed_successes,
+          preflight_rejections: sum.preflight_rejections + counters.preflight_rejections,
+          rate_limited: sum.rate_limited + counters.rate_limited,
+          server_errors: sum.server_errors + counters.server_errors,
+        }), { requests: 0, challenges_402: 0, signed_requests: 0, signed_successes: 0, preflight_rejections: 0, rate_limited: 0, server_errors: 0 });
+      return [product, external];
+    }));
+    const externalChallenges = state.totals.challenges_402 - owner.challenges_402;
+    const externalSignedRequests = state.totals.signed_requests - owner.signed_requests;
+    const externalSignedSuccesses = state.totals.signed_successes - owner.signed_successes;
+    const enhancedExternalChallenges = Object.values(externalByProduct)
+      .reduce((sum, counters) => sum + counters.challenges_402, 0);
+    const discoveryOwner = state.by_discovery_source.owner_automation;
+    const externalDiscoveryRequests = state.discovery_totals.requests - discoveryOwner.requests;
+    const externalDiscoveryBySurface = Object.fromEntries(Object.entries(state.by_discovery_surface_source).map(([surface, sources]) => [
+      surface,
+      Object.entries(sources).filter(([source]) => source !== "owner_automation")
+        .reduce((sum, [, counters]) => sum + counters.requests, 0),
+    ]));
+    const learningStage = externalDiscoveryRequests === 0 && externalChallenges === 0 && externalSignedRequests === 0
+      ? "reach_not_observed"
+      : externalChallenges === 0 && externalSignedRequests === 0
+        ? "discovery_surface_without_paid_route"
+      : externalSignedRequests === 0
+        ? "discovery_without_payment_attempt"
+        : externalSignedSuccesses === 0
+          ? "signed_payment_friction"
+          : "signed_conversion_observed";
     return {
       available: true,
       capture_started_at: state.capture_started_at,
+      enhanced_capture_started_at: state.enhanced_capture_started_at,
       updated_at: state.updated_at,
       paid_route_requests: state.totals.requests,
-      external_402_challenges: state.totals.challenges_402 - owner.challenges_402,
-      signed_payment_attempts: state.totals.signed_requests - owner.signed_requests,
-      successful_signed_responses: state.totals.signed_successes - owner.signed_successes,
+      discovery_surface_requests: state.discovery_totals.requests,
+      external_discovery_requests: externalDiscoveryRequests,
+      external_discovery_by_surface: externalDiscoveryBySurface,
+      external_402_challenges: externalChallenges,
+      enhanced_external_402_challenges: enhancedExternalChallenges,
+      signed_payment_attempts: externalSignedRequests,
+      successful_signed_responses: externalSignedSuccesses,
+      challenge_to_signed_attempt_percent: externalChallenges > 0
+        ? Math.round(externalSignedRequests / externalChallenges * 1_000) / 10
+        : null,
+      signed_attempt_success_percent: externalSignedRequests > 0
+        ? Math.round(externalSignedSuccesses / externalSignedRequests * 1_000) / 10
+        : null,
+      learning_stage: learningStage,
       owner_automation_requests: owner.requests,
       by_product: state.by_product,
       by_source: state.by_source,
+      external_by_product: externalByProduct,
+      by_client_class: state.by_client_class,
+      by_channel: state.by_channel,
+      by_input_profile: state.by_input_profile,
+      by_payment_carrier: state.by_payment_carrier,
+      by_response_preference: state.by_response_preference,
+      by_day: state.by_day,
+      by_hour: state.by_hour,
+      by_discovery_surface: state.by_discovery_surface,
+      by_discovery_source: state.by_discovery_source,
+      by_discovery_client_class: state.by_discovery_client_class,
+      by_discovery_channel: state.by_discovery_channel,
+      discovery_by_day: state.discovery_by_day,
+      discovery_by_hour: state.discovery_by_hour,
       privacy: state.privacy,
       accounting_note: "Edge funnel telemetry measures aggregate HTTP behavior only. Onchain settlement attribution remains authoritative for purchases and revenue.",
     };
@@ -993,6 +1055,16 @@ function renderMonitorNote(report: Record<string, any>): string {
     ? `${Number(buyerQuerySummary.found_queries || 0)} / ${Number(buyerQuerySummary.query_count)} unbranded buyer-query variants found; ${Number(buyerQuerySummary.top_three_queries || 0)} rank in the top 3`
     : "unavailable";
   const funnel = report.funnel || {};
+  const externalProductFunnel = funnel.external_by_product || {};
+  const activeChannels = Object.entries(funnel.by_channel || {})
+    .filter(([channel, counters]: [string, any]) => !["owner_automation", "legacy_unclassified"].includes(channel) && Number(counters?.requests || 0) > 0)
+    .sort((left: [string, any], right: [string, any]) => Number(right[1]?.requests || 0) - Number(left[1]?.requests || 0));
+  const activeClients = Object.entries(funnel.by_client_class || {})
+    .filter(([client, counters]: [string, any]) => !["owner_automation", "legacy_unclassified"].includes(client) && Number(counters?.requests || 0) > 0)
+    .sort((left: [string, any], right: [string, any]) => Number(right[1]?.requests || 0) - Number(left[1]?.requests || 0));
+  const externalDiscoverySurfaces = Object.entries(funnel.external_discovery_by_surface || {})
+    .filter(([, count]) => Number(count || 0) > 0)
+    .sort((left, right) => Number(right[1] || 0) - Number(left[1] || 0));
   const indexed = report.discovery?.indexed_products || {};
   const status = report.healthy ? "HEALTHY" : "DEGRADED";
   const errors = Array.isArray(report.errors) && report.errors.length
@@ -1006,7 +1078,8 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${totalPurchases} / 10 genuine external purchases
 - **Neutral buyer-query retrieval:** ${buyerBenchmarkSummary}
-- **Paid-route edge funnel:** ${funnel.available ? `${Number(funnel.external_402_challenges || 0)} external 402 challenges; ${Number(funnel.signed_payment_attempts || 0)} signed attempts; ${Number(funnel.successful_signed_responses || 0)} signed successes since ${funnel.capture_started_at}` : `capture unavailable (${funnel.error || "not started"})`}
+- **Agent edge funnel:** ${funnel.available ? `${Number(funnel.external_discovery_requests || 0)} external discovery-surface hits; ${Number(funnel.external_402_challenges || 0)} lifetime external/unattributed 402 challenges (${Number(funnel.enhanced_external_402_challenges || 0)} classifiable since enhanced capture); ${Number(funnel.signed_payment_attempts || 0)} signed attempts; ${Number(funnel.successful_signed_responses || 0)} signed successes` : `capture unavailable (${funnel.error || "not started"})`}
+- **Current funnel diagnosis:** ${funnel.learning_stage || "unavailable"}
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
 - **Experiment next action:** ${experiment.next_action?.code || "unavailable"} — ${experiment.next_action?.reason || "No classified action available."}
 - **Customer purchases:** ${totalPurchases} (${Number(purchases.total || 0)} direct x402; ${marketplacePurchases} the402 one-off jobs; ${subscriptionPurchases} the402 subscriptions; ${nearPurchases} NEAR Agent Market jobs)
@@ -1097,7 +1170,26 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - NEAR Agent Market listings: ${report.marketplaces?.near?.service_count ?? "unavailable"} / 6 (automated JSON fulfillment; SkillVerdict excluded)
 - PayanAgent offers: ${report.marketplaces?.payan?.offer_count ?? "unavailable"} / 6 (Base x402 proxy; SkillVerdict excluded)
 - Agentic Market automatic endpoints: ${report.marketplaces?.agentic_market?.endpoint_count ?? "unavailable"} / 7 (CDP Bazaar mirror; reported quality counters excluded from purchase and revenue accounting)
-- Edge funnel capture: ${funnel.available ? `${Number(funnel.paid_route_requests || 0)} paid-route requests; ${Number(funnel.external_402_challenges || 0)} external challenges; ${Number(funnel.signed_payment_attempts || 0)} signed attempts` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
+- Edge funnel capture: ${funnel.available ? `${Number(funnel.paid_route_requests || 0)} paid-route requests; ${Number(funnel.external_402_challenges || 0)} lifetime external/unattributed challenges; ${Number(funnel.enhanced_external_402_challenges || 0)} classifiable external challenges since the enhanced schema; ${Number(funnel.signed_payment_attempts || 0)} signed attempts` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
+- Discovery-surface capture: ${funnel.available ? `${Number(funnel.discovery_surface_requests || 0)} total; ${Number(funnel.external_discovery_requests || 0)} external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
+- External discovery surfaces observed: ${externalDiscoverySurfaces.length ? externalDiscoverySurfaces.map(([surface, count]) => `${surface} (${Number(count)})`).join(", ") : "none yet"}
+- Enhanced learning dimensions active since: ${funnel.enhanced_capture_started_at || "unavailable"}
+- External channels observed: ${activeChannels.length ? activeChannels.map(([channel, counters]: [string, any]) => `${channel} (${Number(counters.requests || 0)})`).join(", ") : "none yet"}
+- External client classes observed: ${activeClients.length ? activeClients.map(([client, counters]: [string, any]) => `${client} (${Number(counters.requests || 0)})`).join(", ") : "none yet"}
+- Challenge → signed-attempt rate: ${funnel.challenge_to_signed_attempt_percent === null || funnel.challenge_to_signed_attempt_percent === undefined ? "not measurable yet" : `${funnel.challenge_to_signed_attempt_percent}%`}
+- Signed-attempt → successful-response rate: ${funnel.signed_attempt_success_percent === null || funnel.signed_attempt_success_percent === undefined ? "not measurable yet" : `${funnel.signed_attempt_success_percent}%`}
+- Current learning diagnosis: ${funnel.learning_stage || "unavailable"}
+
+### External paid-route learning by product
+
+| Product | Requests | 402 challenges | Signed attempts | Signed successes | Input rejections | Server errors |
+|---|---:|---:|---:|---:|---:|---:|
+${EXPECTED_PRODUCTS.map((product) => {
+  const row = externalProductFunnel[product] || {};
+  return `| ${PRODUCT_CATALOG[product].service} | ${Number(row.requests || 0)} | ${Number(row.challenges_402 || 0)} | ${Number(row.signed_requests || 0)} | ${Number(row.signed_successes || 0)} | ${Number(row.preflight_rejections || 0)} | ${Number(row.server_errors || 0)} |`;
+}).join("\n")}
+
+Input readiness, channel, client class, response preference, x402 header generation, hourly and daily trends, and product×source aggregates are retained in the private machine-readable state. Pre-upgrade requests remain in lifetime totals but are never fabricated into enhanced dimensions. No raw request content or visitor identifier is retained.
 - Experiment status: ${experiment.status || "unavailable"}
 - Experiment baseline: 8 total installs, 2 router installs, 1 SkillVerdict workflow install, 0 genuine purchases
 - Experiment delta: ${Number(experiment.delta?.installs?.total || 0)} total installs, ${Number(experiment.delta?.installs?.router || 0)} router installs, ${Number(experiment.delta?.installs?.skillverdict || 0)} SkillVerdict workflow installs, ${Number(experiment.delta?.genuine_purchases || 0)} genuine purchases

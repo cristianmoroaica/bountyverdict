@@ -4,8 +4,10 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   classifyFunnelTailEvent,
+  classifyDiscoveryTailEvent,
   createFunnelSnapshot,
-  isFunnelSnapshot,
+  loadFunnelSnapshot,
+  recordDiscoveryObservation,
   recordFunnelObservation,
   type FunnelSnapshot,
 } from "../src/funnel-telemetry.ts";
@@ -17,8 +19,9 @@ if (!/^[A-Za-z0-9_-]{20,256}$/.test(token)) throw new Error("CLOUDFLARE_API_TOKE
 let snapshot: FunnelSnapshot;
 try {
   const existing = JSON.parse(await readFile(stateFile, "utf8"));
-  if (!isFunnelSnapshot(existing)) throw new Error("Existing funnel telemetry is malformed.");
-  snapshot = existing;
+  const loaded = loadFunnelSnapshot(existing);
+  if (!loaded) throw new Error("Existing funnel telemetry is malformed.");
+  snapshot = loaded;
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   snapshot = createFunnelSnapshot();
@@ -92,8 +95,10 @@ child.stdout.setEncoding("utf8");
 child.stdout.on("data", (chunk: string) => {
   for (const value of parser.push(chunk)) {
     const observation = classifyFunnelTailEvent(value);
-    if (!observation) continue;
-    recordFunnelObservation(snapshot, observation);
+    const discovery = observation ? null : classifyDiscoveryTailEvent(value);
+    if (!observation && !discovery) continue;
+    if (observation) recordFunnelObservation(snapshot, observation);
+    else if (discovery) recordDiscoveryObservation(snapshot, discovery);
     void flush().catch((error) => {
       process.stderr.write(`Funnel telemetry write failed: ${error instanceof Error ? error.message : String(error)}\n`);
     });
