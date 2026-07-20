@@ -1,6 +1,7 @@
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
+import { validatePaymentChallenge } from "../src/payment-safety.ts";
 
 const defaultIssue = "https://github.com/typeorm/typeorm/issues/3357";
 const baseUrl = process.env.RESOURCE_SERVER_URL || "http://127.0.0.1:8787";
@@ -19,17 +20,13 @@ if (unpaid.status !== 402) {
 const paymentHeader = unpaid.headers.get("payment-required");
 if (!paymentHeader) throw new Error("The 402 response omitted PAYMENT-REQUIRED.");
 const challenge = decodeHeader(paymentHeader);
-const requirement = challenge.accepts?.[0];
-if (!requirement) throw new Error("The payment challenge has no accepted payment option.");
-
 const maximumAtomic = BigInt(process.env.MAX_PAYMENT_ATOMIC || "50000");
-const amount = BigInt(requirement.amount);
-if (amount > maximumAtomic) {
-  throw new Error(`Advertised price ${amount} exceeds safety cap ${maximumAtomic}.`);
-}
-if (requirement.network === "eip155:8453" && process.env.ALLOW_MAINNET_PAYMENT !== "YES") {
-  throw new Error("Mainnet payment refused. Set ALLOW_MAINNET_PAYMENT=YES explicitly.");
-}
+const executePayment = process.env.EXECUTE_PAYMENT === "YES";
+const requirement = validatePaymentChallenge(challenge, {
+  maximumAtomic,
+  executePayment,
+  allowMainnet: process.env.ALLOW_MAINNET_PAYMENT === "YES",
+});
 
 console.log(JSON.stringify({
   phase: "payment_challenge_verified",
@@ -40,10 +37,10 @@ console.log(JSON.stringify({
   asset: requirement.asset,
   pay_to: requirement.payTo,
   bazaar_method: challenge.extensions?.bazaar?.info?.input?.method,
-  execute_payment: process.env.EXECUTE_PAYMENT === "YES",
+  execute_payment: executePayment,
 }, null, 2));
 
-if (process.env.EXECUTE_PAYMENT !== "YES") process.exit(0);
+if (!executePayment) process.exit(0);
 
 const privateKey = process.env.BUYER_PRIVATE_KEY;
 if (!privateKey || !/^0x[a-fA-F0-9]{64}$/.test(privateKey)) {
@@ -51,7 +48,7 @@ if (!privateKey || !/^0x[a-fA-F0-9]{64}$/.test(privateKey)) {
 }
 const account = privateKeyToAccount(privateKey as `0x${string}`);
 const client = new x402Client()
-  .register(requirement.network, new ExactEvmScheme(account))
+  .register(requirement.network as `${string}:${string}`, new ExactEvmScheme(account))
   .registerPolicy((_version, requirements) =>
     requirements.filter((candidate) => BigInt(candidate.amount) <= maximumAtomic),
   );
