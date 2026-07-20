@@ -83,6 +83,50 @@ const MANIFEST_URL = `${PRODUCT_URL}agent-manifest.json`;
 const SKILLS_URL = `${PRODUCT_URL}skills/`;
 const SKILL_URL = `${SKILLS_URL}route-github-agent-checks/SKILL.md`;
 
+type UnpaidDecisionPreview = {
+  product: string;
+  price: string;
+  description: string;
+  useWhen: string;
+  notFor: string;
+  decisionReturned: string[];
+  whyPay: string;
+  samplePath: string;
+  skillName: string;
+  method: "GET" | "POST";
+};
+
+function unpaidDecisionBody(preview: UnpaidDecisionPreview) {
+  const requestHint = preview.method === "GET"
+    ? "Use the exact request URL, including its encoded query string."
+    : "Use POST with the exact validated JSON body; payment binds to those request bytes.";
+  return {
+    contentType: "application/json",
+    body: {
+      error: "PAYMENT_REQUIRED",
+      product: preview.product,
+      price: preview.price,
+      currency: "USDC",
+      description: preview.description,
+      use_when: preview.useWhen,
+      not_for: preview.notFor,
+      decision_returned: preview.decisionReturned,
+      why_pay: preview.whyPay,
+      free_sample: preview.samplePath,
+      skill: `${SKILLS_URL}${preview.skillName}/SKILL.md`,
+      documentation: `${PRODUCT_URL}agents.html`,
+      payment: {
+        protocol: "x402 v2",
+        network: "Base",
+        asset: "USDC",
+        inspect_challenge_before_signing: true,
+        request_binding: requestHint,
+        client_hint: "Any x402 v2 client can pay. Coinbase Agentic Wallet users can use `npx awal@2.12.0 x402 pay` with the exact request and a maximum amount cap.",
+      },
+    },
+  };
+}
+
 const middlewareCache = new Map<string, MiddlewareHandler>();
 
 function requireAddress(value: string | undefined): `0x${string}` {
@@ -142,17 +186,17 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "BountyVerdict",
     tags: ["github-bounty", "bounty-due-diligence", "worth-pursuing", "competing-pull-requests", "withdrawn-reward", "agent-decision"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => ({
-      contentType: "application/json",
-      body: {
-        error: "PAYMENT_REQUIRED",
-        product: "BountyVerdict",
-        price: SINGLE_PRICE_USD,
-        currency: "USDC",
-        description: "Pay once to receive a fresh evidence-linked bounty risk verdict.",
-        free_sample: "/api/sample",
-        documentation: PRODUCT_URL,
-      },
+    unpaidResponseBody: () => unpaidDecisionBody({
+      product: "BountyVerdict",
+      price: SINGLE_PRICE_USD,
+      description: "Pay once to receive a fresh evidence-linked bounty risk verdict.",
+      useWhen: "Before coding one public GitHub bounty issue.",
+      notFor: "Private repositories or payout guarantees.",
+      decisionReturned: ["AVOID", "CAUTION", "VIABLE"],
+      whyPay: "Checks withdrawn rewards, maintainer rejection, competing pull requests, failed-attempt saturation, and repository AI-contribution policy in one bounded pass.",
+      samplePath: "/api/sample",
+      skillName: "preflight-github-bounties",
+      method: "GET",
     }),
   };
   const portfolioRouteConfig: RouteConfig = {
@@ -167,17 +211,17 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "BountyVerdict Portfolio",
     tags: ["compare-bounties", "best-candidate", "candidate-selection", "opportunity-ranking", "github-bounties", "portfolio"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => ({
-      contentType: "application/json",
-      body: {
-        error: "PAYMENT_REQUIRED",
-        product: "BountyVerdict Portfolio",
-        price: PORTFOLIO_PRICE_USD,
-        currency: "USDC",
-        description: "Pay once to rank up to ten bounty candidates with full evidence-linked verdicts.",
-        free_sample: "/api/portfolio/sample",
-        documentation: PRODUCT_URL,
-      },
+    unpaidResponseBody: () => unpaidDecisionBody({
+      product: "BountyVerdict Portfolio",
+      price: PORTFOLIO_PRICE_USD,
+      description: "Pay once to rank up to ten bounty candidates with full evidence-linked verdicts.",
+      useWhen: "When choosing among two to ten public GitHub bounty candidates.",
+      notFor: "One candidate, duplicate issue URLs, or private issues.",
+      decisionReturned: ["ranked_verdicts", "best_candidate", "counts", "partial_failures"],
+      whyPay: "One call performs two to ten full audits; at ten candidates the fixed price is $0.04 per candidate.",
+      samplePath: "/api/portfolio/sample",
+      skillName: "preflight-github-bounties",
+      method: "POST",
     }),
   };
   const harnessRouteConfig: RouteConfig = {
@@ -192,17 +236,17 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "HarnessVerdict",
     tags: ["github", "agents-md", "claude-md", "agent-harness", "developer-tools", "lint"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => ({
-      contentType: "application/json",
-      body: {
-        error: "PAYMENT_REQUIRED",
-        product: "HarnessVerdict",
-        price: HARNESS_PRICE_USD,
-        currency: "USDC",
-        description: "Pay once for a commit-pinned, evidence-linked repository instruction audit.",
-        free_sample: "/api/harness/sample",
-        documentation: PRODUCT_URL,
-      },
+    unpaidResponseBody: () => unpaidDecisionBody({
+      product: "HarnessVerdict",
+      price: HARNESS_PRICE_USD,
+      description: "Pay once for a commit-pinned, evidence-linked repository instruction audit.",
+      useWhen: "Before autonomous coding in a public GitHub repository.",
+      notFor: "Generic code quality review or private repositories.",
+      decisionReturned: ["READY", "REVIEW", "REPAIR"],
+      whyPay: "Maps AGENTS.md, CLAUDE.md, GEMINI.md, Copilot, Cursor, and SKILL.md coverage at an immutable commit and returns evidence-linked fixes.",
+      samplePath: "/api/harness/sample",
+      skillName: "audit-agent-harness",
+      method: "GET",
     }),
   };
   const skillRouteConfig: RouteConfig = {
@@ -217,17 +261,17 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "SkillVerdict",
     tags: ["agent-skills", "skill-md", "security", "supply-chain", "prompt-injection", "pre-install"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => ({
-      contentType: "application/json",
-      body: {
-        error: "PAYMENT_REQUIRED",
-        product: "SkillVerdict",
-        price: SKILL_PRICE_USD,
-        currency: "USDC",
-        description: "Pay once for a commit-pinned, non-executing security audit before installing a public agent skill.",
-        free_sample: "/api/skill/sample",
-        documentation: PRODUCT_URL,
-      },
+    unpaidResponseBody: () => unpaidDecisionBody({
+      product: "SkillVerdict",
+      price: SKILL_PRICE_USD,
+      description: "Pay once for a commit-pinned, non-executing security audit before installing a public agent skill.",
+      useWhen: "Before installing or running a third-party public SKILL.md bundle.",
+      notFor: "Runtime sandboxing, private skills, or a guarantee that code is safe.",
+      decisionReturned: ["LOW_RISK", "REVIEW", "BLOCK"],
+      whyPay: "Scans the whole pinned skill directory for credential theft, remote execution, destructive actions, persistence, privilege escalation, hidden files, and undeclared capabilities without executing it.",
+      samplePath: "/api/skill/sample",
+      skillName: "preflight-agent-skills",
+      method: "GET",
     }),
   };
   const runRouteConfig: RouteConfig = {
@@ -242,17 +286,17 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "RunVerdict",
     tags: ["workflow-failure", "why-failed", "root-cause", "failed-run", "next-action", "github-actions"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => ({
-      contentType: "application/json",
-      body: {
-        error: "PAYMENT_REQUIRED",
-        product: "RunVerdict",
-        price: RUN_PRICE_USD,
-        currency: "USDC",
-        description: "Pay once for an evidence-linked diagnosis of a public GitHub Actions run.",
-        free_sample: "/api/run/sample",
-        documentation: PRODUCT_URL,
-      },
+    unpaidResponseBody: () => unpaidDecisionBody({
+      product: "RunVerdict",
+      price: RUN_PRICE_USD,
+      description: "Pay once to learn why a public GitHub Actions run failed and what to do next.",
+      useWhen: "After a failed run when the agent needs root cause and next action.",
+      notFor: "The narrower retry-once-versus-fix flake decision.",
+      decisionReturned: ["PASS", "WAIT", "RETRY", "FIX", "INVESTIGATE"],
+      whyPay: "Reads exact-attempt jobs and bounded failed-job logs, separates primary failures from downstream summaries, and returns redacted evidence without rerunning code.",
+      samplePath: "/api/run/sample",
+      skillName: "diagnose-github-actions",
+      method: "GET",
     }),
   };
   const flakeRouteConfig: RouteConfig = {
@@ -267,17 +311,17 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "FlakeVerdict",
     tags: ["flaky-ci", "should-i-retry", "retry-or-fix", "workflow-attempts", "historical-run-comparison", "github-actions"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => ({
-      contentType: "application/json",
-      body: {
-        error: "PAYMENT_REQUIRED",
-        product: "FlakeVerdict",
-        price: FLAKE_PRICE_USD,
-        currency: "USDC",
-        description: "Pay once to decide whether one public GitHub Actions failure merits exactly one retry or needs investigation.",
-        free_sample: PRODUCT_CATALOG.flake.samplePath,
-        documentation: PRODUCT_URL,
-      },
+    unpaidResponseBody: () => unpaidDecisionBody({
+      product: "FlakeVerdict",
+      price: FLAKE_PRICE_USD,
+      description: "Pay once to decide whether one public GitHub Actions failure merits exactly one retry or needs a fix.",
+      useWhen: "After a completed failed run when the decision is retry once versus fix.",
+      notFor: "Root-cause diagnosis; use RunVerdict when the question is why the run failed.",
+      decisionReturned: ["CONFIRMED_FLAKE", "LIKELY_FLAKE", "RECURRING_FAILURE", "NEW_FAILURE", "INCONCLUSIVE", "NOT_FAILED"],
+      whyPay: "Compares exact attempts, same-commit outcomes, failed-step fingerprints, and bounded historical runs to avoid a wasted CI rerun.",
+      samplePath: PRODUCT_CATALOG.flake.samplePath,
+      skillName: "classify-github-flakes",
+      method: "GET",
     }),
   };
   const mcpDriftRouteConfig: RouteConfig = {
@@ -292,17 +336,17 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     serviceName: "MCPDriftVerdict",
     tags: ["mcp", "tools-list", "schema-drift", "breaking-change", "agent-compatibility", "server-upgrade", "required-argument"],
     iconUrl: ICON_URL,
-    unpaidResponseBody: () => ({
-      contentType: "application/json",
-      body: {
-        error: "PAYMENT_REQUIRED",
-        product: "MCPDriftVerdict",
-        price: MCP_DRIFT_PRICE_USD,
-        currency: "USDC",
-        description: "Pay once to receive the already-computed compatibility and security verdict for this exact snapshot pair.",
-        free_sample: PRODUCT_CATALOG.mcpdrift.samplePath,
-        documentation: PRODUCT_URL,
-      },
+    unpaidResponseBody: () => unpaidDecisionBody({
+      product: "MCPDriftVerdict",
+      price: MCP_DRIFT_PRICE_USD,
+      description: "Pay once to receive the already-computed compatibility verdict for this exact MCP tools/list snapshot pair.",
+      useWhen: "After a complete MCP tools/list change and before an agent accepts the server upgrade.",
+      notFor: "Malware or prompt-injection scanning, private catalogs, or invoking MCP tools.",
+      decisionReturned: ["UNCHANGED", "SAFE_ADDITIVE", "REVIEW", "INCONCLUSIVE", "BREAKING", "SECURITY_REGRESSION"],
+      whyPay: "Provides an exact-hash structural compatibility gate for removed tools, new required arguments, incompatible schemas, and model-facing safety regressions.",
+      samplePath: PRODUCT_CATALOG.mcpdrift.samplePath,
+      skillName: "check-mcp-tool-drift",
+      method: "POST",
     }),
   };
   const middleware = paymentMiddleware(

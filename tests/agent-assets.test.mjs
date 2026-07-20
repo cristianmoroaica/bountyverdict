@@ -183,6 +183,11 @@ test("agent landing page exposes all seven self-serve products", async () => {
   assert.match(page, /No account or API key/);
   assert.match(page, /route-github-agent-checks/);
   assert.match(page, /agent-manifest\.json/);
+  assert.match(page, /gh skill preview cristianmoroaica\/bountyverdict route-github-agent-checks@v1\.0\.1/);
+  assert.match(page, /gh skill install cristianmoroaica\/bountyverdict route-github-agent-checks --pin v1\.0\.1/);
+  assert.match(page, /npx awal@2\.12\.0 x402 details/);
+  assert.match(page, /npx awal@2\.12\.0 x402 pay/);
+  assert.match(page, /--max-amount/);
   for (const product of ["BountyVerdict", "Portfolio", "HarnessVerdict", "SkillVerdict", "RunVerdict", "FlakeVerdict", "MCPDriftVerdict"]) {
     assert.match(page, new RegExp(product));
   }

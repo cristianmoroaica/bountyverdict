@@ -389,11 +389,11 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. The agent-first v1.0.0 release and dedicated catalog page are public, and AgentTool accepted the listing for scanning. Distribution is now the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers. Owner-funded checks remain excluded.
+The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. The agent-first v1.0.1 release and dedicated catalog page are public, and direct version-pinned GitHub Skill preview and installation are verified. Distribution is now the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers. Owner-funded checks remain excluded.
 
 ## What is next
 
-1. Monitor AgentTool scanning and retry AgentSkill daily after its upstream database quota is restored; do not generate fake install telemetry.
+1. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
 2. Keep Coinbase Bazaar and Agentic Market automatic discovery under observation while FlakeVerdict propagates and MCPDriftVerdict awaits an eligible settlement.
 3. Measure each product with its own natural buyer-intent query and track its rank plus the top three competing resources.
 4. Improve positioning from observed discovery and genuine calls until ten external purchases are recognized. Do not build an eighth product before that gate.
