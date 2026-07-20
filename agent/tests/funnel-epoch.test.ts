@@ -127,7 +127,8 @@ test("epoch rotation closes and opens at one boundary and repairs a partial base
   const draining = JSON.parse(await readFile(historyFile, "utf8"));
   draining.rotation.stable_since = new Date(Date.now() - 120_000).toISOString();
   await writeFile(historyFile, `${JSON.stringify(draining)}\n`);
-  const second = await execFileAsync(process.execPath, ["--experimental-strip-types", script.pathname], { env });
+  const automaticEnv = { ...env, FUNNEL_ROTATION_ID: "AUTO", FUNNEL_EPOCH_REASON: "" };
+  const second = await execFileAsync(process.execPath, ["--experimental-strip-types", script.pathname], { env: automaticEnv });
   assert.match(second.stdout, /"status": "activated"/);
   const activated = JSON.parse(await readFile(historyFile, "utf8"));
   const closed = activated.epochs.find((epoch: any) => epoch.id === 1);
@@ -146,4 +147,18 @@ test("epoch rotation closes and opens at one boundary and repairs a partial base
   const repaired = await execFileAsync(process.execPath, ["--experimental-strip-types", script.pathname], { env });
   assert.match(repaired.stdout, /activated_baseline_repaired/);
   assert.deepEqual(trustedFunnelBaseline(JSON.parse(await readFile(baselineFile, "utf8"))), active.baseline);
+
+  const idle = await execFileAsync(process.execPath, ["--experimental-strip-types", script.pathname], { env: automaticEnv });
+  assert.match(idle.stdout, /idle_no_pending_rotation/);
+  const nextEnv = {
+    ...env,
+    FUNNEL_ROTATION_ID: "rotation-test-002",
+    FUNNEL_EPOCH_REASON: "A second autonomous marketplace audit needs its own excluded drain window.",
+  };
+  const next = await execFileAsync(process.execPath, ["--experimental-strip-types", script.pathname], { env: nextEnv });
+  assert.match(next.stdout, /draining_started/);
+  const recurrent = JSON.parse(await readFile(historyFile, "utf8"));
+  assert.equal(recurrent.rotation.target_epoch_id, 3);
+  assert.equal(recurrent.epochs.find((epoch: any) => epoch.id === 2).conversion_eligible, false);
+  assert.equal(recurrent.completed_rotations.length, 1);
 });

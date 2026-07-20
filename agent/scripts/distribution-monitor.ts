@@ -60,6 +60,7 @@ const trustedFunnelEpochFile = process.env.TRUSTED_FUNNEL_HISTORY_FILE ||
 const monitorNoteFile = process.env.MONITOR_NOTE_FILE || `${homedir()}/notes/mimirx402.md`;
 const trackedCostsInput = process.env.TRACKED_COSTS_USDC || "0";
 const historicalTestGasEth = process.env.HISTORICAL_TEST_GAS_ETH || "0.00000525";
+const reportOnly = process.env.REPORT_ONLY === "YES";
 const settlementBuyer = process.env.SETTLEMENT_BUYER_ADDRESS;
 const settlementCanaryEnabled = process.env.SETTLEMENT_CANARY_ENABLED === "YES";
 const the402ApiKey = process.env.THE402_API_KEY;
@@ -1396,6 +1397,12 @@ let nearMarket: Record<string, unknown> = {};
 let payan: Record<string, unknown> = {};
 let agenticMarket: Record<string, unknown> = {};
 let funnel: Record<string, unknown> = {};
+let previousReport: Record<string, any> = {};
+try {
+  previousReport = JSON.parse(await readFile(stateFile, "utf8")) as Record<string, any>;
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+}
 
 try {
   const [root, sample, portfolioSample, harnessSample, skillSample, runSample, flakeSample, mcpDriftSample, x402Manifest, openapi, llms] = await Promise.all([
@@ -1423,10 +1430,14 @@ try {
   errors.push(error instanceof Error ? error.message : String(error));
 }
 
-try {
-  discovery = await discoveryStatus();
-} catch (error) {
-  errors.push(error instanceof Error ? error.message : String(error));
+if (reportOnly) {
+  discovery = previousReport.discovery || {};
+} else {
+  try {
+    discovery = await discoveryStatus();
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
 }
 
 try {
@@ -1460,20 +1471,27 @@ try {
   };
 }
 
-try {
+if (reportOnly) {
   acquisition = {
     ...acquisition,
-    marketplace_search: await marketplaceSearchStatus(),
+    marketplace_search: previousReport.acquisition?.marketplace_search || {},
   };
-} catch (error) {
-  acquisition = {
-    ...acquisition,
-    marketplace_search: {
-      available: false,
-      checked_at: checkedAt,
-      error: error instanceof Error ? error.message : String(error),
-    },
-  };
+} else {
+  try {
+    acquisition = {
+      ...acquisition,
+      marketplace_search: await marketplaceSearchStatus(),
+    };
+  } catch (error) {
+    acquisition = {
+      ...acquisition,
+      marketplace_search: {
+        available: false,
+        checked_at: checkedAt,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
 }
 
 try {
@@ -1580,10 +1598,14 @@ try {
   errors.push(`PayanAgent: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-try {
-  agenticMarket = await agenticMarketStatus();
-} catch (error) {
-  errors.push(`Agentic Market: ${error instanceof Error ? error.message : String(error)}`);
+if (reportOnly) {
+  agenticMarket = previousReport.marketplaces?.agentic_market || {};
+} else {
+  try {
+    agenticMarket = await agenticMarketStatus();
+  } catch (error) {
+    errors.push(`Agentic Market: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 funnel = await funnelStatus();
@@ -1594,6 +1616,7 @@ const report = {
   healthy: errors.length === 0,
   production_api: api,
   network: NETWORK,
+  mode: reportOnly ? "report_only_without_semantic_retrieval" : "full_marketplace_retrieval_audit",
   revenue_wallet: wallet,
   health,
   discovery,

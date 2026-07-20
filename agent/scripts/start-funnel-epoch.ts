@@ -13,11 +13,12 @@ const funnelStateFile = process.env.FUNNEL_STATE_FILE || `${homedir()}/.local/st
 const baselineFile = process.env.TRUSTED_FUNNEL_BASELINE_FILE || `${homedir()}/.local/state/bountyverdict/funnel-trusted-baseline.json`;
 const historyFile = process.env.TRUSTED_FUNNEL_HISTORY_FILE || `${homedir()}/.local/state/bountyverdict/funnel-trusted-epochs.json`;
 const reason = process.env.FUNNEL_EPOCH_REASON || "";
-const rotationId = process.env.FUNNEL_ROTATION_ID || "";
+const requestedRotationId = process.env.FUNNEL_ROTATION_ID || "";
+const automaticPoll = requestedRotationId === "AUTO";
 const quietSecondsInput = process.env.QUIET_PERIOD_SECONDS || "900";
 
 if (process.env.START_FUNNEL_EPOCH !== "YES") throw new Error("Set START_FUNNEL_EPOCH=YES to rotate the trusted funnel epoch.");
-if (!/^[a-z0-9][a-z0-9_-]{7,79}$/.test(rotationId)) throw new Error("FUNNEL_ROTATION_ID is invalid.");
+if (!automaticPoll && !/^[a-z0-9][a-z0-9_-]{7,79}$/.test(requestedRotationId)) throw new Error("FUNNEL_ROTATION_ID is invalid.");
 if (!/^\d+$/.test(quietSecondsInput)) throw new Error("QUIET_PERIOD_SECONDS must be an integer.");
 const quietSeconds = Number(quietSecondsInput);
 if (!Number.isSafeInteger(quietSeconds) || quietSeconds < 60 || quietSeconds > 3_600) {
@@ -33,11 +34,10 @@ async function atomicWrite(path: string, contents: string): Promise<void> {
 
 const state = loadFunnelSnapshot(JSON.parse(await readFile(funnelStateFile, "utf8")));
 if (!state) throw new Error("Funnel telemetry state is malformed.");
-const previous = trustedFunnelBaseline(JSON.parse(await readFile(baselineFile, "utf8")));
+let previous = trustedFunnelBaseline(JSON.parse(await readFile(baselineFile, "utf8")));
 if (!previous) throw new Error("Trusted funnel baseline is malformed.");
 const now = new Date();
 const observedAt = now.toISOString();
-const candidate = captureTrustedFunnelBaseline(state, observedAt, reason, previous.epoch_id + 1);
 type Epoch = {
   id: number;
   status: "active" | "draining" | "closed";
@@ -65,6 +65,13 @@ type Ledger = {
     candidate: TrustedFunnelBaseline;
     activated_at?: string;
   };
+  completed_rotations?: Array<{
+    id: string;
+    requested_at: string;
+    target_epoch_id: number;
+    reason: string;
+    activated_at: string;
+  }>;
 };
 let ledger: Ledger;
 try {
@@ -89,7 +96,6 @@ try {
   };
 }
 if (ledger.rotation?.status === "activated") {
-  if (ledger.rotation.id !== rotationId) throw new Error("A different funnel rotation is already recorded.");
   const active = ledger.epochs.find((epoch) => epoch.id === ledger.active_epoch_id);
   if (!active || active.status !== "active" || !active.conversion_eligible) {
     throw new Error("Activated funnel epoch is missing or ineligible.");
@@ -98,14 +104,44 @@ if (ledger.rotation?.status === "activated") {
     trustedBoundaryFingerprint(previous) === trustedBoundaryFingerprint(active.baseline);
   if (!baselineMatches) {
     await atomicWrite(baselineFile, `${JSON.stringify(active.baseline, null, 2)}\n`);
+    previous = active.baseline;
   }
-  console.log(JSON.stringify({
-    status: baselineMatches ? "already_activated" : "activated_baseline_repaired",
-    rotation_id: rotationId,
-    active_epoch: ledger.active_epoch_id,
-  }, null, 2));
+  if (automaticPoll) {
+    console.log(JSON.stringify({
+      status: baselineMatches ? "idle_no_pending_rotation" : "activated_baseline_repaired",
+      active_epoch: ledger.active_epoch_id,
+    }, null, 2));
+    process.exit(0);
+  }
+  if (ledger.rotation.id === requestedRotationId) {
+    console.log(JSON.stringify({
+      status: baselineMatches ? "already_activated" : "activated_baseline_repaired",
+      rotation_id: requestedRotationId,
+      active_epoch: ledger.active_epoch_id,
+    }, null, 2));
+    process.exit(0);
+  }
+  ledger.completed_rotations ||= [];
+  ledger.completed_rotations.push({
+    id: ledger.rotation.id,
+    requested_at: ledger.rotation.requested_at,
+    target_epoch_id: ledger.rotation.target_epoch_id,
+    reason: ledger.rotation.reason,
+    activated_at: ledger.rotation.activated_at || active.started_at,
+  });
+  if (ledger.completed_rotations.length > 100) ledger.completed_rotations.splice(0, ledger.completed_rotations.length - 100);
+  delete ledger.rotation;
+}
+if (automaticPoll && !ledger.rotation) {
+  console.log(JSON.stringify({ status: "idle_no_pending_rotation", active_epoch: ledger.active_epoch_id }, null, 2));
   process.exit(0);
 }
+const rotationId = automaticPoll ? ledger.rotation!.id : requestedRotationId;
+const rotationReason = automaticPoll ? ledger.rotation!.reason : reason;
+const targetEpochId = ledger.rotation?.status === "draining"
+  ? ledger.rotation.target_epoch_id
+  : previous.epoch_id + 1;
+const candidate = captureTrustedFunnelBaseline(state, observedAt, rotationReason, targetEpochId);
 if (!ledger.rotation) {
   const active = ledger.epochs.find((epoch) => epoch.id === ledger.active_epoch_id);
   if (!active || active.status !== "active" || active.id !== previous.epoch_id) throw new Error("Active epoch does not match the baseline.");
@@ -117,7 +153,7 @@ if (!ledger.rotation) {
     status: "draining",
     requested_at: observedAt,
     target_epoch_id: previous.epoch_id + 1,
-    reason,
+    reason: rotationReason,
     stable_since: observedAt,
     observations: 1,
     last_observed_at: observedAt,
@@ -149,11 +185,11 @@ if (stableSeconds < quietSeconds || ledger.rotation.observations < 2) {
 }
 const active = ledger.epochs.find((epoch) => epoch.id === ledger.active_epoch_id);
 if (!active || active.status !== "draining") throw new Error("Draining epoch is missing.");
-const boundary = captureTrustedFunnelBaseline(state, observedAt, reason, ledger.rotation.target_epoch_id);
+const boundary = captureTrustedFunnelBaseline(state, observedAt, rotationReason, ledger.rotation.target_epoch_id);
 active.status = "closed";
 active.ended_at = observedAt;
 active.final = { ...boundary, epoch_id: active.id };
-active.close_reason = reason;
+active.close_reason = rotationReason;
 ledger.epochs.push({
   id: boundary.epoch_id,
   status: "active",
