@@ -27,6 +27,7 @@ jobs:
       PAY_TO_ADDRESS: ${{ secrets.PAY_TO_ADDRESS }}
       CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
       CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
+      UPSTREAM_GITHUB_TOKEN: ${{ secrets.UPSTREAM_GITHUB_TOKEN }}
       API_URL_OVERRIDE: ${{ inputs.api_url }}
 
     steps:
@@ -43,7 +44,7 @@ jobs:
       - name: Verify required deployment secrets
         run: |
           node -e '
-            const required = ["CLOUDFLARE_API_TOKEN", "PAY_TO_ADDRESS", "CDP_API_KEY_ID", "CDP_API_KEY_SECRET"];
+            const required = ["CLOUDFLARE_API_TOKEN", "PAY_TO_ADDRESS", "CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "UPSTREAM_GITHUB_TOKEN"];
             const missing = required.filter((name) => !process.env[name]);
             if (missing.length) throw new Error(`Missing GitHub Actions secrets: ${missing.join(", ")}`);
             if (!/^0x[a-fA-F0-9]{40}$/.test(process.env.PAY_TO_ADDRESS)) throw new Error("PAY_TO_ADDRESS is invalid.");
@@ -61,6 +62,7 @@ jobs:
               PAY_TO_ADDRESS: process.env.PAY_TO_ADDRESS,
               CDP_API_KEY_ID: process.env.CDP_API_KEY_ID,
               CDP_API_KEY_SECRET: process.env.CDP_API_KEY_SECRET,
+              GITHUB_TOKEN: process.env.UPSTREAM_GITHUB_TOKEN,
             }));
           ' "$secret_file"
           npx wrangler deploy --env production --secrets-file "$secret_file" 2>&1 | tee "$deploy_log"

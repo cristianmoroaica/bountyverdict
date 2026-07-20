@@ -129,3 +129,16 @@ test("remote audit pins the result to the fetched commit", async () => {
   assert.equal(audit.coverage.github_rate_limit_remaining, 4997);
   assert.equal(audit.surfaces.instruction_files_scanned, 1);
 });
+
+test("does not expose private harness files through a server credential", async () => {
+  const mock = (async (input: URL | RequestInfo) => {
+    const url = String(input);
+    if (url.endsWith("/repos/acme/widget")) return Response.json({ private: true });
+    throw new Error(`Unexpected private-repository follow-up request: ${url}`);
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () => checkGithubHarness("https://github.com/acme/widget", { GITHUB_TOKEN: "server-token" }, mock),
+    (error: unknown) => error instanceof HarnessError && error.code === "REPOSITORY_NOT_FOUND" && error.status === 404,
+  );
+});

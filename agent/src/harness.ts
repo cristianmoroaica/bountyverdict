@@ -376,6 +376,9 @@ export async function checkGithubHarness(
   const { owner, repo } = parseRepositoryUrl(repositoryUrl);
   const base = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
   const repository = await githubJson(base, env, fetchImpl);
+  if (repository.data.private === true) {
+    throw new HarnessError("GitHub could not find that public repository or commit.", 404, "REPOSITORY_NOT_FOUND");
+  }
   const branch = String(repository.data.default_branch || "");
   const commit = await githubJson(`${base}/commits/${encodeURIComponent(branch)}`, env, fetchImpl);
   const sha = String(commit.data.sha || "");

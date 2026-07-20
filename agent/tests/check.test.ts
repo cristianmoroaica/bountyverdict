@@ -107,3 +107,18 @@ test("rejects a non-issue URL before making an upstream request", async () => {
   );
   assert.equal(fetched, false);
 });
+
+test("does not expose private issues through a server credential", async () => {
+  const mock = (async (input: URL | RequestInfo) => {
+    const url = String(input);
+    const headers = { "x-ratelimit-remaining": "4990" };
+    if (/\/issues\/4$/.test(url)) return Response.json(issue, { headers });
+    if (/\/repos\/acme\/widget$/.test(url)) return Response.json({ ...repository, private: true }, { headers });
+    throw new Error(`Unexpected private-repository follow-up request: ${url}`);
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () => checkGithubIssue("https://github.com/acme/widget/issues/4", { GITHUB_TOKEN: "server-token" }, mock),
+    (error: unknown) => error instanceof CheckError && error.code === "ISSUE_NOT_FOUND" && error.status === 404,
+  );
+});

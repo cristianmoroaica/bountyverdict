@@ -130,3 +130,16 @@ test("remote audit pins repository and reads only the requested skill directory"
   assert.equal(audit.coverage.github_rate_limit_remaining, 4997);
   assert.equal(audit.coverage.selection_truncated, true);
 });
+
+test("does not expose private skill files through a server credential", async () => {
+  const mock = (async (input: URL | RequestInfo) => {
+    const url = String(input);
+    if (url.endsWith("/repos/acme/skills")) return Response.json({ private: true });
+    throw new Error(`Unexpected private-repository follow-up request: ${url}`);
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () => checkGithubSkill("https://github.com/acme/skills", directory, { GITHUB_TOKEN: "server-token" }, mock),
+    (error: unknown) => error instanceof SkillError && error.code === "SKILL_NOT_FOUND" && error.status === 404,
+  );
+});

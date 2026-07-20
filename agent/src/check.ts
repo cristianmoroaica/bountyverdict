@@ -211,6 +211,9 @@ export async function checkGithubIssue(
     githubJson(`${base}/issues/${number}`, env, fetchImpl),
     githubJson(base, env, fetchImpl),
   ]);
+  if (repoResponse.data?.private === true) {
+    throw new CheckError("GitHub could not find that public issue.", 404, "ISSUE_NOT_FOUND");
+  }
 
   const commentPageCount = Math.max(1, Math.ceil(issueResponse.data.comments / 100));
   const commentPages = Array.from(

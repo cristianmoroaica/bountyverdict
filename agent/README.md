@@ -103,7 +103,7 @@ Only a **public EVM receiving address** is required from the owner for testnet. 
 For production Bazaar discovery, configure:
 
 - `PAY_TO_ADDRESS`: public Base-compatible wallet address receiving USDC
-- `GITHUB_TOKEN`: optional fine-grained read-only token for higher API capacity
+- `GITHUB_TOKEN`: fine-grained read-only token for reliable public GitHub API capacity; private repositories are rejected before file access
 - `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET`: facilitator credentials stored as Worker secrets
 - `X402_NETWORK=eip155:8453`
 - `X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`
@@ -136,5 +136,6 @@ The manual `Deploy paid Worker` GitHub Actions workflow performs the same produc
 - `PAY_TO_ADDRESS`
 - `CDP_API_KEY_ID`
 - `CDP_API_KEY_SECRET`
+- `UPSTREAM_GITHUB_TOKEN` (stored in the Worker as `GITHUB_TOKEN`; use a fine-grained read-only token)
 
-The Cloudflare token needs permission to deploy Workers. No CDP wallet secret or buyer private key is uploaded to the Worker.
+The Cloudflare token needs permission to deploy Workers. No CDP wallet secret or buyer private key is uploaded to the Worker, and no deployment secret is committed to Git.
