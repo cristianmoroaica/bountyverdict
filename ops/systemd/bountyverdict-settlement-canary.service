@@ -1,0 +1,22 @@
+[Unit]
+Description=BountyVerdict policy-bound weekly x402 settlement canary
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/sandbox/bountyverdict/agent
+Environment=PATH=%h/.local/share/mise/shims:/usr/local/bin:/usr/bin
+Environment=EXECUTE_SETTLEMENT_CANARY=YES
+Environment=ALLOW_MAINNET_SETTLEMENT_CANARY=YES
+Environment=CDP_PROJECT_POLICY_ID=20187d21-f34b-4679-9406-342375fb50a7
+Environment=CDP_ACCOUNT_POLICY_ID=f33d4837-7001-4a54-9447-0fae3f177cd4
+EnvironmentFile=%h/.config/bountyverdict/settlement-buyer.env
+ExecStart=/usr/bin/env npm run settlement:canary
+NoNewPrivileges=yes
+PrivateTmp=yes
+UMask=0077
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=default.target

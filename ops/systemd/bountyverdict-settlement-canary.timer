@@ -1,0 +1,11 @@
+[Unit]
+Description=Run one policy-bound BountyVerdict settlement canary each week
+
+[Timer]
+OnActiveSec=7d 5min
+OnUnitActiveSec=7d 5min
+RandomizedDelaySec=20min
+Unit=bountyverdict-settlement-canary.service
+
+[Install]
+WantedBy=timers.target

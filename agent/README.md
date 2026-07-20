@@ -110,6 +110,8 @@ It atomically writes the latest machine-readable snapshot to `~/.local/state/bou
 
 Successful buyer provisioning atomically writes only its public address to `~/.config/bountyverdict/settlement-buyer.env` as `SETTLEMENT_BUYER_ADDRESS=0x...`, with settlement disabled by default. The distribution service reads that file so canary purchases remain excluded from customer revenue. Before enabling a settlement timer, set `SETTLEMENT_CANARY_ENABLED=YES` in that file; accounting then fails closed if the address is absent. Keep policy credentials and wallet secrets out of this file.
 
+The hardened weekly units are in `ops/systemd/bountyverdict-settlement-canary.{service,timer}`. The service loads only the public buyer address from that accounting file; the canary process reads CDP credentials from the ignored `agent/.dev.vars`. Its application controls independently cap one Base-USDC payee and at most 400,000 atomic units per seven-day window, while durable state prevents a second run inside seven days or any retry after an ambiguous paid transport.
+
 The separate six-hour functional canary invokes each real paid handler against a hard-coded fixture without creating a settlement or accepting a customer-controlled target. It validates commit pinning, coverage, structured output, failed-job log retrieval, bounded flake classification, and deterministic MCP hash/proof behavior—not just HTTP availability. Its bearer token lives only in the Worker secret store, the repository Actions secret store, and a mode-0600 local token file:
 
 ```bash

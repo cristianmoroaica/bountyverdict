@@ -383,15 +383,14 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The seven-product suite now includes MCPDriftVerdict, a deterministic MCP tools/list upgrade gate that validates and computes before payment. Unattended GitHub-to-Cloudflare production deployment is verified end to end, including all seven exact payment contracts, authenticated real-handler canaries, manifest activation, and publication. Existing indexed products remain measurable; FlakeVerdict and MCPDriftVerdict stay marked pending until each has a genuine policy-bound indexing settlement.
+The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Both CDP policies now enforce the exact Base-USDC seller and $0.40 authorization ceiling, the dedicated buyer is funded with owner capital, and FlakeVerdict passed the first policy-bound real settlement. The weekly settlement canary is enabled with independent application spend controls and no ambiguous-result retry.
 
 ## What is next
 
-1. Enable the \`policies#manage\` scope on the existing CDP API key. The guarded migration currently fails closed with HTTP 403; both broad predecessor policies remain unchanged and no EVM buyer account exists.
-2. Re-run the authorized migration to replace both broad CDP typed-data policies with the prepared seller-and-$0.40-bound rule, then provision and fund the policy-bound buyer before enabling the once-weekly real-settlement canary.
-3. Use the policy-bound buyer once per pending resource to index FlakeVerdict and MCPDriftVerdict and refresh stale catalog schemas; exclude every owner operation from revenue and verify cache propagation and unbranded rank.
-4. Keep the verified public router and per-product install paths current, then re-evaluate the next research-backed product after MCPDriftVerdict distribution data exists; MergeVerdict remains the leading public-PR gate candidate.
-5. Reach the first genuine paying agent, then optimize from observed calls rather than owner-funded proofs.
+1. Verify FlakeVerdict appears in the CDP merchant and semantic caches after its policy-bound settlement; keep the transfer excluded from customer revenue.
+2. Let the seven-day guard elapse before the next real canary. MCPDriftVerdict remains pending until its own policy-bound call is safely eligible and observed by discovery.
+3. Keep the verified public router and per-product install paths current, then build the next research-backed product; MergeVerdict remains the leading public-PR gate candidate.
+4. Reach the first genuine paying agent, then optimize pricing and product work from observed calls rather than owner-funded proofs.
 
 ## Production health
 
