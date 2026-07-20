@@ -7,6 +7,7 @@ const repository = "https://github.com/cristianmoroaica/bountyverdict";
 const agentToolUrl = "https://agenttool.sh/tools/bountyverdict-agent-decision-apis";
 const skillsUrl = "https://skills.sh/cristianmoroaica/bountyverdict";
 const securityDirectoryPrUrl = "https://github.com/LLMSecurity/awesome-agent-skills-security/pull/38";
+const x402DirectoryPrUrl = "https://github.com/xpaysh/awesome-x402/pull/934";
 const stateFile = process.env.DIRECTORY_STATE_FILE || `${homedir()}/.local/state/bountyverdict/directories.json`;
 const timeoutMs = 30_000;
 const agentSkillRetryMs = 20 * 60 * 60 * 1000;
@@ -75,9 +76,14 @@ async function agentToolStatus(): Promise<Record<string, unknown>> {
   }
 }
 
-async function securityDirectoryPrStatus(): Promise<Record<string, unknown>> {
+async function githubPrStatus(
+  owner: string,
+  repo: string,
+  pull: number,
+  url: string,
+): Promise<Record<string, unknown>> {
   try {
-    const response = await fetch("https://api.github.com/repos/LLMSecurity/awesome-agent-skills-security/pulls/38", {
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull}`, {
       headers: {
         Accept: "application/vnd.github+json",
         "User-Agent": "bountyverdict-directory-monitor",
@@ -86,7 +92,7 @@ async function securityDirectoryPrStatus(): Promise<Record<string, unknown>> {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
-      return { url: securityDirectoryPrUrl, http_status: response.status, status: "unexpected_response" };
+      return { url, http_status: response.status, status: "unexpected_response" };
     }
     const payload = await response.json() as {
       state?: string;
@@ -95,7 +101,7 @@ async function securityDirectoryPrStatus(): Promise<Record<string, unknown>> {
       mergeable?: boolean | null;
     };
     return {
-      url: securityDirectoryPrUrl,
+      url,
       http_status: response.status,
       status: payload.merged_at ? "merged" : payload.state || "unknown",
       merged_at: payload.merged_at || null,
@@ -104,7 +110,7 @@ async function securityDirectoryPrStatus(): Promise<Record<string, unknown>> {
     };
   } catch (error) {
     return {
-      url: securityDirectoryPrUrl,
+      url,
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
     };
@@ -151,10 +157,11 @@ try {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 }
 
-const [skills, agenttool, securityDirectoryPr] = await Promise.all([
+const [skills, agenttool, securityDirectoryPr, x402DirectoryPr] = await Promise.all([
   skillsShStatus(),
   agentToolStatus(),
-  securityDirectoryPrStatus(),
+  githubPrStatus("LLMSecurity", "awesome-agent-skills-security", 38, securityDirectoryPrUrl),
+  githubPrStatus("xpaysh", "awesome-x402", 934, x402DirectoryPrUrl),
 ]);
 const previousAttempt = Date.parse(String(previous.agentskill?.attempted_at || previous.checked_at || ""));
 const agentSkillRetryDue = !Number.isFinite(previousAttempt) || Date.now() - previousAttempt >= agentSkillRetryMs;
@@ -174,6 +181,7 @@ const state = {
   agenttool,
   agentskill,
   security_directory_pr: securityDirectoryPr,
+  x402_directory_pr: x402DirectoryPr,
   x402scan: {
     url: "https://www.x402scan.com/resources/register",
     listed: false,

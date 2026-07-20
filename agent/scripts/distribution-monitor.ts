@@ -371,6 +371,7 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
       agenttool: state.agenttool || null,
       agentskill: state.agentskill || null,
       security_directory_pr: state.security_directory_pr || null,
+      x402_directory_pr: state.x402_directory_pr || null,
       note: "Anonymous install telemetry is an acquisition signal, not proof of a genuine buyer or customer purchase.",
     };
   } catch (error) {
@@ -420,7 +421,7 @@ The seven-product suite is healthy in production and unattended GitHub-to-Cloudf
 
 ## What is next
 
-1. Run a proof-led acquisition experiment for SkillVerdict through its direct skill, free sample, and one appropriate public agent-security directory submission.
+1. Run a proof-led acquisition experiment for SkillVerdict through its direct skill, free sample, and the two appropriate public directory submissions.
 2. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
 3. Keep Coinbase Bazaar automatic discovery under observation while FlakeVerdict propagates and MCPDriftVerdict awaits an eligible settlement.
 4. Improve positioning from observed discovery and genuine calls until ten external purchases are recognized. Do not build an eighth product before that gate.
@@ -455,6 +456,7 @@ ${errors}
 - AgentTool: ${report.acquisition?.agenttool?.status || (report.acquisition?.agenttool?.listed ? "listed" : "unavailable")}
 - AgentSkill: ${report.acquisition?.agentskill?.status || (report.acquisition?.agentskill?.listed ? "listed" : "unavailable")}
 - Agent security directory PR: ${report.acquisition?.security_directory_pr?.status || "unavailable"} (${report.acquisition?.security_directory_pr?.url || "not recorded"})
+- x402 ecosystem directory PR: ${report.acquisition?.x402_directory_pr?.status || "unavailable"} (${report.acquisition?.x402_directory_pr?.url || "not recorded"})
 
 skills.sh counts are anonymous CLI telemetry with unknown provenance. They are tracked as a funnel signal only and are never counted as purchases or revenue.
 
