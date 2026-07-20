@@ -322,14 +322,15 @@ Owner-funded launch proofs are excluded from both customer revenue and profit. W
 
 ## Current milestone
 
-Five paid products are live on Base mainnet. All five real handlers are exercised by authenticated six-hour functional canaries, while the 15-minute monitor verifies free routes, exact x402 challenges, global Bazaar discovery, and on-chain revenue. Every successful semantic result now carries an explicit reusable-service contract in \`service_reuse\`.
+The reusable-result reliability release is live across all five Base-mainnet products. Every successful semantic result carries a precise \`service_reuse\` contract. Authenticated six-hour canaries exercise all real handlers behind an edge rate limit, while the 15-minute monitor verifies free routes, exact x402 challenges, global Bazaar discovery, and on-chain revenue.
 
 ## What is next
 
-1. Complete and verify the reusable-result production release and hardened deploy workflow.
+1. Add a weekly rotating real-settlement canary to prove the complete x402 verification, handler, and settlement path without counting owner-funded tests as revenue.
 2. Build FlakeVerdict, the strongest currently validated underserved x402 opportunity: historical CI flake versus regression diagnosis.
 3. Improve unbranded marketplace rank for BountyVerdict and Portfolio while measuring only genuine customer settlements.
-4. Reach the first unique paying agent, then optimize from observed calls rather than owner-funded proofs.
+4. Provision a one-account Cloudflare Workers Scripts Write CI token when available; production remains deployable through the authenticated local control plane.
+5. Reach the first unique paying agent, then optimize from observed calls rather than owner-funded proofs.
 
 ## Production health
 
