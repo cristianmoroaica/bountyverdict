@@ -9,6 +9,8 @@ test("agent manifest is honest and links inspectable products", async () => {
   assert.ok(["awaiting_production", "active"].includes(manifest.status));
   if (manifest.status === "awaiting_production") assert.equal(manifest.production_api, null);
   if (manifest.status === "active") assert.match(manifest.production_api, /^https:\/\//);
+  assert.match(manifest.test_api, /^https:\/\//);
+  assert.equal(manifest.test_network, "eip155:84532");
   assert.deepEqual(manifest.products.map((product) => product.price_usdc), ["0.05", "0.40"]);
   assert.match(manifest.skill, /\/SKILL\.md$/);
 });

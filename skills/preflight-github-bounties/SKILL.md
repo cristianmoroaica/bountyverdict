@@ -15,6 +15,7 @@ Use BountyVerdict as a decision gate before beginning bounty implementation. Tre
 4. Inspect the free sample, OpenAPI document, price, network, and schema before authorizing payment.
 
 Do not attempt a purchase while the manifest says `awaiting_production`.
+The manifest's `test_api` may be inspected for free samples, OpenAPI, and unpaid Base Sepolia challenges, but it is not the real-money service.
 
 ## Choose a product
 
