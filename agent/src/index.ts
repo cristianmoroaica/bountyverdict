@@ -49,6 +49,10 @@ import {
   reportThe402Result,
   verifyThe402Webhook,
 } from "./the402.ts";
+import {
+  evaluateAndBidThe402Request,
+  parseThe402RequestCreated,
+} from "./the402-bidder.ts";
 
 interface Env {
   PAY_TO_ADDRESS?: string;
@@ -514,6 +518,17 @@ app.post("/api/the402/webhook", async (c) => {
 
   let job;
   try {
+    const request = parseThe402RequestCreated(rawBody);
+    if (request) {
+      const apiKey = c.env.THE402_API_KEY;
+      c.executionCtx.waitUntil(evaluateAndBidThe402Request({ request, api_key: apiKey })
+        .then((result) => console.log("the402 request evaluation:", result))
+        .catch((error) => console.error(
+          "the402 request evaluation failed:",
+          error instanceof Error ? error.message : "unknown error",
+        )));
+      return c.json({ accepted: true, action: "bid_evaluation_scheduled", posting_id: request.posting_id });
+    }
     job = parseThe402JobDispatch(rawBody, parseThe402ServiceMap(c.env.THE402_SERVICE_MAP));
   } catch (error) {
     console.error("Rejected authenticated the402 webhook:", error instanceof Error ? error.message : "invalid payload");

@@ -338,16 +338,23 @@ async function the402Status(): Promise<Record<string, unknown>> {
   const catalogUrl = new URL(`${THE402_API}/services/catalog`);
   catalogUrl.searchParams.set("provider", the402ParticipantId);
   catalogUrl.searchParams.set("limit", "100");
-  const [catalogResponse, earningsResponse] = await Promise.all([
+  const [catalogResponse, earningsResponse, notificationsResponse] = await Promise.all([
     monitoredFetch(catalogUrl.href),
     monitoredFetch(`${THE402_API}/provider/earnings`, {
+      headers: { "X-API-Key": the402ApiKey },
+    }),
+    monitoredFetch(`${THE402_API}/postings/notifications`, {
       headers: { "X-API-Key": the402ApiKey },
     }),
   ]);
   if (!catalogResponse.ok) throw new Error(`the402 catalog returned HTTP ${catalogResponse.status}.`);
   if (!earningsResponse.ok) throw new Error(`the402 earnings returned HTTP ${earningsResponse.status}.`);
+  if (!notificationsResponse.ok) {
+    throw new Error(`the402 request notification status returned HTTP ${notificationsResponse.status}.`);
+  }
   const catalog = await catalogResponse.json() as { services?: Array<Record<string, any>> };
   const earnings = await earningsResponse.json() as Record<string, any>;
+  const notifications = await notificationsResponse.json() as Record<string, any>;
   const services = Array.isArray(catalog.services) ? catalog.services : [];
   const expectedById = new Map(THE402_LISTINGS.map((listing) => [listing.service_id, listing]));
   const expectedIds = new Set<string>(expectedById.keys());
@@ -386,6 +393,9 @@ async function the402Status(): Promise<Record<string, unknown>> {
   if (String(earnings.wallet || "").toLowerCase() !== OWNER_CONTROLLED_CANARY_PAYER.toLowerCase()) {
     throw new Error("the402 earnings resolve to an unexpected provider wallet.");
   }
+  if (notifications.enabled !== true) {
+    throw new Error("the402 request.created notifications are not enabled.");
+  }
   const settledUsd = Number(earnings.earnings?.settled_usd);
   const heldUsd = Number(earnings.earnings?.held_usd);
   const pendingUsd = Number(earnings.earnings?.pending_usd);
@@ -403,6 +413,10 @@ async function the402Status(): Promise<Record<string, unknown>> {
     skillverdict_excluded: true,
     webhook_healthy: true,
     listing_contracts_verified: true,
+    request_notifications_enabled: true,
+    request_notification_failures: Number.isSafeInteger(notifications.consecutive_failures)
+      ? notifications.consecutive_failures
+      : null,
     completed_jobs: completedCounts[0],
     settled_usd: settledUsd,
     held_usd: heldUsd,
@@ -542,6 +556,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Experiment next action:** ${experiment.next_action?.code || "unavailable"} — ${experiment.next_action?.reason || "No classified action available."}
 - **Customer purchases:** ${totalPurchases} (${Number(purchases.total || 0)} direct x402; ${marketplacePurchases} the402 escrow)
 - **the402 listing contracts:** ${report.marketplaces?.the402?.listing_contracts_verified ? "6 / 6 exact input and deliverable schemas verified" : "unavailable or drifted"}
+- **the402 buyer-request feed:** ${report.marketplaces?.the402?.request_notifications_enabled ? "enabled; exact-match autonomous bids only" : "unavailable"}
 - **skills.sh anonymous CLI installs:** ${Number.isFinite(Number(totalSkillInstalls)) ? Number(totalSkillInstalls) : "unavailable"} (acquisition signal only; 8-install baseline on 2026-07-20)
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
 - **Unrelated incoming transfers:** ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
@@ -557,7 +572,7 @@ The seven-product suite is healthy in production and unattended GitHub-to-Cloudf
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
 2. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
-3. Monitor the six signed the402 listings, exact marketplace contract integrity, and Coinbase Bazaar while keeping SkillVerdict out of the new channel until its isolated experiment ends.
+3. Monitor the six signed the402 listings, exact marketplace contract integrity, guarded buyer-request feed, and Coinbase Bazaar while keeping SkillVerdict out of the new channel until its isolated experiment ends.
 4. Improve positioning from observed discovery and genuine calls until ten external purchases are recognized. Do not build an eighth product before that gate.
 
 ## Production health
