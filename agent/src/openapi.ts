@@ -6,6 +6,7 @@ import { FLAKE_SERVICE_REUSE, flakeOutputSchema } from "./flake-discovery.ts";
 import { SERVICE_REUSE } from "./reuse.ts";
 import { MCP_DRIFT_SERVICE_REUSE } from "./mcp-drift.ts";
 import {
+  MCP_DRIFT_DISCOVERY_DESCRIPTION,
   mcpDriftExampleInput,
   mcpDriftInputSchema,
   mcpDriftOutputSchema,
@@ -445,8 +446,8 @@ export function createOpenApi(
       },
       "/api/mcp-drift": {
         post: {
-          summary: "Gate an MCP tools/list snapshot change",
-          description: "Decide whether a changed MCP tools/list contract will break an agent after a server upgrade. Compares complete baseline and current snapshots; detects removed or renamed tools, new required arguments, incompatible input or output schemas, and model-facing metadata or safety-hint regressions. Returns an exact-hash compatibility verdict without fetching or invoking tools. Invalid or unsupported inputs fail unpaid.",
+          summary: "Check MCP schema drift and tools/list compatibility",
+          description: `${MCP_DRIFT_DISCOVERY_DESCRIPTION} Invalid or unsupported inputs fail unpaid.`,
           operationId: "checkMcpToolDrift",
           ...agentMetadata(origin, {
             tags: ["mcp-compatibility"],

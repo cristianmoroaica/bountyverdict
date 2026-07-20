@@ -9,6 +9,9 @@ import {
 const hashSchema = { type: "string", pattern: "^sha256:[a-f0-9]{64}$" };
 const nonNegativeInteger = { type: "integer", minimum: 0 };
 
+export const MCP_DRIFT_DISCOVERY_DESCRIPTION =
+  "MCP schema drift and MCP tools/list compatibility gate for agent upgrades. Compares complete baseline and current snapshots; detects removed or renamed tools, new required arguments, incompatible input or output schemas, and model-facing metadata or safety-hint regressions. Returns an exact-hash compatibility verdict without fetching or invoking tools.";
+
 const schemaObject = {
   type: "object",
   description: "A bounded JSON Schema Draft 2020-12 object in MCPDriftVerdict's documented comparison subset.",

@@ -31,6 +31,7 @@ import {
   type McpDriftResult,
 } from "./mcp-drift.ts";
 import {
+  MCP_DRIFT_DISCOVERY_DESCRIPTION,
   mcpDriftDiscoveryExtension,
   mcpDriftExample,
   mcpDriftExampleInput,
@@ -352,7 +353,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       network: network as `${string}:${string}`,
       payTo,
     },
-    description: "Decide whether a changed MCP tools/list contract will break an agent after a server upgrade. Compares complete baseline and current snapshots; detects removed or renamed tools, new required arguments, incompatible input or output schemas, and model-facing metadata or safety-hint regressions. Returns an exact-hash compatibility verdict without fetching or invoking tools.",
+    description: MCP_DRIFT_DISCOVERY_DESCRIPTION,
     mimeType: "application/json",
     serviceName: "MCPDriftVerdict",
     tags: ["mcp", "tools-list", "schema-drift", "breaking-change", "agent-compatibility", "server-upgrade", "required-argument"],
@@ -397,6 +398,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
 }
 
 const app = new Hono<AppBindings>();
+
+app.get("/favicon.ico", (c) => c.redirect(ICON_URL, 302));
 
 app.get("/", (c) =>
   c.json({

@@ -81,6 +81,13 @@ test("the402 publishes six exact existing-product contracts and excludes SkillVe
   assert.deepEqual(schemas.get("run"), { type: "object", ...runOutputSchema });
   assert.deepEqual(schemas.get("flake"), { type: "object", ...flakeOutputSchema });
   assert.deepEqual(schemas.get("mcpdrift"), { type: "object", ...mcpDriftOutputSchema });
+  const descriptions = Object.fromEntries(THE402_LISTINGS.map(({ product, description }) => [product, description]));
+  assert.match(descriptions.single, /public GitHub bounty worth pursuing/i);
+  assert.match(descriptions.portfolio, /rank GitHub bounty issues/i);
+  assert.match(descriptions.harness, /coding agent repository instructions/i);
+  assert.match(descriptions.run, /GitHub Actions diagnosis/i);
+  assert.match(descriptions.flake, /GitHub Actions failure retry/i);
+  assert.match(descriptions.mcpdrift, /MCP tools\/list compatibility/i);
   for (const listing of THE402_LISTINGS) {
     assert.notDeepEqual(listing.deliverable_schema, { type: "object", additionalProperties: true });
     assert.ok(Array.isArray(listing.deliverable_schema.required));

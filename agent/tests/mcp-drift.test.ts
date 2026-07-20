@@ -8,7 +8,7 @@ import {
   parseAndAnalyzeMcpDrift,
 } from "../src/mcp-drift.ts";
 import app from "../src/index.ts";
-import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
+import { MCP_DRIFT_DISCOVERY_DESCRIPTION, mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
 
 const objectSchema = (extra: Record<string, unknown> = {}) => ({
   type: "object",
@@ -288,6 +288,7 @@ test("HTTP preflight rejects invalid catalogs before x402 and challenges valid e
   assert.ok(encoded);
   const decoded = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
   assert.equal(decoded.resource.serviceName, "MCPDriftVerdict");
+  assert.equal(decoded.resource.description, MCP_DRIFT_DISCOVERY_DESCRIPTION);
   assert.equal(decoded.resource.url, "http://localhost/api/mcp-drift");
   assert.equal(decoded.accepts.length, 1);
   assert.equal(decoded.accepts[0].amount, "20000");

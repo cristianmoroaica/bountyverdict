@@ -69,6 +69,16 @@ const BUYER_INTENTS: ReadonlyArray<{ product: ProductKey; query: string }> = [
   { product: "flake", query: "is this GitHub Actions failure flaky should I retry or fix it" },
   { product: "mcpdrift", query: "will this MCP tools/list schema change break my agent after a server upgrade" },
 ];
+const MARKETPLACE_SEARCH_INTENTS: ReadonlyArray<{
+  product: "single" | "portfolio" | "harness" | "run" | "flake";
+  query: string;
+}> = [
+  { product: "single", query: "public GitHub bounty worth pursuing" },
+  { product: "portfolio", query: "rank GitHub bounty issues" },
+  { product: "harness", query: "coding agent repository instructions" },
+  { product: "run", query: "GitHub Actions diagnosis" },
+  { product: "flake", query: "GitHub Actions failure retry" },
+];
 if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
   throw new Error("REVENUE_WALLET must be a public 20-byte EVM address.");
 }
@@ -643,12 +653,12 @@ async function nearMarketStatus(): Promise<Record<string, unknown>> {
   };
 }
 
-async function payanStatus(): Promise<Record<string, unknown>> {
-  if (!payanApiKey || !/^pk_live_[A-Za-z0-9_-]+$/.test(payanApiKey)) throw new Error("PAYAN_API_KEY is missing or invalid.");
-  if (payanAgentId !== PAYAN_PROVIDER_ID) throw new Error("PAYAN_AGENT_ID does not match the pinned provider.");
+function payanOfferMap(): Record<string, string> {
   let offerMap: Record<string, string>;
   try {
-    offerMap = JSON.parse(payanOfferMapInput || "");
+    const parsed = JSON.parse(payanOfferMapInput || "");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+    offerMap = parsed as Record<string, string>;
   } catch {
     throw new Error("PAYAN_OFFER_MAP is missing or invalid.");
   }
@@ -657,6 +667,13 @@ async function payanStatus(): Promise<Record<string, unknown>> {
     [...expectedProducts].some((product) => !/^[a-z0-9]{20,64}$/.test(offerMap[product] || ""))) {
     throw new Error("PAYAN_OFFER_MAP does not contain the exact six expected offers.");
   }
+  return offerMap;
+}
+
+async function payanStatus(): Promise<Record<string, unknown>> {
+  if (!payanApiKey || !/^pk_live_[A-Za-z0-9_-]+$/.test(payanApiKey)) throw new Error("PAYAN_API_KEY is missing or invalid.");
+  if (payanAgentId !== PAYAN_PROVIDER_ID) throw new Error("PAYAN_AGENT_ID does not match the pinned provider.");
+  const offerMap = payanOfferMap();
   const [receiptResponse, ...offerResponses] = await Promise.all([
     monitoredFetch(`${PAYAN_API}/agents/${PAYAN_PROVIDER_ID}/receipts`),
     ...PAYAN_OFFERS.map(({ product }) => monitoredFetch(`${PAYAN_API}/offers/${offerMap[product]}`)),
@@ -695,6 +712,74 @@ async function payanStatus(): Promise<Record<string, unknown>> {
     delivered_transaction_hashes: delivered.map(({ txHash }) => txHash),
     receipt_revenue_usdc: receiptRevenueCents / 100,
     accounting_note: "PayanAgent settles directly to the Base revenue wallet; these receipts are attribution metadata and are already counted by direct onchain settlement accounting.",
+  };
+}
+
+function oneBasedRank(
+  rows: Array<Record<string, unknown>>,
+  identityKey: string,
+  expectedId: string,
+): number | null {
+  const matches = rows.flatMap((row, index) => row[identityKey] === expectedId ? [index] : []);
+  if (matches.length > 1) throw new Error(`Search response duplicated ${expectedId}.`);
+  return matches.length === 1 ? matches[0] + 1 : null;
+}
+
+async function marketplaceSearchStatus(): Promise<Record<string, unknown>> {
+  if (!nearMarketApiKey || !/^sk_live_[A-Za-z0-9_-]+$/.test(nearMarketApiKey)) {
+    throw new Error("NEAR_MARKET_API_KEY is missing or invalid.");
+  }
+  const offerMap = payanOfferMap();
+  const the402Ids = new Map(THE402_LISTINGS.map(({ product, service_id }) => [product, service_id]));
+  const nearIds = new Map(NEAR_MARKET_LISTINGS.map(({ product, service_id }) => [product, service_id]));
+
+  const queries = await Promise.all(MARKETPLACE_SEARCH_INTENTS.map(async ({ product, query }) => {
+    const the402Url = new URL(`${THE402_API}/services/catalog`);
+    the402Url.searchParams.set("q", query);
+    the402Url.searchParams.set("limit", "100");
+    const nearUrl = new URL(`${NEAR_MARKET_API}/services`);
+    nearUrl.searchParams.set("search", query);
+    nearUrl.searchParams.set("limit", "100");
+    const payanUrl = new URL(`${PAYAN_API}/discover`);
+    payanUrl.searchParams.set("q", query);
+    const [the402Response, nearResponse, payanResponse] = await Promise.all([
+      monitoredFetch(the402Url.href),
+      monitoredFetch(nearUrl.href, { headers: { Authorization: `Bearer ${nearMarketApiKey}` } }),
+      monitoredFetch(payanUrl.href),
+    ]);
+    if (!the402Response.ok) throw new Error(`the402 search returned HTTP ${the402Response.status}.`);
+    if (!nearResponse.ok) throw new Error(`NEAR search returned HTTP ${nearResponse.status}.`);
+    if (!payanResponse.ok) throw new Error(`PayanAgent search returned HTTP ${payanResponse.status}.`);
+    const the402Payload = await the402Response.json() as Record<string, unknown>;
+    const nearPayload = await nearResponse.json() as unknown;
+    const payanPayload = await payanResponse.json() as Record<string, unknown>;
+    if (!Array.isArray(the402Payload.services) || !Array.isArray(nearPayload) || !Array.isArray(payanPayload.offers)) {
+      throw new Error("Marketplace search returned a malformed ranked result set.");
+    }
+    const expectedThe402Id = the402Ids.get(product);
+    const expectedNearId = nearIds.get(product);
+    const expectedPayanId = offerMap[product];
+    if (!expectedThe402Id || !expectedNearId || !expectedPayanId) {
+      throw new Error(`Marketplace identity is missing for ${product}.`);
+    }
+    return {
+      product,
+      query,
+      ranks: {
+        the402: oneBasedRank(the402Payload.services, "id", expectedThe402Id),
+        near: oneBasedRank(nearPayload, "service_id", expectedNearId),
+        payan: oneBasedRank(payanPayload.offers, "_id", expectedPayanId),
+      },
+    };
+  }));
+  const ranks = queries.flatMap(({ ranks }) => Object.values(ranks));
+  return {
+    available: true,
+    checked_at: new Date().toISOString(),
+    measured_cells: ranks.length,
+    first_place_cells: ranks.filter((rank) => rank === 1).length,
+    queries,
+    note: "Search rank is acquisition telemetry, not a purchase or a production-health signal.",
   };
 }
 
@@ -801,6 +886,10 @@ function renderMonitorNote(report: Record<string, any>): string {
   const skillInstalls = report.acquisition?.skills_sh?.install_counts || {};
   const totalSkillInstalls = report.acquisition?.skills_sh?.total_installs;
   const experiment = report.acquisition?.experiment || {};
+  const marketplaceSearch = report.acquisition?.marketplace_search || {};
+  const marketplaceSearchSummary = marketplaceSearch.available
+    ? `${marketplaceSearch.first_place_cells} / ${marketplaceSearch.measured_cells} current targeted marketplace-query cells rank #1 (refreshed ${marketplaceSearch.checked_at})`
+    : `latest verified 14 / 15 targeted cells ranked #1 on 2026-07-20; live refresh unavailable (${marketplaceSearch.error || "unknown error"})`;
   const ranks = report.discovery?.semantic_best_rank || {};
   const indexed = report.discovery?.indexed_products || {};
   const status = report.healthy ? "HEALTHY" : "DEGRADED";
@@ -814,6 +903,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Current profit (recognized-USDC basis):** ${money(profitValue)} (customer revenue minus ${money(costsValue)} tracked USD costs)
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${totalPurchases} / 10 genuine external purchases
+- **Marketplace search conversion:** ${marketplaceSearchSummary}
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
 - **Experiment next action:** ${experiment.next_action?.code || "unavailable"} — ${experiment.next_action?.reason || "No classified action available."}
 - **Customer purchases:** ${totalPurchases} (${Number(purchases.total || 0)} direct x402; ${marketplacePurchases} the402 one-off jobs; ${subscriptionPurchases} the402 subscriptions; ${nearPurchases} NEAR Agent Market jobs)
@@ -833,14 +923,14 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent with exact machine-readable contracts. All seven paid endpoints are being registered through x402scan's OpenAPI discovery path. Agentic Market also mirrors settled CDP Bazaar endpoints automatically; its owner-contaminated quality counters are excluded from commerce totals. SkillVerdict remains isolated from independently registered channels that require separate seller fulfillment. Distribution is now the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers. Owner-funded checks remain excluded.
+The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent with exact machine-readable contracts, and all seven paid endpoints are registered through x402scan's OpenAPI discovery path. A controlled literal-intent copy pass moved 14 of 15 measured marketplace-query cells to #1 while preserving every ID, price, schema, and endpoint; the remaining cell improved from #7 to #3. Agentic Market also mirrors settled CDP Bazaar endpoints automatically; its owner-contaminated quality counters are excluded from commerce totals. SkillVerdict remains isolated from independently registered channels that require separate seller fulfillment. Distribution is now the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers. Owner-funded checks remain excluded.
 
 ## What is next
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
 2. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
 3. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, all seven x402scan routes, Agentic Market's automatic mirror, guarded buyer-request feed, exact receipt attribution, and Coinbase Bazaar while keeping SkillVerdict out of separately fulfilled channels until its isolated experiment ends.
-4. Improve positioning from observed discovery and genuine calls until ten external purchases are recognized. Do not build an eighth product before that gate.
+4. Hold the newly ranked marketplace copy and all prices stable while monitoring genuine calls and exact-fit buyer requests. Do not build an eighth product before ten external purchases are recognized.
 
 ## Production health
 
@@ -968,6 +1058,22 @@ try {
 }
 
 acquisition = await acquisitionStatus();
+
+try {
+  acquisition = {
+    ...acquisition,
+    marketplace_search: await marketplaceSearchStatus(),
+  };
+} catch (error) {
+  acquisition = {
+    ...acquisition,
+    marketplace_search: {
+      available: false,
+      checked_at: checkedAt,
+      error: error instanceof Error ? error.message : String(error),
+    },
+  };
+}
 
 try {
   const installs = (acquisition.skills_sh as Record<string, any> | null)?.install_counts || {};

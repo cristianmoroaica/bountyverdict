@@ -57,6 +57,8 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.deepEqual(spec.paths["/api/flake"].get.parameters.map((parameter) => parameter.name), ["run_url", "attempt"]);
   assert.equal(spec.paths["/api/flake"].get.responses["429"].description.includes("not settled"), true);
   assert.equal(spec.paths["/api/mcp-drift"].post["x-x402"].price, "$0.02");
+  assert.match(spec.paths["/api/mcp-drift"].post.summary, /MCP schema drift/i);
+  assert.match(spec.paths["/api/mcp-drift"].post.description, /MCP tools\/list compatibility/i);
   assert.equal(spec.paths["/api/mcp-drift"].post.requestBody.content["application/json"].schema.additionalProperties, false);
   assert.equal(spec.paths["/api/mcp-drift"].post.responses["422"].description.includes("no payment challenge"), true);
   assert.match(spec.externalDocs.url, /agent-manifest\.json$/);
