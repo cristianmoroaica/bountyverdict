@@ -1,0 +1,28 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { activateManifest } from "../src/manifest.ts";
+
+const manifest = {
+  schema_version: "1.0",
+  product: "BountyVerdict",
+  status: "awaiting_production" as const,
+  production_api: null,
+  updated_at: "2026-07-20T00:00:00.000Z",
+};
+
+test("manifest activation records a verified HTTPS production origin", () => {
+  const result = activateManifest(
+    manifest,
+    "https://bountyverdict-agent.example.workers.dev",
+    new Date("2026-07-20T12:00:00Z"),
+  );
+  assert.equal(result.status, "active");
+  assert.equal(result.production_api, "https://bountyverdict-agent.example.workers.dev");
+  assert.equal(result.updated_at, "2026-07-20T12:00:00.000Z");
+});
+
+test("manifest activation rejects non-origin and non-HTTPS URLs", () => {
+  assert.throws(() => activateManifest(manifest, "http://example.com"), /HTTPS origin/);
+  assert.throws(() => activateManifest(manifest, "https://example.com/api"), /HTTPS origin/);
+  assert.throws(() => activateManifest(manifest, "https://user:pass@example.com"), /HTTPS origin/);
+});

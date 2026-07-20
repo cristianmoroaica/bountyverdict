@@ -1,0 +1,98 @@
+name: Deploy paid Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Optional HTTPS Worker origin override
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bountyverdict-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: agent
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      PAY_TO_ADDRESS: ${{ secrets.PAY_TO_ADDRESS }}
+      CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
+      CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
+      API_URL_OVERRIDE: ${{ inputs.api_url }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+
+      - run: npm ci
+
+      - name: Verify required deployment secrets
+        run: |
+          node -e '
+            const required = ["CLOUDFLARE_API_TOKEN", "PAY_TO_ADDRESS", "CDP_API_KEY_ID", "CDP_API_KEY_SECRET"];
+            const missing = required.filter((name) => !process.env[name]);
+            if (missing.length) throw new Error(`Missing GitHub Actions secrets: ${missing.join(", ")}`);
+            if (!/^0x[a-fA-F0-9]{40}$/.test(process.env.PAY_TO_ADDRESS)) throw new Error("PAY_TO_ADDRESS is invalid.");
+          '
+
+      - name: Deploy production Worker with secrets
+        run: |
+          umask 077
+          secret_file=/tmp/bountyverdict-worker-secrets.json
+          deploy_log=/tmp/bountyverdict-worker-deploy.log
+          trap 'rm -f "$secret_file" "$deploy_log"' EXIT
+          node -e '
+            const fs = require("node:fs");
+            fs.writeFileSync(process.argv[1], JSON.stringify({
+              PAY_TO_ADDRESS: process.env.PAY_TO_ADDRESS,
+              CDP_API_KEY_ID: process.env.CDP_API_KEY_ID,
+              CDP_API_KEY_SECRET: process.env.CDP_API_KEY_SECRET,
+            }));
+          ' "$secret_file"
+          npx wrangler deploy --env production --secrets-file "$secret_file" 2>&1 | tee "$deploy_log"
+          api_url="$API_URL_OVERRIDE"
+          if [ -z "$api_url" ]; then
+            api_url=$(grep -Eo 'https://[^[:space:]]+\.workers\.dev' "$deploy_log" | tail -1)
+          fi
+          node -e 'const value = new URL(process.argv[1]); if (value.protocol !== "https:" || value.pathname !== "/") throw new Error("Could not resolve deployed Worker HTTPS origin."); console.log(`PRODUCTION_API_URL=${value.origin}`)' "$api_url" >> "$GITHUB_ENV"
+
+      - name: Verify live free and paid contracts
+        run: |
+          curl --fail --silent --show-error "$PRODUCTION_API_URL/" | node -e '
+            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+              const value = JSON.parse(body);
+              if (value.status !== "available" || value.products?.length !== 2) process.exit(1);
+            });
+          '
+          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/sample" >/dev/null
+          curl --fail --silent --show-error "$PRODUCTION_API_URL/api/portfolio/sample" >/dev/null
+          RESOURCE_SERVER_URL="$PRODUCTION_API_URL" npm run payment:inspect
+          PRODUCT=portfolio RESOURCE_SERVER_URL="$PRODUCTION_API_URL" npm run payment:inspect
+
+      - name: Activate public agent manifest
+        run: npm run manifest:activate
+
+      - name: Publish activation record
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agent-manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Activate BountyVerdict production manifest"
+            git push
+          fi

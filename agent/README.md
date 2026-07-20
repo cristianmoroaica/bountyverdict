@@ -107,3 +107,14 @@ npm run deploy -- --env production
 ```
 
 The receiving address is public on-chain, but storing it as a binding keeps deployment configuration separate from source. The other three values are secrets and must never be committed.
+
+### One-action release
+
+The manual `Deploy paid Worker` GitHub Actions workflow performs the same production deployment, verifies both free routes and both x402 challenges, and activates the public agent manifest only after the live checks pass. Configure these repository Actions secrets before running it:
+
+- `CLOUDFLARE_API_TOKEN`
+- `PAY_TO_ADDRESS`
+- `CDP_API_KEY_ID`
+- `CDP_API_KEY_SECRET`
+
+The Cloudflare token needs permission to deploy Workers. No CDP wallet secret or buyer private key is uploaded to the Worker.
