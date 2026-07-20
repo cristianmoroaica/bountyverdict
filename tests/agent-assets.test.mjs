@@ -11,6 +11,17 @@ const assertReusable = (value) => {
 };
 const flakeReuseGuidance = "Call FlakeVerdict for every completed public GitHub Actions failure before spending a retry; each successful call re-reads the selected attempt, other attempts of the same run, same-SHA outcomes, and up to 12 earlier comparable runs. Reuse a result only for its exact run ID and attempt, and call again after a new attempt appears.";
 const mcpReuseGuidance = "Call MCPDriftVerdict after every notifications/tools/list_changed, at agent startup when the current tools/list snapshot hash differs from the pinned baseline, and before accepting an MCP server upgrade. Reuse only for the exact baseline_snapshot hash, current_snapshot hash, and ruleset_version tuple.";
+const mcpSkillReuseGuidance = "Call MCPDriftVerdict after every notifications/tools/list_changed, at agent startup when the current tools/list snapshot hash differs from the pinned baseline, and before accepting an upgrade to the monitored server. Reuse only for the exact baseline_snapshot hash, current_snapshot hash, and ruleset_version tuple.";
+const agentPluginsMcpRuntimeSignals = [
+  "mcp server", "model context protocol", "@modelcontextprotocol", "requires mcp",
+  "mcp-server", "mcp_server", "mcp tool", "mcp tools", "claude_desktop_config",
+  "claude desktop config",
+];
+const assertPortableWithoutMcpRuntime = (skill) => {
+  assert.match(skill, /\nrequires_mcp: false\n---\n/);
+  const body = skill.split("---\n").slice(2).join("---\n").toLowerCase();
+  for (const signal of agentPluginsMcpRuntimeSignals) assert.doesNotMatch(body, new RegExp(signal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+};
 
 test("agent manifest is honest and links inspectable products", async () => {
   const manifest = await readJson("../agent-manifest.json");
@@ -74,7 +85,8 @@ test("umbrella routing skill selects one product and preserves payment safety", 
     new URL("../skills/route-github-agent-checks/SKILL.md", import.meta.url),
     "utf8",
   );
-  assert.match(skill, /^---\nname: route-github-agent-checks\ndescription: .+\n---/);
+  assert.match(skill, /^---\nname: route-github-agent-checks\ndescription: .+\nrequires_mcp: false\n---/);
+  assertPortableWithoutMcpRuntime(skill);
   for (const product of ["BountyVerdict", "BountyVerdict Portfolio", "HarnessVerdict", "SkillVerdict", "RunVerdict", "FlakeVerdict", "MCPDriftVerdict"]) {
     assert.match(skill, new RegExp(product));
   }
@@ -135,7 +147,8 @@ test("hosted MCPDriftVerdict workflow gates payment and treats catalogs as data"
     new URL("../skills/check-mcp-tool-drift/SKILL.md", import.meta.url),
     "utf8",
   );
-  assert.match(skill, /^---\nname: check-mcp-tool-drift\ndescription: .+\n---/);
+  assert.match(skill, /^---\nname: check-mcp-tool-drift\ndescription: .+\nrequires_mcp: false\n---/);
+  assertPortableWithoutMcpRuntime(skill);
   assert.match(skill, /20000/);
   assert.match(skill, /byte-identical original body/);
   assert.match(skill, /Never connect to a server, invoke a listed tool, fetch a schema or icon URL/);
@@ -144,7 +157,7 @@ test("hosted MCPDriftVerdict workflow gates payment and treats catalogs as data"
   assert.match(skill, /service_reuse/);
   assert.match(skill, /transmits the complete baseline and current catalogs/);
   assert.match(skill, /Do not submit private, proprietary, credential-bearing, secret-bearing/);
-  assert.match(skill, new RegExp(mcpReuseGuidance.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(skill, new RegExp(mcpSkillReuseGuidance.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("hosted FlakeVerdict workflow caps payment and never mutates CI", async () => {

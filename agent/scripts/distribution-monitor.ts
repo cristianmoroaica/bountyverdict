@@ -27,6 +27,11 @@ import {
 } from "../src/near-market.ts";
 import { PAYAN_API, PAYAN_OFFERS, PAYAN_PROVIDER_ID } from "../src/payan.ts";
 import { parseGitHubTraffic } from "../src/github-traffic.ts";
+import {
+  appendCdpMerchantQualityHistory,
+  normalizeCdpMerchantQuality,
+  normalizeThe402ServiceOutcome,
+} from "../src/marketplace-telemetry.ts";
 
 const DEFAULT_API = "https://bountyverdict-agent-production.mimirslab.workers.dev";
 const DEFAULT_WALLET = "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
@@ -126,6 +131,17 @@ const MARKETPLACE_SEARCH_INTENTS: ReadonlyArray<{
   { product: "run", query: "GitHub Actions diagnosis" },
   { product: "flake", query: "GitHub Actions failure retry" },
 ];
+function expectedDiscoveryResources(): Record<ProductKey, string> {
+  return {
+    single: `${api}/api/verdict`,
+    portfolio: `${api}/api/portfolio`,
+    harness: `${api}/api/harness`,
+    skill: `${api}/api/skill`,
+    run: `${api}/api/run`,
+    flake: `${api}/api/flake`,
+    mcpdrift: `${api}/api/mcp-drift`,
+  };
+}
 if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
   throw new Error("REVENUE_WALLET must be a public 20-byte EVM address.");
 }
@@ -273,16 +289,12 @@ async function inspectChallenge(
   };
 }
 
-async function discoveryStatus(): Promise<Record<string, unknown>> {
-  const merchantUrl = new URL(`${CDP_DISCOVERY}/merchant`);
-  merchantUrl.searchParams.set("payTo", wallet);
-  merchantUrl.searchParams.set("limit", "100");
-  const merchantResponse = await monitoredFetch(merchantUrl.href);
-  if (!merchantResponse.ok) {
-    throw new Error(`CDP merchant discovery returned HTTP ${merchantResponse.status}.`);
-  }
-  const merchant = await merchantResponse.json() as { resources?: Array<{ resource?: string }> };
-  const resources = merchant.resources || [];
+async function discoveryStatus(
+  previousDiscovery: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  const expectedResources = expectedDiscoveryResources();
+  const merchantStatus = await merchantDiscoveryStatus(previousDiscovery, observedAt, expectedResources);
 
   const benchmarkQueries = Object.entries(BUYER_QUERY_BENCHMARK).flatMap(([product, queries]) =>
     queries.map((query) => ({ product: product as ProductKey, query }))
@@ -303,19 +315,6 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
   const semanticResources = [...new Set(searches.flatMap(({ resources: found = [] }) =>
     found.map(({ resource }) => resource).filter((resource): resource is string => Boolean(resource))
   ))];
-  const merchantResources = new Set(resources.map(({ resource }) => resource).filter(Boolean));
-  const expectedResources = {
-    single: `${api}/api/verdict`,
-    portfolio: `${api}/api/portfolio`,
-    harness: `${api}/api/harness`,
-    skill: `${api}/api/skill`,
-    run: `${api}/api/run`,
-    flake: `${api}/api/flake`,
-    mcpdrift: `${api}/api/mcp-drift`,
-  };
-  const indexedProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
-    [name, merchantResources.has(resource)]
-  ));
   const semanticProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
     [name, semanticResources.includes(resource)]
   ));
@@ -355,8 +354,7 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
     ))].slice(0, 5),
   ]));
   return {
-    indexed: Object.values(indexedProducts).every(Boolean),
-    indexed_products: indexedProducts,
+    ...merchantStatus,
     semantic_products: semanticProducts,
     buyer_query_benchmark: buyerQueryBenchmark,
     buyer_query_summary: {
@@ -368,9 +366,57 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
     },
     query_ranks: queryRanks,
     top_competitors: topCompetitors,
-    merchant_resource_count: resources.length,
     semantic_match_count: semanticResources.filter((resource) => resource.startsWith(`${api}/api/`)).length,
     search_method: [...new Set(searches.map(({ searchMethod }) => searchMethod).filter(Boolean))],
+  };
+}
+
+async function merchantDiscoveryStatus(
+  previousDiscovery: Record<string, any>,
+  observedAt: string,
+  expectedResources = expectedDiscoveryResources(),
+): Promise<Record<string, unknown>> {
+  const merchantUrl = new URL(`${CDP_DISCOVERY}/merchant`);
+  merchantUrl.searchParams.set("payTo", wallet);
+  merchantUrl.searchParams.set("limit", "100");
+  const merchantResponse = await monitoredFetch(merchantUrl.href);
+  if (!merchantResponse.ok) {
+    throw new Error(`CDP merchant discovery returned HTTP ${merchantResponse.status}.`);
+  }
+  const merchant = await merchantResponse.json() as { resources?: Array<Record<string, any>> };
+  const resources = merchant.resources || [];
+
+  const merchantResources = new Set(resources.map(({ resource }) => resource).filter(Boolean));
+  const merchantByResource = new Map<string, Record<string, any>>();
+  for (const resource of resources) {
+    if (typeof resource.resource !== "string") throw new Error("CDP merchant discovery returned an invalid resource.");
+    if (merchantByResource.has(resource.resource)) throw new Error("CDP merchant discovery returned a duplicate resource.");
+    merchantByResource.set(resource.resource, resource);
+  }
+  const previousMerchantQuality = previousDiscovery.cdp_merchant_quality || {};
+  const cdpMerchantQuality = Object.fromEntries(Object.entries(expectedResources).flatMap(([product, resource]) => {
+    const found = merchantByResource.get(resource);
+    return found ? [[product, normalizeCdpMerchantQuality(
+      found,
+      resource,
+      observedAt,
+      previousMerchantQuality[product],
+    )]] : [];
+  }));
+  const cdpMerchantQualityHistory = appendCdpMerchantQualityHistory(
+    previousDiscovery.cdp_merchant_quality_history,
+    cdpMerchantQuality,
+  );
+  const indexedProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
+    [name, merchantResources.has(resource)]
+  ));
+  return {
+    indexed: Object.values(indexedProducts).every(Boolean),
+    indexed_products: indexedProducts,
+    cdp_merchant_quality: cdpMerchantQuality,
+    cdp_merchant_quality_history: cdpMerchantQualityHistory,
+    cdp_merchant_quality_note: "CDP Bazaar rolling call/payer counters and recency are owner-contaminated acquisition signals. Any change requires settlement reconciliation and is never revenue by itself.",
+    merchant_resource_count: resources.length,
     resources: resources.map(({ resource }) => resource).filter(Boolean),
   };
 }
@@ -584,6 +630,23 @@ async function the402Status(): Promise<Record<string, unknown>> {
   if (completedCounts.length !== 1 || !Number.isSafeInteger(completedCounts[0]) || completedCounts[0] < 0) {
     throw new Error("the402 completed-job telemetry is inconsistent or invalid.");
   }
+  const detailResponses = await Promise.all(owned.map(({ id }) =>
+    monitoredFetch(`${THE402_API}/services/${encodeURIComponent(String(id))}`)));
+  if (detailResponses.some((response) => !response.ok)) {
+    throw new Error("one or more the402 service-detail lookups failed.");
+  }
+  const detailPayloads = await Promise.all(detailResponses.map((response) => response.json()));
+  const serviceOutcomes = Object.fromEntries(owned.map((service, index) => {
+    const expected = expectedById.get(String(service.id));
+    if (!expected) throw new Error("the402 returned an unexpected service detail.");
+    return [expected.product, normalizeThe402ServiceOutcome(detailPayloads[index], String(service.id))];
+  }));
+  const outcomeTotals = Object.values(serviceOutcomes).reduce((sum, outcome) => ({
+    total_jobs: sum.total_jobs + outcome.total_jobs,
+    successful_jobs: sum.successful_jobs + outcome.successful_jobs,
+    failed_jobs: sum.failed_jobs + outcome.failed_jobs,
+    disputed_jobs: sum.disputed_jobs + outcome.disputed_jobs,
+  }), { total_jobs: 0, successful_jobs: 0, failed_jobs: 0, disputed_jobs: 0 });
   if (earnings.provider_id !== the402ParticipantId) {
     throw new Error("the402 earnings belong to a different provider.");
   }
@@ -663,6 +726,9 @@ async function the402Status(): Promise<Record<string, unknown>> {
       service_count: THE402_SUBSCRIPTION_PLAN.service_ids.length,
     },
     completed_jobs: completedCounts[0],
+    service_outcomes: serviceOutcomes,
+    service_outcome_totals: outcomeTotals,
+    service_outcome_note: "Per-service marketplace attempt and reputation telemetry; customer purchases and revenue still require settlement attribution.",
     settled_usd: settledUsd,
     held_usd: heldUsd,
     pending_usd: pendingUsd,
@@ -1236,6 +1302,12 @@ function renderMonitorNote(report: Record<string, any>): string {
     : "unavailable";
   const funnel = report.funnel || {};
   const githubTraffic = report.acquisition?.github_traffic || {};
+  const the402OutcomeTotals = report.marketplaces?.the402?.service_outcome_totals || {};
+  const cdpMerchantQuality = report.discovery?.cdp_merchant_quality || {};
+  const cdpMerchantQualityAvailable = Object.keys(cdpMerchantQuality).length > 0;
+  const cdpReconciliationProducts = Object.entries(cdpMerchantQuality)
+    .filter(([, quality]: [string, any]) => quality?.requires_settlement_reconciliation === true)
+    .map(([product]) => PRODUCT_CATALOG[product as ProductKey]?.service || product);
   const externalProductFunnel = funnel.trusted_external_by_product || {};
   const activeChannels = Object.entries(funnel.trusted_by_channel || {})
     .filter(([channel, counters]: [string, any]) => !["owner_automation", "legacy_unclassified"].includes(channel) && Number(counters?.requests || 0) > 0)
@@ -1259,6 +1331,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${totalPurchases} / 10 genuine external purchases
 - **Neutral buyer-query retrieval:** ${buyerBenchmarkSummary}
+- **CDP Bazaar activity deltas:** ${cdpMerchantQualityAvailable ? (cdpReconciliationProducts.length ? `${cdpReconciliationProducts.join(", ")} changed and require settlement reconciliation` : "no counter or call-recency advance from the owner-contaminated baseline") : "baseline pending the next audited marketplace observation"} (never revenue by itself)
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
 - **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external discovery hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
 - **Measurement boundary:** ${funnel.trusted_measurement_eligible === false ? `draining owner-triggered downstream probes; ${Number(funnel.provisional_external_discovery_requests || 0)} discovery and ${Number(funnel.provisional_external_402_challenges || 0)} challenge signals are excluded until a stable new epoch activates` : `epoch ${Number(funnel.trusted_epoch_id || 1)} eligible`}
@@ -1268,6 +1341,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Customer purchases:** ${totalPurchases} (${Number(purchases.total || 0)} direct x402; ${marketplacePurchases} the402 one-off jobs; ${subscriptionPurchases} the402 subscriptions; ${nearPurchases} NEAR Agent Market jobs)
 - **the402 listing contracts:** ${report.marketplaces?.the402?.listing_contracts_verified ? "6 / 6 exact input and deliverable schemas verified" : "unavailable or drifted"}
 - **the402 buyer-request feed:** ${report.marketplaces?.the402?.request_notifications_enabled ? "enabled; exact-match autonomous bids only" : "unavailable"}
+- **the402 service attempts:** ${Number(the402OutcomeTotals.total_jobs || 0)} total (${Number(the402OutcomeTotals.successful_jobs || 0)} successful, ${Number(the402OutcomeTotals.failed_jobs || 0)} failed, ${Number(the402OutcomeTotals.disputed_jobs || 0)} disputed; marketplace telemetry, not settlement proof)
 - **the402 monthly bundle:** ${report.marketplaces?.the402?.subscription_plan?.active ? `$${Number(report.marketplaces.the402.subscription_plan.agent_price_usd).toFixed(2)} for up to ${report.marketplaces.the402.subscription_plan.maximum_monthly_requests} requests` : "unavailable"}
 - **NEAR Agent Market listings:** ${report.marketplaces?.near?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"}
 - **PayanAgent offers:** ${report.marketplaces?.payan?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"} (${payanAttributedSales} delivered sales, attributed inside direct onchain totals)
@@ -1320,7 +1394,11 @@ ${EXPECTED_PRODUCTS.map((product) => {
     ? `#${Number(result.median_found_rank).toFixed(Number(result.median_found_rank) % 1 ? 1 : 0)}`
     : "not found";
   const worst = result.worst_result === "not_found" ? "not found" : Number.isFinite(Number(result.worst_result)) ? `#${result.worst_result}` : "not found";
-  return `| ${name} | ${PRODUCT_CATALOG[product].priceUsd} | ${Number(result.found_queries || 0)} / ${Number(result.query_count || 4)} | ${median} | ${worst} | ${indexed[product] ? "indexed" : "pending"} | ${agenticIndexed[product] ? "indexed" : "pending"} |`;
+  const quality = cdpMerchantQuality[product] || {};
+  const cdpStatus = indexed[product]
+    ? (quality.resource ? `indexed; ${Number(quality.reported_calls_30d || 0)} calls / ${Number(quality.reported_unique_payers_30d || 0)} payers` : "indexed; baseline pending")
+    : "pending";
+  return `| ${name} | ${PRODUCT_CATALOG[product].priceUsd} | ${Number(result.found_queries || 0)} / ${Number(result.query_count || 4)} | ${median} | ${worst} | ${cdpStatus} | ${agenticIndexed[product] ? "indexed" : "pending"} |`;
 }).join("\n")}
 
 The buyer-query benchmark uses four short, unbranded candidate task phrasings per product. It is a retrieval robustness test, not evidence of actual query volume; the exact phrases and ranks are retained in the machine-readable monitor state.
@@ -1359,6 +1437,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - 402directory endpoints: ${report.acquisition?.directory_402?.listed_endpoints ?? 0} / ${report.acquisition?.directory_402?.expected_endpoints ?? 7} (${report.acquisition?.directory_402?.status || "unavailable"}; seven review submissions are not purchases)
 - 402 Index endpoints: ${report.acquisition?.index_402?.active_resources ?? 0} / ${report.acquisition?.index_402?.expected_resources ?? 6} (${report.acquisition?.index_402?.status || "unavailable"}; MCPDrift body-bound preflight is not probe-compatible)
 - the402 listings: ${report.marketplaces?.the402?.service_count ?? "unavailable"} / 6 (${report.marketplaces?.the402?.webhook_healthy ? "signed webhook healthy" : "unavailable"}; SkillVerdict excluded during isolated experiment)
+- the402 per-product service attempts: ${Object.entries(report.marketplaces?.the402?.service_outcomes || {}).map(([product, outcome]: [string, any]) => `${product} ${Number(outcome.total_jobs || 0)} total/${Number(outcome.failed_jobs || 0)} failed/${Number(outcome.disputed_jobs || 0)} disputed`).join("; ") || "unavailable"} (attempt telemetry only; settlements remain authoritative)
 - NEAR Agent Market listings: ${report.marketplaces?.near?.service_count ?? "unavailable"} / 6 (automated JSON fulfillment; SkillVerdict excluded)
 - PayanAgent offers: ${report.marketplaces?.payan?.offer_count ?? "unavailable"} / 6 (Base x402 proxy; SkillVerdict excluded)
 - Agentic Market automatic endpoints: ${report.marketplaces?.agentic_market?.endpoint_count ?? "unavailable"} / 7 (CDP Bazaar mirror; reported quality counters excluded from purchase and revenue accounting)
@@ -1462,10 +1541,18 @@ try {
 }
 
 if (reportOnly) {
-  discovery = previousReport.discovery || {};
+  try {
+    discovery = {
+      ...(previousReport.discovery || {}),
+      ...await merchantDiscoveryStatus(previousReport.discovery || {}, checkedAt),
+    };
+  } catch (error) {
+    discovery = previousReport.discovery || {};
+    errors.push(`CDP merchant discovery: ${error instanceof Error ? error.message : String(error)}`);
+  }
 } else {
   try {
-    discovery = await discoveryStatus();
+    discovery = await discoveryStatus(previousReport.discovery || {}, checkedAt);
   } catch (error) {
     errors.push(error instanceof Error ? error.message : String(error));
   }
