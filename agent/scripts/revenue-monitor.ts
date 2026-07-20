@@ -73,4 +73,9 @@ console.log(JSON.stringify({
     amount_atomic: transfer.amount.toString(),
     amount: undefined,
   })),
+  excluded_non_revenue_transfers: summary.excluded_transfers.map((transfer) => ({
+    ...transfer,
+    amount_atomic: transfer.amount.toString(),
+    amount: undefined,
+  })),
 }, null, 2));

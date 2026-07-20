@@ -179,6 +179,11 @@ async function revenueStatus(): Promise<Record<string, unknown>> {
       log_index: entry.log_index,
       amount_atomic: entry.amount.toString(),
     })),
+    excluded_non_revenue_transfers: summary.excluded_transfers.map((entry) => ({
+      transaction_hash: entry.transaction_hash,
+      log_index: entry.log_index,
+      amount_atomic: entry.amount.toString(),
+    })),
     unrelated_incoming_transfers: summary.unrecognized_transfers.length,
   };
 }

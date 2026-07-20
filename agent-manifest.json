@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "product": "BountyVerdict",
-  "status": "awaiting_production",
-  "production_api": null,
+  "status": "active",
+  "production_api": "https://bountyverdict-agent-production.mimirslab.workers.dev",
   "test_api": "https://bountyverdict-agent.mimirslab.workers.dev",
   "test_network": "eip155:84532",
   "test_verification": {
@@ -34,5 +34,5 @@
   ],
   "skill": "https://cristianmoroaica.github.io/bountyverdict/skills/preflight-github-bounties/SKILL.md",
   "source": "https://github.com/cristianmoroaica/bountyverdict/tree/main/agent",
-  "updated_at": "2026-07-20T10:21:08.000Z"
+  "updated_at": "2026-07-20T10:44:32.429Z"
 }

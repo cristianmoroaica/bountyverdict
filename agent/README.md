@@ -90,7 +90,7 @@ The credential-free production monitor verifies all free routes, both exact main
 npm run distribution:monitor
 ```
 
-It writes the latest machine-readable snapshot to `~/.local/state/bountyverdict/distribution-status.json`. The versioned user-service templates in `ops/systemd/` run it every 15 minutes; marketplace absence before the first CDP settlement is reported as `indexed: false`, not as a health failure.
+It writes the latest machine-readable snapshot to `~/.local/state/bountyverdict/distribution-status.json`. The versioned user-service templates in `ops/systemd/` run it every 15 minutes; marketplace absence before the first CDP settlement is reported as `indexed: false`, not as a health failure. The owner-funded production proof is retained as settlement evidence but explicitly excluded from earned revenue and $1,000 progress.
 
 ## Deployment inputs
 

@@ -1,6 +1,10 @@
 export const SINGLE_PAYMENT_ATOMIC = 50_000n;
 export const PORTFOLIO_PAYMENT_ATOMIC = 400_000n;
 export const REVENUE_TARGET_ATOMIC = 1_000_000_000n;
+export const KNOWN_NON_REVENUE_TX_HASHES = [
+  // Capped production interoperability proof funded by the project owner.
+  "0x6d308dcf6a53aae946b3a5ee55ab5afab8579acfbde7147fa18734ebb11fc7d4",
+] as const;
 
 export interface SettlementTransfer {
   amount: bigint;
@@ -20,6 +24,7 @@ export interface RevenueSummary {
   };
   recognized_transfers: SettlementTransfer[];
   unrecognized_transfers: SettlementTransfer[];
+  excluded_transfers: SettlementTransfer[];
 }
 
 function formatUsdc(atomic: bigint): string {
@@ -28,11 +33,21 @@ function formatUsdc(atomic: bigint): string {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
-export function summarizeRevenue(transfers: SettlementTransfer[]): RevenueSummary {
-  const recognized = transfers.filter(({ amount }) =>
+export function summarizeRevenue(
+  transfers: SettlementTransfer[],
+  excludedTransactionHashes: readonly string[] = KNOWN_NON_REVENUE_TX_HASHES,
+): RevenueSummary {
+  const exclusions = new Set(excludedTransactionHashes.map((hash) => hash.toLowerCase()));
+  const excluded = transfers.filter(({ transaction_hash }) =>
+    exclusions.has(transaction_hash.toLowerCase())
+  );
+  const eligible = transfers.filter(({ transaction_hash }) =>
+    !exclusions.has(transaction_hash.toLowerCase())
+  );
+  const recognized = eligible.filter(({ amount }) =>
     amount === SINGLE_PAYMENT_ATOMIC || amount === PORTFOLIO_PAYMENT_ATOMIC
   );
-  const unrecognized = transfers.filter(({ amount }) =>
+  const unrecognized = eligible.filter(({ amount }) =>
     amount !== SINGLE_PAYMENT_ATOMIC && amount !== PORTFOLIO_PAYMENT_ATOMIC
   );
   const recognizedAtomic = recognized.reduce((sum, transfer) => sum + transfer.amount, 0n);
@@ -50,5 +65,6 @@ export function summarizeRevenue(transfers: SettlementTransfer[]): RevenueSummar
     purchases: { single, portfolio, total: single + portfolio },
     recognized_transfers: recognized,
     unrecognized_transfers: unrecognized,
+    excluded_transfers: excluded,
   };
 }
