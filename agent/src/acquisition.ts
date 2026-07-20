@@ -10,6 +10,95 @@ export const PUBLISHED_SKILLS = Object.freeze([
 
 export type PublishedSkill = typeof PUBLISHED_SKILLS[number];
 
+type AgentSkillEntry = {
+  slug?: unknown;
+  name?: unknown;
+  skillName?: unknown;
+  owner?: unknown;
+  installCount?: unknown;
+  githubStars?: unknown;
+  score?: unknown;
+  ratingCount?: unknown;
+  securityScore?: unknown;
+  contentQualityScore?: unknown;
+  contentSha?: unknown;
+  updatedAt?: unknown;
+};
+
+function optionalNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function publishedSkillFromAgentSkillEntry(entry: AgentSkillEntry): PublishedSkill | null {
+  const candidates = [entry.slug, entry.skillName, entry.name]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.toLowerCase());
+  for (const skill of PUBLISHED_SKILLS) {
+    if (candidates.some((candidate) =>
+      candidate === skill || candidate.split(/[/:]/).includes(skill)
+    )) return skill;
+  }
+  return null;
+}
+
+export function parseAgentSkillSearchPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("AgentSkill search payload is malformed.");
+  }
+  const document = payload as Record<string, unknown>;
+  if (!Array.isArray(document.results) || !Number.isSafeInteger(document.total) || Number(document.total) < 0 ||
+    typeof document.hasMore !== "boolean") {
+    throw new Error("AgentSkill search telemetry is malformed.");
+  }
+
+  const bySkill = new Map<PublishedSkill, Record<string, unknown>>();
+  for (const rawEntry of document.results) {
+    if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) continue;
+    const entry = rawEntry as AgentSkillEntry;
+    if (String(entry.owner || "").toLowerCase() !== "cristianmoroaica") continue;
+    const skill = publishedSkillFromAgentSkillEntry(entry);
+    if (!skill || bySkill.has(skill)) continue;
+    const updatedAt = typeof entry.updatedAt === "string" && Number.isFinite(Date.parse(entry.updatedAt))
+      ? entry.updatedAt
+      : null;
+    bySkill.set(skill, {
+      skill,
+      slug: typeof entry.slug === "string" ? entry.slug : null,
+      install_count: optionalNonNegativeNumber(entry.installCount),
+      github_stars: optionalNonNegativeNumber(entry.githubStars),
+      score: optionalNonNegativeNumber(entry.score),
+      rating_count: optionalNonNegativeNumber(entry.ratingCount),
+      security_score: optionalNonNegativeNumber(entry.securityScore),
+      content_quality_score: optionalNonNegativeNumber(entry.contentQualityScore),
+      content_sha: typeof entry.contentSha === "string" && /^[a-f0-9]{7,64}$/i.test(entry.contentSha)
+        ? entry.contentSha
+        : null,
+      updated_at: updatedAt,
+    });
+  }
+
+  const skills = PUBLISHED_SKILLS.flatMap((skill) => {
+    const entry = bySkill.get(skill);
+    return entry ? [entry] : [];
+  });
+  const sumWhenComplete = (field: string): number | null => {
+    if (skills.some((entry) => typeof entry[field] !== "number")) return skills.length === 0 ? 0 : null;
+    return skills.reduce((sum, entry) => sum + Number(entry[field]), 0);
+  };
+  return {
+    listed: skills.length === PUBLISHED_SKILLS.length,
+    status: skills.length === PUBLISHED_SKILLS.length ? "listed" : skills.length ? "partial" : "not_indexed",
+    listed_skills: skills.length,
+    expected_skills: PUBLISHED_SKILLS.length,
+    catalog_matches: Number(document.total),
+    catalog_total_exact: document.totalExact === true,
+    catalog_has_more: document.hasMore,
+    total_installs: sumWhenComplete("install_count"),
+    total_ratings: sumWhenComplete("rating_count"),
+    skills,
+  };
+}
+
 export const EARNED_PLACEMENT_BASELINE = Object.freeze({
   total_installs: 8,
   router_installs: 2,

@@ -1,7 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
-import { parseSkillsShInstallCounts, PUBLISHED_SKILLS } from "../src/acquisition.ts";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import {
+  parseAgentSkillSearchPayload,
+  parseSkillsShInstallCounts,
+  PUBLISHED_SKILLS,
+} from "../src/acquisition.ts";
 
 const repository = "https://github.com/cristianmoroaica/bountyverdict";
 const agentToolUrl = "https://agenttool.sh/tools/bountyverdict-agent-decision-apis";
@@ -20,6 +26,8 @@ const monetizeYourAgentSubmissionId = 234;
 const directory402Api = "https://402directory.com/api";
 const directory402SubmissionIds = Object.freeze([50, 51, 52, 53, 54, 55, 56]);
 const index402Api = "https://402index.io/api/v1/services";
+const agentSkillSearchUrl = "https://agentskill.sh/api/agent/search?q=bountyverdict&limit=20";
+const githubSkillReleaseTag = "v1.0.2";
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -65,6 +73,8 @@ const skillsShBuyerQueries = Object.freeze([
 const stateFile = process.env.DIRECTORY_STATE_FILE || `${homedir()}/.local/state/bountyverdict/directories.json`;
 const timeoutMs = 30_000;
 const agentSkillRetryMs = 20 * 60 * 60 * 1000;
+const forceAgentSkillSubmission = process.env.AGENTSKILL_FORCE_SUBMIT === "YES";
+const execFileAsync = promisify(execFile);
 
 async function atomicWrite(path: string, contents: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -612,19 +622,152 @@ async function submitAgentSkill(): Promise<Record<string, unknown>> {
       data?: { summary?: { found?: number; imported?: number; updated?: number; failed?: number } };
     };
     const summary = payload.data?.summary || {};
-    const listed = response.ok && payload.success === true && summary.found === 7 && summary.failed === 0;
+    const accepted = response.ok && payload.success === true && summary.found === 7 && summary.failed === 0;
     return {
       url: "https://agentskill.sh/submit",
       attempted_at: new Date().toISOString(),
       http_status: response.status,
-      listed,
-      status: listed ? "accepted" : "upstream_blocked",
+      accepted,
+      status: accepted ? "accepted_for_indexing" : "upstream_blocked",
       summary,
     };
   } catch (error) {
     return {
       url: "https://agentskill.sh/submit",
       attempted_at: new Date().toISOString(),
+      accepted: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function mergeAgentSkillHistory(
+  previousHistory: unknown,
+  current: Record<string, any>,
+  observedAt: string,
+): Array<Record<string, unknown>> {
+  const history = Array.isArray(previousHistory)
+    ? previousHistory.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry)).slice(-95)
+    : [];
+  const point = {
+    observed_at: observedAt,
+    listed_skills: current.listed_skills,
+    total_installs: current.total_installs,
+    total_ratings: current.total_ratings,
+    skills: current.skills,
+  };
+  const comparable = (value: Record<string, unknown>) => JSON.stringify({
+    listed_skills: value.listed_skills,
+    total_installs: value.total_installs,
+    total_ratings: value.total_ratings,
+    skills: value.skills,
+  });
+  const previousPoint = history.at(-1) as Record<string, unknown> | undefined;
+  if (!previousPoint || comparable(previousPoint) !== comparable(point)) history.push(point);
+  return history.slice(-96);
+}
+
+async function agentSkillStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(agentSkillSearchUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) throw new Error(`AgentSkill search returned HTTP ${response.status}.`);
+    const current = parseAgentSkillSearchPayload(await response.json());
+    const exposedAt = current.listed
+      ? previousStatus.exposed_at || observedAt
+      : null;
+    return {
+      url: "https://agentskill.sh/",
+      search_url: agentSkillSearchUrl,
+      http_status: response.status,
+      ...current,
+      exposed_at: exposedAt,
+      metric_history: mergeAgentSkillHistory(previousStatus.metric_history, current, observedAt),
+      measurement: "public_catalog_presence_installs_ratings_security_and_quality_not_impressions_or_purchases",
+    };
+  } catch (error) {
+    return {
+      url: "https://agentskill.sh/",
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      metric_history: Array.isArray(previousStatus.metric_history) ? previousStatus.metric_history.slice(-96) : [],
+    };
+  }
+}
+
+async function githubSkillStatus(previousStatus: Record<string, any>, observedAt: string): Promise<Record<string, unknown>> {
+  try {
+    const hour = Math.floor(Date.parse(observedAt) / (60 * 60 * 1000));
+    const selectedSkill = PUBLISHED_SKILLS[hour % PUBLISHED_SKILLS.length];
+    const [{ stdout: releaseOutput }, { stdout: searchOutput }] = await Promise.all([
+      execFileAsync("gh", [
+        "release", "view", githubSkillReleaseTag,
+        "--repo", "cristianmoroaica/bountyverdict",
+        "--json", "tagName,isDraft,isPrerelease,publishedAt,url,targetCommitish",
+      ], { timeout: timeoutMs, maxBuffer: 1_000_000, encoding: "utf8" }),
+      execFileAsync("gh", [
+        "skill", "search", selectedSkill,
+        "--owner", "cristianmoroaica",
+        "--limit", "20",
+        "--json", "description,namespace,path,repo,skillName,stars",
+      ], { timeout: timeoutMs, maxBuffer: 1_000_000, encoding: "utf8" }),
+    ]);
+    const release = JSON.parse(releaseOutput) as Record<string, unknown>;
+    const results = JSON.parse(searchOutput) as Array<Record<string, unknown>>;
+    if (!Array.isArray(results)) throw new Error(`GitHub Skill search for ${selectedSkill} was malformed.`);
+    const resultIndex = results.findIndex((entry) =>
+      String(entry.repo).toLowerCase() === "cristianmoroaica/bountyverdict" && entry.skillName === selectedSkill
+    );
+    const checked = {
+      skill: selectedSkill,
+      found: resultIndex >= 0,
+      rank: resultIndex >= 0 ? resultIndex + 1 : null,
+      returned_results: results.length,
+      stars: resultIndex >= 0 && typeof results[resultIndex].stars === "number" ? results[resultIndex].stars : null,
+      checked_at: observedAt,
+    };
+    const previousQueries = Array.isArray(previousStatus.exact_searches)
+      ? previousStatus.exact_searches as Array<Record<string, unknown>>
+      : [];
+    const queries = PUBLISHED_SKILLS.map((skill) => {
+      if (skill === selectedSkill) return checked;
+      return previousQueries.find((query) => query.skill === skill) || {
+        skill,
+        found: null,
+        rank: null,
+        returned_results: null,
+        stars: null,
+        checked_at: null,
+      };
+    });
+    const listedSkills = queries.filter(({ found }) => found === true).length;
+    const checkedSkills = queries.filter(({ found }) => typeof found === "boolean").length;
+    const listed = listedSkills === PUBLISHED_SKILLS.length;
+    return {
+      url: release.url,
+      release_tag: release.tagName,
+      release_published_at: release.publishedAt,
+      release_target: release.targetCommitish,
+      release_verified: release.tagName === githubSkillReleaseTag && release.isDraft === false && release.isPrerelease === false,
+      listed,
+      status: listed ? "listed" : listedSkills ? "partial" : "published_awaiting_search_index",
+      listed_skills: listedSkills,
+      checked_skills: checkedSkills,
+      expected_skills: PUBLISHED_SKILLS.length,
+      exposed_at: listed ? previousStatus.exposed_at || observedAt : null,
+      exact_searches: queries,
+      measurement: "one_rotating_owner_run_exact_github_code_search_per_hour_not_impressions_installs_or_purchases",
+    };
+  } catch (error) {
+    return {
+      url: `https://github.com/cristianmoroaica/bountyverdict/releases/tag/${githubSkillReleaseTag}`,
       listed: false,
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
@@ -653,6 +796,7 @@ const [
   monetizeYourAgent,
   directory402,
   index402,
+  githubSkill,
 ] = await Promise.all([
   skillsShStatus(),
   agentToolStatus(),
@@ -667,27 +811,56 @@ const [
   monetizeYourAgentStatus(),
   directory402Status(),
   index402Status(),
+  githubSkillStatus(previous.github_skill || {}, new Date().toISOString()),
 ]);
 if (Number(x402scan.listed_resources || 0) > 0) {
   x402scan.exposed_at = previous.x402scan?.exposed_at || new Date().toISOString();
 }
-const previousAttempt = Date.parse(String(previous.agentskill?.attempted_at || previous.checked_at || ""));
-const agentSkillRetryDue = !Number.isFinite(previousAttempt) || Date.now() - previousAttempt >= agentSkillRetryMs;
-const agentskill = previous.agentskill?.listed === true
-  ? previous.agentskill
-  : agentSkillRetryDue
-    ? await submitAgentSkill()
+const observedAt = new Date().toISOString();
+let agentSkill = await agentSkillStatus(previous.agentskill || {}, observedAt);
+const previousSubmission = previous.agentskill?.submission || (
+  previous.agentskill?.summary || previous.agentskill?.attempted_at
+    ? {
+        attempted_at: previous.agentskill.attempted_at || previous.checked_at,
+        http_status: previous.agentskill.http_status,
+        accepted: false,
+        status: previous.agentskill.status,
+        summary: previous.agentskill.summary,
+      }
+    : {}
+);
+const previousAttempt = Date.parse(String(previousSubmission.attempted_at || previous.checked_at || ""));
+const agentSkillRetryDue = forceAgentSkillSubmission || !Number.isFinite(previousAttempt) ||
+  Date.now() - previousAttempt >= agentSkillRetryMs;
+let agentSkillSubmission = previousSubmission;
+if (agentSkill.listed !== true && agentSkillRetryDue) {
+  agentSkillSubmission = await submitAgentSkill();
+  if (agentSkillSubmission.accepted === true) {
+    agentSkill = await agentSkillStatus(previous.agentskill || {}, new Date().toISOString());
+  }
+}
+const agentskill = {
+  ...agentSkill,
+  status: agentSkill.listed === true
+    ? "listed"
+    : agentSkillSubmission.status === "upstream_blocked"
+      ? "not_indexed_upstream_blocked"
+      : agentSkill.status,
+  submission: agentSkillRetryDue || agentSkill.listed === true
+    ? agentSkillSubmission
     : {
-        ...previous.agentskill,
+        ...agentSkillSubmission,
         retry_deferred: true,
         retry_after: new Date(previousAttempt + agentSkillRetryMs).toISOString(),
-      };
+      },
+};
 const state = {
   checked_at: new Date().toISOString(),
   repository,
   skills_sh: skills,
   agenttool,
   agentskill,
+  github_skill: githubSkill,
   security_directory_pr: securityDirectoryPr,
   x402_directory_pr: x402DirectoryPr,
   agent_plugins_pr: agentPluginsPr,

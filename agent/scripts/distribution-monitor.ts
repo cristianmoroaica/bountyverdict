@@ -1009,6 +1009,7 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
       skills_sh: state.skills_sh || null,
       agenttool: state.agenttool || null,
       agentskill: state.agentskill || null,
+      github_skill: state.github_skill || null,
       security_directory_pr: state.security_directory_pr || null,
       x402_directory_pr: state.x402_directory_pr || null,
       agent_plugins_pr: state.agent_plugins_pr || null,
@@ -1425,7 +1426,8 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Router installs: ${Number(skillInstalls["route-github-agent-checks"] || 0)}
 - SkillVerdict workflow installs: ${Number(skillInstalls["preflight-agent-skills"] || 0)}
 - AgentTool: ${report.acquisition?.agenttool?.status || (report.acquisition?.agenttool?.listed ? "listed" : "unavailable")}
-- AgentSkill: ${report.acquisition?.agentskill?.status || (report.acquisition?.agentskill?.listed ? "listed" : "unavailable")}
+- AgentSkill: ${report.acquisition?.agentskill?.listed_skills ?? 0} / 7 publicly indexed; ${report.acquisition?.agentskill?.status || "unavailable"}; ${report.acquisition?.agentskill?.total_installs ?? 0} installs and ${report.acquisition?.agentskill?.total_ratings ?? 0} ratings retained with per-skill security/quality history (never purchases)
+- GitHub Skill release: ${report.acquisition?.github_skill?.release_verified ? report.acquisition.github_skill.release_tag : "unavailable"}; exact public discovery ${report.acquisition?.github_skill?.listed_skills ?? 0} / 7 (${report.acquisition?.github_skill?.status || "unavailable"}; owner-run retrieval, not impressions)
 - Agent security directory PR: ${report.acquisition?.security_directory_pr?.status || "unavailable"} (${report.acquisition?.security_directory_pr?.url || "not recorded"})
 - x402 ecosystem directory PR: ${report.acquisition?.x402_directory_pr?.status || "unavailable"} (${report.acquisition?.x402_directory_pr?.url || "not recorded"})
 - Agent Plugins: ${report.acquisition?.agent_plugins_catalog?.listed_skills ?? 0} / 7 skills in the daily catalog; provider PR ${report.acquisition?.agent_plugins_pr?.status || "unavailable"} (${report.acquisition?.agent_plugins_pr?.url || "not recorded"}; catalog placement and quality metadata are not purchases)

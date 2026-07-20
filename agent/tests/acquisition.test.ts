@@ -2,9 +2,64 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   evaluateEarnedPlacementExperiment,
+  parseAgentSkillSearchPayload,
   parseSkillsShInstallCounts,
   PUBLISHED_SKILLS,
 } from "../src/acquisition.ts";
+
+test("AgentSkill acquisition parser retains per-skill conversion and quality signals", () => {
+  const parsed = parseAgentSkillSearchPayload({
+    results: PUBLISHED_SKILLS.map((skill, index) => ({
+      slug: `cristianmoroaica/${skill}`,
+      name: skill,
+      owner: "cristianmoroaica",
+      installCount: index,
+      githubStars: 3,
+      score: 90 - index,
+      ratingCount: index === 0 ? 2 : 0,
+      securityScore: 100,
+      contentQualityScore: 95,
+      contentSha: "93327fe3e47e241851570700e46e332353ebfb6f",
+      updatedAt: "2026-07-20T23:40:19.000Z",
+    })),
+    total: 7,
+    hasMore: false,
+    totalExact: true,
+  });
+  assert.equal(parsed.listed, true);
+  assert.equal(parsed.listed_skills, 7);
+  assert.equal(parsed.total_installs, 21);
+  assert.equal(parsed.total_ratings, 2);
+  assert.equal(parsed.skills[0].skill, "route-github-agent-checks");
+  assert.equal(parsed.skills[0].security_score, 100);
+  assert.equal(parsed.skills[0].content_quality_score, 95);
+});
+
+test("AgentSkill acquisition parser distinguishes empty and partial indexes", () => {
+  const empty = parseAgentSkillSearchPayload({ results: [], total: 0, hasMore: false, totalExact: false });
+  assert.equal(empty.status, "not_indexed");
+  assert.equal(empty.total_installs, 0);
+
+  const partial = parseAgentSkillSearchPayload({
+    results: [{ slug: "cristianmoroaica/audit-agent-harness", owner: "cristianmoroaica", installCount: 4 }],
+    total: 1,
+    hasMore: false,
+  });
+  assert.equal(partial.status, "partial");
+  assert.equal(partial.listed_skills, 1);
+  assert.equal(partial.total_installs, 4);
+});
+
+test("AgentSkill acquisition parser rejects malformed counters and ignores other owners", () => {
+  assert.throws(() => parseAgentSkillSearchPayload({ results: [], total: -1, hasMore: false }), /malformed/);
+  const parsed = parseAgentSkillSearchPayload({
+    results: [{ slug: "other/preflight-agent-skills", owner: "other", installCount: 99 }],
+    total: 1,
+    hasMore: false,
+  });
+  assert.equal(parsed.listed_skills, 0);
+  assert.equal(parsed.total_installs, 0);
+});
 
 test("skills.sh acquisition parser requires and totals every published skill", () => {
   const html = PUBLISHED_SKILLS.map((skill, index) =>
