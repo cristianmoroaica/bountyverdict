@@ -121,10 +121,11 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
     searchUrl.searchParams.set("limit", "20");
     const response = await monitoredFetch(searchUrl.href);
     if (!response.ok) throw new Error(`CDP semantic discovery returned HTTP ${response.status}.`);
-    return response.json() as Promise<{
+    const result = await response.json() as {
       resources?: Array<{ resource?: string }>;
       searchMethod?: string;
-    }>;
+    };
+    return { query, ...result };
   }));
   const semanticResources = [...new Set(searches.flatMap(({ resources: found = [] }) =>
     found.map(({ resource }) => resource).filter((resource): resource is string => Boolean(resource))
@@ -141,10 +142,25 @@ async function discoveryStatus(): Promise<Record<string, unknown>> {
   const semanticProducts = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) =>
     [name, semanticResources.includes(resource)]
   ));
+  const semanticRanks = Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) => {
+    const ranks = searches.map(({ resources: found = [] }) =>
+      found.findIndex((candidate) => candidate.resource === resource)
+    ).filter((rank) => rank >= 0).map((rank) => rank + 1);
+    return [name, ranks.length ? Math.min(...ranks) : null];
+  }));
+  const queryRanks = Object.fromEntries(searches.map(({ query, resources: found = [] }) => [
+    query,
+    Object.fromEntries(Object.entries(expectedResources).map(([name, resource]) => {
+      const rank = found.findIndex((candidate) => candidate.resource === resource);
+      return [name, rank >= 0 ? rank + 1 : null];
+    })),
+  ]));
   return {
     indexed: Object.values(indexedProducts).every(Boolean),
     indexed_products: indexedProducts,
     semantic_products: semanticProducts,
+    semantic_best_rank: semanticRanks,
+    query_ranks: queryRanks,
     merchant_resource_count: resources.length,
     semantic_match_count: semanticResources.filter((resource) => resource.startsWith(`${api}/api/`)).length,
     search_method: [...new Set(searches.map(({ searchMethod }) => searchMethod).filter(Boolean))],
