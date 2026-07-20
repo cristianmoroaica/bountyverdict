@@ -9,7 +9,7 @@ import {
   summarizeRevenue,
   type SettlementTransfer,
 } from "../src/revenue.ts";
-import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
+import { PRODUCT_CATALOG, productForAtomicAmount, type ProductKey } from "../src/product-catalog.ts";
 import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
 import { evaluateEarnedPlacementExperiment } from "../src/acquisition.ts";
 
@@ -30,6 +30,8 @@ const canaryStateFile = process.env.CANARY_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/functional-canary.json`;
 const directoryStateFile = process.env.DIRECTORY_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/directories.json`;
+const experimentStateFile = process.env.EXPERIMENT_STATE_FILE ||
+  `${homedir()}/.local/state/bountyverdict/acquisition-experiment.json`;
 const monitorNoteFile = process.env.MONITOR_NOTE_FILE || `${homedir()}/notes/mimirx402.md`;
 const trackedCostsInput = process.env.TRACKED_COSTS_USDC || "0";
 const historicalTestGasEth = process.env.HISTORICAL_TEST_GAS_ETH || "0.00000525";
@@ -264,6 +266,7 @@ async function revenueStatus(): Promise<Record<string, unknown>> {
         amount: log.args.value,
         transaction_hash: log.transactionHash,
         log_index: log.logIndex,
+        block_number: log.blockNumber ?? undefined,
       });
     }
   }
@@ -274,6 +277,14 @@ async function revenueStatus(): Promise<Record<string, unknown>> {
       ? [OWNER_CONTROLLED_CANARY_PAYER, settlementBuyer]
       : [OWNER_CONTROLLED_CANARY_PAYER],
   );
+  const recognizedBlocks = [...new Set(summary.recognized_transfers
+    .map((entry) => entry.block_number)
+    .filter((value): value is bigint => typeof value === "bigint"))];
+  const blockTimestamps = new Map<string, string>();
+  await Promise.all(recognizedBlocks.map(async (blockNumber) => {
+    const block = await client.getBlock({ blockNumber });
+    blockTimestamps.set(blockNumber.toString(), new Date(Number(block.timestamp) * 1000).toISOString());
+  }));
   return {
     scanned_blocks: { from: startBlock.toString(), to: latestBlock.toString() },
     target_usdc: summary.target_usdc,
@@ -286,6 +297,9 @@ async function revenueStatus(): Promise<Record<string, unknown>> {
       transaction_hash: entry.transaction_hash,
       log_index: entry.log_index,
       amount_atomic: entry.amount.toString(),
+      product: productForAtomicAmount(entry.amount),
+      block_number: entry.block_number?.toString() || null,
+      block_timestamp: entry.block_number ? blockTimestamps.get(entry.block_number.toString()) || null : null,
     })),
     canary_transfer_count: summary.canary_transfers.length,
     canary_usdc: summary.canary_usdc,
@@ -389,6 +403,10 @@ function money(value: unknown): string {
   return Number.isFinite(parsed) ? `$${parsed.toFixed(2)}` : "unavailable";
 }
 
+function optionalCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 function renderMonitorNote(report: Record<string, any>): string {
   const revenueValue = Number(report.revenue?.recognized_usdc || 0);
   const costsValue = Number(trackedCostsInput);
@@ -411,6 +429,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${Number(purchases.total || 0)} / 10 genuine external purchases
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
+- **Experiment next action:** ${experiment.next_action?.code || "unavailable"} — ${experiment.next_action?.reason || "No classified action available."}
 - **Customer purchases:** ${Number(purchases.total || 0)}
 - **skills.sh anonymous CLI installs:** ${Number.isFinite(Number(totalSkillInstalls)) ? Number(totalSkillInstalls) : "unavailable"} (acquisition signal only; 8-install baseline on 2026-07-20)
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
@@ -461,10 +480,12 @@ ${errors}
 - AgentSkill: ${report.acquisition?.agentskill?.status || (report.acquisition?.agentskill?.listed ? "listed" : "unavailable")}
 - Agent security directory PR: ${report.acquisition?.security_directory_pr?.status || "unavailable"} (${report.acquisition?.security_directory_pr?.url || "not recorded"})
 - x402 ecosystem directory PR: ${report.acquisition?.x402_directory_pr?.status || "unavailable"} (${report.acquisition?.x402_directory_pr?.url || "not recorded"})
-- x402Scout GET listings: ${report.acquisition?.x402scout?.listed_entries ?? "unavailable"} / ${report.acquisition?.x402scout?.expected_entries ?? 5} (${report.acquisition?.x402scout?.status || "unavailable"}; ${Number(report.acquisition?.x402scout?.total_query_count || 0)} catalog queries)
+- x402Scout GET listings: ${report.acquisition?.x402scout?.listed_entries ?? "unavailable"} / ${report.acquisition?.x402scout?.expected_entries ?? 5} (${report.acquisition?.x402scout?.status || "unavailable"}; positions ${Array.isArray(report.acquisition?.x402scout?.catalog_positions) ? report.acquisition.x402scout.catalog_positions.join(", ") : "unavailable"} of ${report.acquisition?.x402scout?.catalog_entries ?? "unavailable"}; ${typeof report.acquisition?.x402scout?.total_query_count === "number" ? report.acquisition.x402scout.total_query_count : "unavailable"} catalog queries)
 - Experiment status: ${experiment.status || "unavailable"}
 - Experiment baseline: 8 total installs, 2 router installs, 1 SkillVerdict workflow install, 0 genuine purchases
 - Experiment delta: ${Number(experiment.delta?.installs?.total || 0)} total installs, ${Number(experiment.delta?.installs?.router || 0)} router installs, ${Number(experiment.delta?.installs?.skillverdict || 0)} SkillVerdict workflow installs, ${Number(experiment.delta?.genuine_purchases || 0)} genuine purchases
+- Classified next action: ${experiment.next_action?.code || "unavailable"} — ${experiment.next_action?.reason || "No classified action available."}
+- Terminal snapshot: scheduled for 2026-07-27T16:37:15Z; the first terminal result is persisted and cannot be rewritten by later cumulative counters
 
 skills.sh counts are anonymous CLI telemetry with unknown provenance. They are tracked as a funnel signal only and are never counted as purchases or revenue.
 
@@ -540,21 +561,60 @@ acquisition = await acquisitionStatus();
 
 try {
   const installs = (acquisition.skills_sh as Record<string, any> | null)?.install_counts || {};
+  const scout = acquisition.x402scout as Record<string, unknown> | null;
+  const recognizedPurchases = Array.isArray(revenue.recognized_transfers)
+    ? (revenue.recognized_transfers as Array<Record<string, unknown>>).map((transfer) => ({
+        product: typeof transfer.product === "string" ? transfer.product : "",
+        settled_at: typeof transfer.block_timestamp === "string" ? transfer.block_timestamp : "",
+      }))
+    : undefined;
+  let persisted: Record<string, any> = {};
+  try {
+    persisted = JSON.parse(await readFile(experimentStateFile, "utf8"));
+    if (persisted.name !== "skillverdict_earned_directory_placement") {
+      throw new Error("Acquisition experiment state belongs to a different experiment.");
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const evaluated = persisted.terminal_result || evaluateEarnedPlacementExperiment({
+    checked_at: checkedAt,
+    healthy: errors.length === 0,
+    persisted_started_at: typeof persisted.started_at === "string" ? persisted.started_at : undefined,
+    total_installs: optionalCount((acquisition.skills_sh as Record<string, unknown> | null)?.total_installs),
+    router_installs: optionalCount(installs["route-github-agent-checks"]),
+    skillverdict_installs: optionalCount(installs["preflight-agent-skills"]),
+    skillverdict_registry_queries: optionalCount(scout?.skillverdict_query_count),
+    non_target_registry_queries: optionalCount(scout?.non_target_query_count),
+    recognized_purchases: recognizedPurchases,
+    placements: [
+      acquisition.security_directory_pr as Record<string, unknown>,
+      acquisition.x402_directory_pr as Record<string, unknown>,
+      acquisition.x402scout as Record<string, unknown>,
+    ],
+  });
+  const terminalStatuses = new Set([
+    "inconclusive_measurement",
+    "target_purchase_success",
+    "off_target_purchase_success",
+    "install_to_purchase_failure",
+    "listing_to_install_failure",
+    "off_target_reach",
+    "reach_failure",
+  ]);
+  const terminalResult = persisted.terminal_result ||
+    (terminalStatuses.has(String(evaluated.status)) ? { ...evaluated, frozen_at: checkedAt } : null);
+  await atomicWrite(experimentStateFile, `${JSON.stringify({
+    name: "skillverdict_earned_directory_placement",
+    initialized_at: persisted.initialized_at || checkedAt,
+    started_at: persisted.started_at || evaluated.started_at,
+    ends_at: persisted.ends_at || evaluated.ends_at,
+    baseline: persisted.baseline || evaluated.baseline,
+    terminal_result: terminalResult,
+  }, null, 2)}\n`);
   acquisition = {
     ...acquisition,
-    experiment: evaluateEarnedPlacementExperiment({
-      checked_at: checkedAt,
-      healthy: errors.length === 0,
-      genuine_purchases: Number((revenue.purchases as Record<string, unknown> | undefined)?.total || 0),
-      total_installs: Number((acquisition.skills_sh as Record<string, unknown> | null)?.total_installs),
-      router_installs: Number(installs["route-github-agent-checks"]),
-      skillverdict_installs: Number(installs["preflight-agent-skills"]),
-      placements: [
-        acquisition.security_directory_pr as Record<string, unknown>,
-        acquisition.x402_directory_pr as Record<string, unknown>,
-        acquisition.x402scout as Record<string, unknown>,
-      ],
-    }),
+    experiment: terminalResult || evaluated,
   };
 } catch (error) {
   errors.push(`Acquisition experiment: ${error instanceof Error ? error.message : String(error)}`);

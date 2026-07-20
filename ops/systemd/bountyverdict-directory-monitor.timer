@@ -1,10 +1,10 @@
 [Unit]
-Description=Check BountyVerdict agent directories daily
+Description=Check BountyVerdict agent directories hourly
 
 [Timer]
-OnActiveSec=1d
-OnUnitActiveSec=1d
-RandomizedDelaySec=30min
+OnActiveSec=15min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
 Persistent=true
 Unit=bountyverdict-directory-monitor.service
 

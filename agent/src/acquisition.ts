@@ -14,7 +14,10 @@ export const EARNED_PLACEMENT_BASELINE = Object.freeze({
   total_installs: 8,
   router_installs: 2,
   skillverdict_installs: 1,
-  genuine_purchases: 0,
+  skillverdict_registry_queries: 0,
+  non_target_registry_queries: 0,
+  skillverdict_purchases: 0,
+  other_purchases: 0,
 });
 
 const EARNED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -28,10 +31,16 @@ type PlacementStatus = {
 export type EarnedPlacementExperimentInput = {
   checked_at: string;
   healthy: boolean;
-  genuine_purchases: number;
+  persisted_started_at?: string;
   total_installs?: number;
   router_installs?: number;
   skillverdict_installs?: number;
+  skillverdict_registry_queries?: number;
+  non_target_registry_queries?: number;
+  recognized_purchases?: readonly {
+    product: string;
+    settled_at: string;
+  }[];
   placements: readonly PlacementStatus[];
 };
 
@@ -42,8 +51,6 @@ function finiteCount(value: unknown): number | null {
 export function evaluateEarnedPlacementExperiment(input: EarnedPlacementExperimentInput) {
   const checkedAtMs = Date.parse(input.checked_at);
   if (!Number.isFinite(checkedAtMs)) throw new Error("Acquisition experiment checked_at is invalid.");
-  const purchases = finiteCount(input.genuine_purchases);
-  if (purchases === null) throw new Error("Acquisition experiment purchase count is invalid.");
 
   const exposedAt = input.placements
     .filter((placement) => ["merged", "listed", "active"].includes(String(placement.status)))
@@ -52,8 +59,14 @@ export function evaluateEarnedPlacementExperiment(input: EarnedPlacementExperime
     .map(String)
     .filter((value) => Number.isFinite(Date.parse(value)))
     .sort((left, right) => Date.parse(left) - Date.parse(right));
-  const startedAt = exposedAt[0] || null;
+  const startedAt = input.persisted_started_at || exposedAt[0] || null;
   const startedAtMs = startedAt ? Date.parse(startedAt) : null;
+  if (startedAt && !Number.isFinite(startedAtMs)) {
+    throw new Error("Acquisition experiment persisted start is invalid.");
+  }
+  if (startedAtMs !== null && startedAtMs > checkedAtMs) {
+    throw new Error("Acquisition experiment start is in the future.");
+  }
   const endsAt = startedAtMs === null
     ? null
     : new Date(startedAtMs + EARNED_PLACEMENT_WINDOW_MS).toISOString();
@@ -62,6 +75,8 @@ export function evaluateEarnedPlacementExperiment(input: EarnedPlacementExperime
   const totalInstalls = finiteCount(input.total_installs);
   const routerInstalls = finiteCount(input.router_installs);
   const skillverdictInstalls = finiteCount(input.skillverdict_installs);
+  const skillverdictRegistryQueries = finiteCount(input.skillverdict_registry_queries);
+  const nonTargetRegistryQueries = finiteCount(input.non_target_registry_queries);
   const installDeltas = {
     total: totalInstalls === null ? null : totalInstalls - EARNED_PLACEMENT_BASELINE.total_installs,
     router: routerInstalls === null ? null : routerInstalls - EARNED_PLACEMENT_BASELINE.router_installs,
@@ -69,19 +84,79 @@ export function evaluateEarnedPlacementExperiment(input: EarnedPlacementExperime
       ? null
       : skillverdictInstalls - EARNED_PLACEMENT_BASELINE.skillverdict_installs,
   };
-  const purchaseDelta = purchases - EARNED_PLACEMENT_BASELINE.genuine_purchases;
-  const primarySuccess = purchaseDelta >= 1;
+  const purchaseEvents = Array.isArray(input.recognized_purchases) ? input.recognized_purchases : null;
+  const purchaseMeasurementValid = purchaseEvents !== null && purchaseEvents.every((purchase) =>
+    typeof purchase.product === "string" &&
+    typeof purchase.settled_at === "string" &&
+    Number.isFinite(Date.parse(purchase.settled_at))
+  );
+  const inWindowPurchases = purchaseMeasurementValid && startedAtMs !== null
+    ? purchaseEvents.filter((purchase) => {
+        const settledAt = Date.parse(purchase.settled_at);
+        return settledAt >= startedAtMs && settledAt <= startedAtMs + EARNED_PLACEMENT_WINDOW_MS;
+      })
+    : [];
+  const targetPurchases = inWindowPurchases.filter((purchase) => purchase.product === "skill").length;
+  const otherPurchases = inWindowPurchases.length - targetPurchases;
+  const primarySuccess = targetPurchases >= 1;
+  const commercialSuccess = inWindowPurchases.length >= 1;
   const supportingSuccess = (installDeltas.router ?? 0) >= 1 || (installDeltas.skillverdict ?? 0) >= 1;
   const windowComplete = startedAtMs !== null && elapsedMs >= EARNED_PLACEMENT_WINDOW_MS;
+  const installMeasurementValid = Object.values(installDeltas).every((value) => value !== null && value >= 0);
+  const registryMeasurementValid = skillverdictRegistryQueries !== null && nonTargetRegistryQueries !== null;
+  const measurementValid = installMeasurementValid && registryMeasurementValid && purchaseMeasurementValid;
+  const targetedInstallDelta = Math.max(installDeltas.router ?? 0, installDeltas.skillverdict ?? 0);
+  const nonTargetInstallDelta = installDeltas.total === null
+    ? 0
+    : installDeltas.total - Math.max(0, installDeltas.router ?? 0) - Math.max(0, installDeltas.skillverdict ?? 0);
   const status = startedAtMs === null
     ? "awaiting_placement"
-    : primarySuccess && supportingSuccess
-      ? "strong_success"
-      : primarySuccess
-        ? "primary_success"
-        : windowComplete
-          ? "failed_no_purchase"
-          : "running";
+    : !windowComplete
+      ? "running"
+      : !input.healthy || !measurementValid
+        ? "inconclusive_measurement"
+        : targetPurchases >= 1
+          ? "target_purchase_success"
+          : otherPurchases >= 1
+            ? "off_target_purchase_success"
+            : targetedInstallDelta >= 1
+              ? "install_to_purchase_failure"
+              : (skillverdictRegistryQueries ?? 0) >= 1
+                ? "listing_to_install_failure"
+                : nonTargetInstallDelta >= 1 || (nonTargetRegistryQueries ?? 0) >= 1
+                  ? "off_target_reach"
+                  : "reach_failure";
+  const nextAction = !input.healthy
+    ? {
+        code: "restore_distribution_health",
+        reason: "Production or acquisition monitoring is degraded, so conversion evidence is not trustworthy.",
+      }
+    : !measurementValid
+      ? {
+          code: "restore_acquisition_measurement",
+          reason: "Purchase, registry-query, or install telemetry is unavailable or moved below the fixed baseline.",
+        }
+      : status === "awaiting_placement"
+        ? {
+            code: "secure_verified_placement",
+            reason: "No public directory placement has exposed the experiment yet.",
+          }
+        : status === "running"
+          ? {
+              code: "hold_experiment_constant",
+              reason: "The seven-day exposure window is still running; changing price or positioning would contaminate it.",
+            }
+          : status === "target_purchase_success"
+            ? { code: "scale_proven_distribution", reason: "SkillVerdict produced a genuine in-window purchase." }
+            : status === "off_target_purchase_success"
+              ? { code: "scale_purchased_product", reason: "Another product produced a genuine in-window purchase; scale that product's path." }
+              : status === "install_to_purchase_failure"
+                ? { code: "test_purchase_friction", reason: "Targeted installs increased but no SkillVerdict purchase followed." }
+                : status === "listing_to_install_failure"
+                  ? { code: "improve_listing_conversion", reason: "SkillVerdict registry queries increased but targeted installs did not." }
+                  : status === "off_target_reach"
+                    ? { code: "focus_reached_product", reason: "Only non-target products gained measurable discovery or install activity." }
+                    : { code: "expand_earned_reach", reason: "The full exposure window ended without target queries, installs, or purchases." };
 
   return {
     name: "skillverdict_earned_directory_placement",
@@ -95,15 +170,24 @@ export function evaluateEarnedPlacementExperiment(input: EarnedPlacementExperime
       total_installs: totalInstalls,
       router_installs: routerInstalls,
       skillverdict_installs: skillverdictInstalls,
-      genuine_purchases: purchases,
+      skillverdict_registry_queries: skillverdictRegistryQueries,
+      non_target_registry_queries: nonTargetRegistryQueries,
+      skillverdict_purchases: targetPurchases,
+      other_purchases: otherPurchases,
+      genuine_purchases: inWindowPurchases.length,
     },
     delta: {
       installs: installDeltas,
-      genuine_purchases: purchaseDelta,
+      skillverdict_purchases: targetPurchases,
+      other_purchases: otherPurchases,
+      genuine_purchases: inWindowPurchases.length,
     },
     primary_success: primarySuccess,
+    commercial_success: commercialSuccess,
     supporting_success: supportingSuccess,
+    measurement_valid: measurementValid,
     currently_healthy: input.healthy,
+    next_action: nextAction,
     success_criteria: {
       primary: "At least one genuine non-owner purchase within seven full days of the first verified public directory placement.",
       supporting: "At least one new router or preflight-agent-skills install.",

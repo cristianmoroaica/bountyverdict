@@ -27,10 +27,12 @@ test("skills.sh acquisition parser fails closed on partial or malformed telemetr
 const baselineExperiment = {
   checked_at: "2026-07-20T16:30:00.000Z",
   healthy: true,
-  genuine_purchases: 0,
   total_installs: 8,
   router_installs: 2,
   skillverdict_installs: 1,
+  skillverdict_registry_queries: 0,
+  non_target_registry_queries: 0,
+  recognized_purchases: [],
   placements: [{ status: "open", merged_at: null }],
 } as const;
 
@@ -39,13 +41,14 @@ test("earned placement experiment waits for real directory exposure", () => {
   assert.equal(result.status, "awaiting_placement");
   assert.equal(result.started_at, null);
   assert.equal(result.delta.genuine_purchases, 0);
+  assert.equal(result.next_action.code, "secure_verified_placement");
 });
 
-test("earned placement experiment starts at the first merge and recognizes strong success", () => {
+test("earned placement experiment starts at the first merge and stays running before the boundary", () => {
   const result = evaluateEarnedPlacementExperiment({
     ...baselineExperiment,
     checked_at: "2026-07-22T12:00:00.000Z",
-    genuine_purchases: 1,
+    recognized_purchases: [{ product: "skill", settled_at: "2026-07-21T18:00:00.000Z" }],
     total_installs: 10,
     router_installs: 3,
     placements: [
@@ -53,11 +56,12 @@ test("earned placement experiment starts at the first merge and recognizes stron
       { status: "merged", merged_at: "2026-07-22T12:00:00.000Z" },
     ],
   });
-  assert.equal(result.status, "strong_success");
+  assert.equal(result.status, "running");
   assert.equal(result.started_at, "2026-07-21T12:00:00.000Z");
   assert.equal(result.ends_at, "2026-07-28T12:00:00.000Z");
   assert.equal(result.delta.installs.router, 1);
   assert.equal(result.delta.genuine_purchases, 1);
+  assert.equal(result.next_action.code, "hold_experiment_constant");
 });
 
 test("earned placement experiment starts from an immediately listed registry entry", () => {
@@ -68,6 +72,7 @@ test("earned placement experiment starts from an immediately listed registry ent
   });
   assert.equal(result.status, "running");
   assert.equal(result.started_at, "2026-07-20T16:37:12.000Z");
+  assert.equal(result.next_action.code, "hold_experiment_constant");
 });
 
 test("earned placement experiment fails only after seven exposed days without a purchase", () => {
@@ -82,5 +87,89 @@ test("earned placement experiment fails only after seven exposed days without a 
     checked_at: "2026-07-28T12:00:00.000Z",
     placements: [{ status: "merged", merged_at: "2026-07-21T12:00:00.000Z" }],
   });
-  assert.equal(failed.status, "failed_no_purchase");
+  assert.equal(failed.status, "reach_failure");
+  assert.equal(failed.next_action.code, "expand_earned_reach");
+});
+
+test("post-window action distinguishes listing conversion from purchase friction", () => {
+  const listingConversion = evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    checked_at: "2026-07-28T12:00:00.000Z",
+    skillverdict_registry_queries: 3,
+    placements: [{ status: "listed", exposed_at: "2026-07-21T12:00:00.000Z" }],
+  });
+  assert.equal(listingConversion.status, "listing_to_install_failure");
+  assert.equal(listingConversion.next_action.code, "improve_listing_conversion");
+
+  const purchaseFriction = evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    checked_at: "2026-07-28T12:00:00.000Z",
+    router_installs: 3,
+    placements: [{ status: "listed", exposed_at: "2026-07-21T12:00:00.000Z" }],
+  });
+  assert.equal(purchaseFriction.status, "install_to_purchase_failure");
+  assert.equal(purchaseFriction.next_action.code, "test_purchase_friction");
+});
+
+test("degraded health or telemetry blocks acquisition conclusions", () => {
+  const unhealthy = evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    healthy: false,
+  });
+  assert.equal(unhealthy.next_action.code, "restore_distribution_health");
+  const missingTelemetry = evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    skillverdict_registry_queries: undefined,
+  });
+  assert.equal(missingTelemetry.next_action.code, "restore_acquisition_measurement");
+});
+
+test("terminal outcomes distinguish target and off-target purchases", () => {
+  const target = evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    checked_at: "2026-07-28T12:00:00.000Z",
+    recognized_purchases: [{ product: "skill", settled_at: "2026-07-24T12:00:00.000Z" }],
+    placements: [{ status: "listed", exposed_at: "2026-07-21T12:00:00.000Z" }],
+  });
+  assert.equal(target.status, "target_purchase_success");
+  assert.equal(target.next_action.code, "scale_proven_distribution");
+
+  const other = evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    checked_at: "2026-07-28T12:00:00.000Z",
+    recognized_purchases: [{ product: "run", settled_at: "2026-07-24T12:00:00.000Z" }],
+    placements: [{ status: "listed", exposed_at: "2026-07-21T12:00:00.000Z" }],
+  });
+  assert.equal(other.status, "off_target_purchase_success");
+  assert.equal(other.next_action.code, "scale_purchased_product");
+});
+
+test("purchases outside the immutable exposure window are excluded", () => {
+  const result = evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    checked_at: "2026-07-30T12:00:00.000Z",
+    persisted_started_at: "2026-07-21T12:00:00.000Z",
+    recognized_purchases: [
+      { product: "skill", settled_at: "2026-07-21T11:59:59.000Z" },
+      { product: "skill", settled_at: "2026-07-28T12:00:01.000Z" },
+    ],
+    placements: [],
+  });
+  assert.equal(result.status, "reach_failure");
+  assert.equal(result.current.genuine_purchases, 0);
+});
+
+test("persisted exposure survives listing disappearance and future exposure fails closed", () => {
+  const persisted = evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    checked_at: "2026-07-22T12:00:00.000Z",
+    persisted_started_at: "2026-07-21T12:00:00.000Z",
+    placements: [],
+  });
+  assert.equal(persisted.status, "running");
+  assert.throws(() => evaluateEarnedPlacementExperiment({
+    ...baselineExperiment,
+    checked_at: "2026-07-20T12:00:00.000Z",
+    placements: [{ status: "listed", exposed_at: "2026-07-21T12:00:00.000Z" }],
+  }), /future/);
 });

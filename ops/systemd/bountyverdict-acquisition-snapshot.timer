@@ -1,0 +1,11 @@
+[Unit]
+Description=Snapshot the BountyVerdict acquisition experiment at seven days
+
+[Timer]
+OnCalendar=2026-07-27 19:37:15 Europe/Bucharest
+AccuracySec=1s
+Persistent=true
+Unit=bountyverdict-acquisition-snapshot.service
+
+[Install]
+WantedBy=timers.target

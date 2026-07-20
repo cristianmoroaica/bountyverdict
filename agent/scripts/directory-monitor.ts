@@ -133,26 +133,50 @@ async function x402ScoutStatus(): Promise<Record<string, unknown>> {
     if (!response.ok) {
       return { url: x402ScoutUrl, http_status: response.status, listed: false, status: "unexpected_response" };
     }
-    const payload = await response.json() as { endpoints?: Array<Record<string, unknown>> };
+    const payload = await response.json() as { count?: number; endpoints?: Array<Record<string, unknown>> };
     const expected = new Set(x402ScoutIds);
-    const entries = (payload.endpoints || [])
-      .filter((entry) => expected.has(String(entry.id)))
-      .map((entry) => ({
+    const catalog = payload.endpoints || [];
+    const entries = catalog
+      .map((entry, index) => ({ entry, position: index + 1 }))
+      .filter(({ entry }) => expected.has(String(entry.id)))
+      .map(({ entry, position }) => ({
         id: entry.id,
         name: entry.name,
         url: entry.url,
+        catalog_position: position,
         registered_at: entry.registered_at,
         status: entry.status,
         health_status: entry.health_status,
         uptime_pct: entry.uptime_pct,
         avg_latency_ms: entry.avg_latency_ms,
         query_count: entry.query_count,
+        tags: entry.tags,
+        capability_tags: entry.capability_tags,
+        trust_score: entry.trust_score,
       }));
     const exposedAt = entries
       .map((entry) => String(entry.registered_at || ""))
       .filter((value) => Number.isFinite(Date.parse(value)))
       .sort((left, right) => Date.parse(left) - Date.parse(right))[0] || null;
-    const listed = entries.length === x402ScoutIds.length && entries.every((entry) => entry.status === "active");
+    const uniqueEntryIds = new Set(entries.map((entry) => String(entry.id)));
+    const listed = entries.length === x402ScoutIds.length &&
+      uniqueEntryIds.size === x402ScoutIds.length &&
+      entries.every((entry) => entry.status === "active");
+    const queryCounts = entries.map((entry) =>
+      typeof entry.query_count === "number" && Number.isSafeInteger(entry.query_count) && entry.query_count >= 0
+        ? entry.query_count
+        : null
+    );
+    const queryTelemetryAvailable = queryCounts.length === x402ScoutIds.length &&
+      queryCounts.every((value): value is number => value !== null);
+    const skillEntry = entries.find((entry) => entry.id === "dfc4f4e3-b1ea-440d-b9c1-a416296e4fdd");
+    const skillQueryCount = skillEntry && typeof skillEntry.query_count === "number" &&
+      Number.isSafeInteger(skillEntry.query_count) && skillEntry.query_count >= 0
+      ? skillEntry.query_count
+      : null;
+    const totalQueryCount = queryTelemetryAvailable
+      ? queryCounts.reduce((total, value) => total + (value ?? 0), 0)
+      : null;
     return {
       url: x402ScoutUrl,
       http_status: response.status,
@@ -161,7 +185,15 @@ async function x402ScoutStatus(): Promise<Record<string, unknown>> {
       exposed_at: exposedAt,
       expected_entries: x402ScoutIds.length,
       listed_entries: entries.length,
-      total_query_count: entries.reduce((total, entry) => total + Number(entry.query_count || 0), 0),
+      unique_entry_ids: uniqueEntryIds.size,
+      catalog_entries: Number(payload.count || catalog.length),
+      catalog_positions: entries.map((entry) => entry.catalog_position),
+      query_telemetry_available: queryTelemetryAvailable,
+      total_query_count: totalQueryCount,
+      skillverdict_query_count: skillQueryCount,
+      non_target_query_count: totalQueryCount === null || skillQueryCount === null
+        ? null
+        : totalQueryCount - skillQueryCount,
       entries,
     };
   } catch (error) {

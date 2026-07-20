@@ -23,6 +23,7 @@ export interface SettlementTransfer {
   amount: bigint;
   transaction_hash: string;
   log_index: number;
+  block_number?: bigint;
 }
 
 export interface RevenueSummary {
