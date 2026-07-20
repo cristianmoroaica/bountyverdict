@@ -11,7 +11,9 @@ Environment=PRODUCTION_API_URL=https://bountyverdict-agent-production.mimirslab.
 Environment=REVENUE_WALLET=0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614
 Environment=START_BLOCK=48876000
 Environment=SETTLEMENT_CANARY_ENABLED=NO
+Environment=TRACKED_COSTS_USDC=0.01
 EnvironmentFile=-%h/.config/bountyverdict/settlement-buyer.env
+EnvironmentFile=%h/.config/bountyverdict/the402.env
 ExecStart=/usr/bin/env node --experimental-strip-types scripts/distribution-monitor.ts
 NoNewPrivileges=yes
 PrivateTmp=yes

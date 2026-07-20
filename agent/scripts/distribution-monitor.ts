@@ -17,6 +17,7 @@ const DEFAULT_API = "https://bountyverdict-agent-production.mimirslab.workers.de
 const DEFAULT_WALLET = "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
 const DEFAULT_START_BLOCK = "48876000";
 const CDP_DISCOVERY = "https://api.cdp.coinbase.com/platform/v2/x402/discovery";
+const THE402_API = "https://api.the402.ai/v1";
 const MAINNET_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const NETWORK = "eip155:8453";
 const TIMEOUT_MS = 30_000;
@@ -37,6 +38,8 @@ const trackedCostsInput = process.env.TRACKED_COSTS_USDC || "0";
 const historicalTestGasEth = process.env.HISTORICAL_TEST_GAS_ETH || "0.00000525";
 const settlementBuyer = process.env.SETTLEMENT_BUYER_ADDRESS;
 const settlementCanaryEnabled = process.env.SETTLEMENT_CANARY_ENABLED === "YES";
+const the402ApiKey = process.env.THE402_API_KEY;
+const the402ParticipantId = process.env.THE402_PARTICIPANT_ID;
 const MAX_CANARY_AGE_MS = 8 * 60 * 60 * 1000;
 const EXPECTED_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "flake", "mcpdrift"] as const;
 const BUYER_INTENTS: ReadonlyArray<{ product: ProductKey; query: string }> = [
@@ -48,6 +51,14 @@ const BUYER_INTENTS: ReadonlyArray<{ product: ProductKey; query: string }> = [
   { product: "flake", query: "is this GitHub Actions failure flaky should I retry or fix it" },
   { product: "mcpdrift", query: "will this MCP tools/list schema change break my agent after a server upgrade" },
 ];
+const THE402_SERVICES = Object.freeze({
+  single: "svc_5e36dabc8b434e95",
+  portfolio: "svc_780bf04bd8204b2f",
+  harness: "svc_df4baf282b7d48d5",
+  run: "svc_cdd16073d02c4429",
+  flake: "svc_565a2a5c8e154b6e",
+  mcpdrift: "svc_40e97a390c5b4d71",
+});
 
 if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
   throw new Error("REVENUE_WALLET must be a public 20-byte EVM address.");
@@ -325,6 +336,92 @@ async function revenueStatus(): Promise<Record<string, unknown>> {
   };
 }
 
+async function the402Status(): Promise<Record<string, unknown>> {
+  if (!the402ApiKey || !/^sk_[A-Za-z0-9_-]{8,}$/.test(the402ApiKey)) {
+    throw new Error("THE402_API_KEY is missing or invalid.");
+  }
+  if (!the402ParticipantId || !/^p_[A-Za-z0-9_-]{1,160}$/.test(the402ParticipantId)) {
+    throw new Error("THE402_PARTICIPANT_ID is missing or invalid.");
+  }
+  const catalogUrl = new URL(`${THE402_API}/services/catalog`);
+  catalogUrl.searchParams.set("provider", the402ParticipantId);
+  catalogUrl.searchParams.set("limit", "100");
+  const [catalogResponse, earningsResponse] = await Promise.all([
+    monitoredFetch(catalogUrl.href),
+    monitoredFetch(`${THE402_API}/provider/earnings`, {
+      headers: { "X-API-Key": the402ApiKey },
+    }),
+  ]);
+  if (!catalogResponse.ok) throw new Error(`the402 catalog returned HTTP ${catalogResponse.status}.`);
+  if (!earningsResponse.ok) throw new Error(`the402 earnings returned HTTP ${earningsResponse.status}.`);
+  const catalog = await catalogResponse.json() as { services?: Array<Record<string, any>> };
+  const earnings = await earningsResponse.json() as Record<string, any>;
+  const services = Array.isArray(catalog.services) ? catalog.services : [];
+  const expectedIds = new Set<string>(Object.values(THE402_SERVICES));
+  const owned = services.filter(({ id }) => expectedIds.has(String(id)));
+  if (owned.length !== expectedIds.size || new Set(owned.map(({ id }) => id)).size !== expectedIds.size) {
+    throw new Error("the402 catalog does not contain the exact six expected services.");
+  }
+  if (services.some(({ name }) => name === "SkillVerdict")) {
+    throw new Error("SkillVerdict was added to the402 before its isolated experiment ended.");
+  }
+  if (!owned.every(({ webhook_healthy }) => webhook_healthy === true)) {
+    throw new Error("the402 reports an unhealthy BountyVerdict webhook.");
+  }
+  const completedCounts = [...new Set(owned.map(({ provider_completed_jobs }) => provider_completed_jobs))];
+  if (completedCounts.length !== 1 || !Number.isSafeInteger(completedCounts[0]) || completedCounts[0] < 0) {
+    throw new Error("the402 completed-job telemetry is inconsistent or invalid.");
+  }
+  if (earnings.provider_id !== the402ParticipantId) {
+    throw new Error("the402 earnings belong to a different provider.");
+  }
+  if (String(earnings.wallet || "").toLowerCase() !== OWNER_CONTROLLED_CANARY_PAYER.toLowerCase()) {
+    throw new Error("the402 earnings resolve to an unexpected provider wallet.");
+  }
+  const settledUsd = Number(earnings.earnings?.settled_usd);
+  const heldUsd = Number(earnings.earnings?.held_usd);
+  const pendingUsd = Number(earnings.earnings?.pending_usd);
+  if (![settledUsd, heldUsd, pendingUsd].every((value) => Number.isFinite(value) && value >= 0)) {
+    throw new Error("the402 earnings telemetry is invalid.");
+  }
+  const recentSettlements = Array.isArray(earnings.recent_settlements)
+    ? earnings.recent_settlements as Array<Record<string, unknown>>
+    : [];
+  return {
+    listed: true,
+    participant_id: the402ParticipantId,
+    provider_wallet: String(earnings.wallet).toLowerCase(),
+    service_count: owned.length,
+    skillverdict_excluded: true,
+    webhook_healthy: true,
+    completed_jobs: completedCounts[0],
+    settled_usd: settledUsd,
+    held_usd: heldUsd,
+    pending_usd: pendingUsd,
+    recent_settlement_count: recentSettlements.length,
+    recent_settlements: recentSettlements.map((entry) => ({
+      service_id: typeof entry.service_id === "string" ? entry.service_id : null,
+      transaction_hash: typeof entry.transaction_hash === "string"
+        ? entry.transaction_hash
+        : typeof entry.tx_hash === "string" ? entry.tx_hash : null,
+      amount_usd: typeof entry.amount_usd === "number" || typeof entry.amount_usd === "string"
+        ? entry.amount_usd
+        : null,
+      settled_at: typeof entry.settled_at === "string"
+        ? entry.settled_at
+        : typeof entry.created_at === "string" ? entry.created_at : null,
+    })),
+    services: owned.map(({ id, name, price, agent_price, provider_net_price, webhook_healthy }) => ({
+      id,
+      name,
+      price,
+      agent_price,
+      provider_net_price,
+      webhook_healthy,
+    })),
+  };
+}
+
 async function functionalStatus(): Promise<Record<string, unknown>> {
   const raw = await readFile(canaryStateFile, "utf8");
   const state = JSON.parse(raw) as {
@@ -408,10 +505,14 @@ function optionalCount(value: unknown): number | undefined {
 }
 
 function renderMonitorNote(report: Record<string, any>): string {
-  const revenueValue = Number(report.revenue?.recognized_usdc || 0);
+  const directRevenueValue = Number(report.revenue?.recognized_usdc || 0);
+  const marketplaceRevenueValue = Number(report.marketplaces?.the402?.settled_usd || 0);
+  const revenueValue = directRevenueValue + marketplaceRevenueValue;
   const costsValue = Number(trackedCostsInput);
   const profitValue = revenueValue - costsValue;
   const purchases = report.revenue?.purchases || {};
+  const marketplacePurchases = Number(report.marketplaces?.the402?.completed_jobs || 0);
+  const totalPurchases = Number(purchases.total || 0) + marketplacePurchases;
   const skillInstalls = report.acquisition?.skills_sh?.install_counts || {};
   const totalSkillInstalls = report.acquisition?.skills_sh?.total_installs;
   const experiment = report.acquisition?.experiment || {};
@@ -427,10 +528,10 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Customer revenue:** ${money(revenueValue)} / $1,000.00
 - **Current profit (recognized-USDC basis):** ${money(profitValue)} (customer revenue minus ${money(costsValue)} tracked USD costs)
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
-- **Distribution milestone:** ${Number(purchases.total || 0)} / 10 genuine external purchases
+- **Distribution milestone:** ${totalPurchases} / 10 genuine external purchases
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
 - **Experiment next action:** ${experiment.next_action?.code || "unavailable"} — ${experiment.next_action?.reason || "No classified action available."}
-- **Customer purchases:** ${Number(purchases.total || 0)}
+- **Customer purchases:** ${totalPurchases} (${Number(purchases.total || 0)} direct x402; ${marketplacePurchases} the402 escrow)
 - **skills.sh anonymous CLI installs:** ${Number.isFinite(Number(totalSkillInstalls)) ? Number(totalSkillInstalls) : "unavailable"} (acquisition signal only; 8-install baseline on 2026-07-20)
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
 - **Unrelated incoming transfers:** ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
@@ -446,7 +547,7 @@ The seven-product suite is healthy in production and unattended GitHub-to-Cloudf
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
 2. Monitor GitHub Skill, AgentTool, AgentSkill, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
-3. Keep Coinbase Bazaar automatic discovery under observation while FlakeVerdict propagates and MCPDriftVerdict awaits an eligible settlement.
+3. Monitor the six signed the402 listings and Coinbase Bazaar while keeping SkillVerdict out of the new channel until its isolated experiment ends.
 4. Improve positioning from observed discovery and genuine calls until ten external purchases are recognized. Do not build an eighth product before that gate.
 
 ## Production health
@@ -481,6 +582,7 @@ ${errors}
 - Agent security directory PR: ${report.acquisition?.security_directory_pr?.status || "unavailable"} (${report.acquisition?.security_directory_pr?.url || "not recorded"})
 - x402 ecosystem directory PR: ${report.acquisition?.x402_directory_pr?.status || "unavailable"} (${report.acquisition?.x402_directory_pr?.url || "not recorded"})
 - x402Scout GET listings: ${report.acquisition?.x402scout?.listed_entries ?? "unavailable"} / ${report.acquisition?.x402scout?.expected_entries ?? 5} (${report.acquisition?.x402scout?.status || "unavailable"}; positions ${Array.isArray(report.acquisition?.x402scout?.catalog_positions) ? report.acquisition.x402scout.catalog_positions.join(", ") : "unavailable"} of ${report.acquisition?.x402scout?.catalog_entries ?? "unavailable"}; ${typeof report.acquisition?.x402scout?.total_query_count === "number" ? report.acquisition.x402scout.total_query_count : "unavailable"} catalog queries)
+- the402 listings: ${report.marketplaces?.the402?.service_count ?? "unavailable"} / 6 (${report.marketplaces?.the402?.webhook_healthy ? "signed webhook healthy" : "unavailable"}; SkillVerdict excluded during isolated experiment)
 - Experiment status: ${experiment.status || "unavailable"}
 - Experiment baseline: 8 total installs, 2 router installs, 1 SkillVerdict workflow install, 0 genuine purchases
 - Experiment delta: ${Number(experiment.delta?.installs?.total || 0)} total installs, ${Number(experiment.delta?.installs?.router || 0)} router installs, ${Number(experiment.delta?.installs?.skillverdict || 0)} SkillVerdict workflow installs, ${Number(experiment.delta?.genuine_purchases || 0)} genuine purchases
@@ -491,6 +593,10 @@ skills.sh counts are anonymous CLI telemetry with unknown provenance. They are t
 
 ## Revenue detail
 
+- the402 completed customer jobs: ${marketplacePurchases}
+- the402 settled provider revenue: ${money(marketplaceRevenueValue)}
+- the402 held/pending: ${money(report.marketplaces?.the402?.held_usd || 0)} / ${money(report.marketplaces?.the402?.pending_usd || 0)}
+
 - Single verdict purchases: ${Number(purchases.single || 0)}
 - Portfolio purchases: ${Number(purchases.portfolio || 0)}
 - Harness purchases: ${Number(purchases.harness || 0)}
@@ -500,7 +606,7 @@ skills.sh counts are anonymous CLI telemetry with unknown provenance. They are t
 - MCP drift purchases: ${Number(purchases.mcpdrift || 0)}
 - Owner canary settlement volume excluded: ${money(report.revenue?.canary_usdc || 0)} across ${Number(report.revenue?.canary_transfer_count || 0)} transfers
 - Unrelated incoming transfers: ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
-- Remaining to first goal: ${money(report.revenue?.remaining_usdc)}
+- Remaining to first goal: ${money(Math.max(0, 1_000 - revenueValue))}
 
 This file is overwritten by the production monitor. Machine-readable state: \`~/.local/state/bountyverdict/distribution-status.json\`.
 `;
@@ -513,6 +619,7 @@ let discovery: Record<string, unknown> = {};
 let revenue: Record<string, unknown> = {};
 let functional: Record<string, unknown> = {};
 let acquisition: Record<string, unknown> = {};
+let the402: Record<string, unknown> = {};
 
 try {
   const [root, sample, portfolioSample, harnessSample, skillSample, runSample, flakeSample, mcpDriftSample, openapi, llms] = await Promise.all([
@@ -620,6 +727,15 @@ try {
   errors.push(`Acquisition experiment: ${error instanceof Error ? error.message : String(error)}`);
 }
 
+// the402 is an independent distribution channel. Its availability affects the
+// overall monitor, but must not contaminate the isolated SkillVerdict exposure
+// experiment's health classification above.
+try {
+  the402 = await the402Status();
+} catch (error) {
+  errors.push(`the402: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 const report = {
   product: "BountyVerdict",
   checked_at: checkedAt,
@@ -630,6 +746,15 @@ const report = {
   health,
   discovery,
   revenue,
+  marketplaces: { the402 },
+  commerce: {
+    genuine_purchases: Number((revenue.purchases as Record<string, unknown> | undefined)?.total || 0) +
+      Number(the402.completed_jobs || 0),
+    customer_revenue_usdc: (
+      Number(revenue.recognized_usdc || 0) + Number(the402.settled_usd || 0)
+    ).toFixed(6).replace(/\.?0+$/, ""),
+    tracked_costs_usdc: trackedCostsInput,
+  },
   functional,
   acquisition,
   errors,

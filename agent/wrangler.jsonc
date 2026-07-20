@@ -28,7 +28,8 @@
       "name": "bountyverdict-agent-production",
       "vars": {
         "X402_NETWORK": "eip155:8453",
-        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402"
+        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
+        "THE402_SERVICE_MAP": "{\"svc_5e36dabc8b434e95\":\"single\",\"svc_780bf04bd8204b2f\":\"portfolio\",\"svc_df4baf282b7d48d5\":\"harness\",\"svc_cdd16073d02c4429\":\"run\",\"svc_565a2a5c8e154b6e\":\"flake\",\"svc_40e97a390c5b4d71\":\"mcpdrift\"}"
       },
       "ratelimits": [
         {

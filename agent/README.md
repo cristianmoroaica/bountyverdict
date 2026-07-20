@@ -100,13 +100,15 @@ Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.02, $0.03, $0.
 
 ## Continuous distribution monitoring
 
-The credential-free production monitor verifies all free routes, all seven exact mainnet payment challenges, Coinbase Bazaar merchant and semantic-search visibility, on-chain Base USDC revenue, and the freshness of the latest authenticated functional-canary pass in one run:
+The production monitor verifies all free routes, all seven exact mainnet payment challenges, Coinbase Bazaar merchant and semantic-search visibility, on-chain Base USDC revenue, the402 catalog/jobs/earnings, and the freshness of the latest authenticated functional-canary pass in one run:
 
 ```bash
 npm run distribution:monitor
 ```
 
-It atomically writes the latest machine-readable snapshot to `~/.local/state/bountyverdict/distribution-status.json` and overwrites the SSH-friendly milestone dashboard at `~/notes/mimirx402.md`, keeping health, next work, customer revenue, tracked costs, and profit at the top. The versioned user-service templates in `ops/systemd/` run it every 15 minutes; per-product merchant indexing and semantic-search rank are tracked without treating normal discovery-cache delay as a health failure. Owner-funded production proofs are retained as settlement evidence but explicitly excluded from earned revenue and $1,000 progress.
+It atomically writes the latest machine-readable snapshot to `~/.local/state/bountyverdict/distribution-status.json` and overwrites the SSH-friendly milestone dashboard at `~/notes/mimirx402.md`, keeping health, next work, customer revenue, tracked costs, and profit at the top. The versioned user-service templates in `ops/systemd/` run it every 15 minutes; per-product merchant indexing and semantic-search rank are tracked without treating normal discovery-cache delay as a health failure. Owner-funded production proofs and marketplace registration costs are retained separately and excluded from customer purchases and earned revenue.
+
+the402 provider credentials are written outside the repository to `~/.config/bountyverdict/the402.env` with mode `0600`, mirrored to encrypted Worker and GitHub Actions secret stores, and loaded by the distribution monitor. The public production service-ID map contains six existing products; SkillVerdict stays excluded until its isolated earned-placement experiment ends.
 
 Successful buyer provisioning atomically writes only its public address to `~/.config/bountyverdict/settlement-buyer.env` as `SETTLEMENT_BUYER_ADDRESS=0x...`, with settlement disabled by default. The distribution service reads that file so canary purchases remain excluded from customer revenue. Before enabling a settlement timer, set `SETTLEMENT_CANARY_ENABLED=YES` in that file; accounting then fails closed if the address is absent. Keep policy credentials and wallet secrets out of this file.
 

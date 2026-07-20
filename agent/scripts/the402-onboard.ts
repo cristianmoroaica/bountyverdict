@@ -174,7 +174,8 @@ async function existingServices(): Promise<ExistingService[]> {
 }
 
 function serviceId(payload: any): string {
-  const value = payload?.service?.id || payload?.data?.id || payload?.id;
+  const value = payload?.service?.id || payload?.service?.service_id ||
+    payload?.data?.id || payload?.data?.service_id || payload?.id || payload?.service_id;
   if (typeof value !== "string" || !/^svc_[A-Za-z0-9_-]{1,160}$/.test(value)) {
     throw new Error("the402 did not return a valid service ID.");
   }

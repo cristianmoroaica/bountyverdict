@@ -38,9 +38,11 @@ jobs:
           CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
           UPSTREAM_GITHUB_TOKEN: ${{ secrets.UPSTREAM_GITHUB_TOKEN }}
           CANARY_TOKEN: ${{ secrets.CANARY_TOKEN }}
+          THE402_API_KEY: ${{ secrets.THE402_API_KEY }}
+          THE402_WEBHOOK_SECRET: ${{ secrets.THE402_WEBHOOK_SECRET }}
         run: |
           node -e '
-            const required = ["CLOUDFLARE_API_TOKEN", "PAY_TO_ADDRESS", "CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "UPSTREAM_GITHUB_TOKEN", "CANARY_TOKEN"];
+            const required = ["CLOUDFLARE_API_TOKEN", "PAY_TO_ADDRESS", "CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "UPSTREAM_GITHUB_TOKEN", "CANARY_TOKEN", "THE402_API_KEY", "THE402_WEBHOOK_SECRET"];
             const missing = required.filter((name) => !process.env[name]);
             if (missing.length) throw new Error(`Missing GitHub Actions secrets: ${missing.join(", ")}`);
             if (!/^0x[a-fA-F0-9]{40}$/.test(process.env.PAY_TO_ADDRESS)) throw new Error("PAY_TO_ADDRESS is invalid.");
@@ -54,6 +56,8 @@ jobs:
           CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
           UPSTREAM_GITHUB_TOKEN: ${{ secrets.UPSTREAM_GITHUB_TOKEN }}
           CANARY_TOKEN: ${{ secrets.CANARY_TOKEN }}
+          THE402_API_KEY: ${{ secrets.THE402_API_KEY }}
+          THE402_WEBHOOK_SECRET: ${{ secrets.THE402_WEBHOOK_SECRET }}
         run: |
           umask 077
           secret_file=/tmp/bountyverdict-worker-secrets.json
@@ -67,6 +71,8 @@ jobs:
               CDP_API_KEY_SECRET: process.env.CDP_API_KEY_SECRET,
               GITHUB_TOKEN: process.env.UPSTREAM_GITHUB_TOKEN,
               CANARY_TOKEN: process.env.CANARY_TOKEN,
+              THE402_API_KEY: process.env.THE402_API_KEY,
+              THE402_WEBHOOK_SECRET: process.env.THE402_WEBHOOK_SECRET,
             }));
           ' "$secret_file"
           npx wrangler deploy --env production --secrets-file "$secret_file" 2>&1 | tee "$deploy_log"

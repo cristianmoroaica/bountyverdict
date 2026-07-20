@@ -5,7 +5,7 @@
 - Customer revenue: **$0.00**
 - Recognized customer purchases: **0**
 - Remaining to first goal: **$1,000.00**
-- Current recognized-USDC profit before historic gas conversion: **$0.00**
+- Current recognized-USDC profit before historic gas conversion: **-$0.01**
 
 Built and deployed the seventh bounded agent product, MCPDriftVerdict, then completed the unattended GitHub-to-Cloudflare release path. A cold-isolate reliability fix now builds unpaid payment challenges without a facilitator-discovery round trip while every paid verification and settlement remains authenticated against Coinbase. Twenty consecutive probes from the previously failing region returned valid 402 challenges in 24–175 ms.
 
@@ -36,3 +36,5 @@ Added a second earned-distribution submission at `xpaysh/awesome-x402#934`, foll
 Registered the five production GET products in x402Scout's free Base-mainnet agent registry. Each listing uses a live representative request that returns a valid unpaid x402 challenge, and all five were accepted as distinct active entries; the two body-bound POST products were excluded because the registry cannot describe their methods and request bodies safely. A seven-day earned-placement experiment now starts from the first verified public listing, with a fixed 8-install/0-purchase baseline and genuine non-owner settlement as the primary success criterion.
 
 Hardened the experiment against false conclusions after measuring the five new listings at positions 13,661–13,665 of 13,665 with no query activity or health score yet. SkillVerdict queries, targeted installs, in-window SkillVerdict purchases, other-product purchases, telemetry loss, and counter regressions are classified separately. The original exposure timestamp and first terminal result are persisted, purchases are attributed by onchain block time, and a one-shot boundary timer captures the final directory and settlement state without allowing later cumulative counters to rewrite the outcome.
+
+Opened a second agent-native sales channel on the402 without adding a product. A capped owner-funded $0.01 x402 registration created an isolated provider identity, then six existing verdicts were listed as instant data APIs with signed, replay-bounded webhook fulfillment; SkillVerdict was deliberately excluded so its seven-day experiment stays uncontaminated. The live catalog reports six healthy webhook-backed listings and zero completed jobs. Provider credentials live only in a mode-0600 operations file plus encrypted Cloudflare and GitHub secret stores, while the monitor combines direct settlements and marketplace jobs without counting the registration, owner funds, or canaries as customer activity.
