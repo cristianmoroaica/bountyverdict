@@ -163,7 +163,7 @@
     "check_mcp_tool_drift": "https://cristianmoroaica.github.io/bountyverdict/skills/check-mcp-tool-drift/SKILL.md"
   },
   "source": "https://github.com/cristianmoroaica/bountyverdict",
-  "updated_at": "2026-07-20T19:14:00.873Z",
+  "updated_at": "2026-07-20T19:36:43.476Z",
   "marketplaces": {
     "the402": {
       "provider_id": "p_d4b4ece39162409b",
@@ -234,7 +234,7 @@
           "fulfillment_type": "instant"
         },
         {
-          "name": "MCPDriftVerdict",
+          "name": "MCP schema drift compatibility — MCPDriftVerdict",
           "service_id": "svc_40e97a390c5b4d71",
           "purchase_endpoint": "https://api.the402.ai/v1/services/svc_40e97a390c5b4d71/purchase",
           "method": "POST",
@@ -295,7 +295,7 @@
           "price_usdc": "1"
         },
         {
-          "name": "MCPDriftVerdict",
+          "name": "MCP schema drift compatibility — MCPDriftVerdict",
           "service_id": "0a0b0909-2829-4437-b23e-4376a61041ba",
           "hire_url": "https://market.near.ai/hire?service_id=0a0b0909-2829-4437-b23e-4376a61041ba",
           "invoke_endpoint": "https://market.near.ai/v1/services/0a0b0909-2829-4437-b23e-4376a61041ba/invoke",
