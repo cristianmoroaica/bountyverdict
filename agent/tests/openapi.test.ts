@@ -67,6 +67,7 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
 
   const llms = createLlmsText("https://agent.example");
   assert.match(llms, /\.well-known\/x402/);
+  assert.match(llms, /\.well-known\/ai-catalog\.json/);
   assert.match(llms, /\/api\/sample/);
   assert.match(llms, /\$0\.05 USDC/);
   assert.match(llms, /\$0\.40 USDC/);

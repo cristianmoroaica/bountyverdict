@@ -205,6 +205,20 @@ test("directory monitoring tracks Gemini CLI gallery propagation without claimin
   assert.match(distribution, /catalog presence is never an impression, install, tool call, purchase, or revenue/);
 });
 
+test("directory monitoring verifies the origin ARD catalog without calling publication demand", async () => {
+  const [directory, distribution] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+  ]);
+  assert.match(directory, /async function ardCatalogStatus/);
+  assert.match(directory, /\.well-known\/ai-catalog\.json/);
+  assert.match(directory, /application\/mcp-server-card\+json/);
+  assert.match(directory, /origin_owned_ard_catalog_availability_not_registry_indexing_impressions_tool_calls_purchases_or_revenue/);
+  assert.match(directory, /ard_catalog: ardCatalog/);
+  assert.match(distribution, /Agentic Resource Discovery catalog/);
+  assert.match(distribution, /direct catalog availability is not registry indexing/);
+});
+
 test("Gemini CLI extension exposes only the hosted paid MCP without secrets", async () => {
   const manifest = JSON.parse(await readFile(geminiExtensionUrl, "utf8"));
   assert.deepEqual(manifest, {

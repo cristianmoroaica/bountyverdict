@@ -76,6 +76,7 @@ export const FUNNEL_DISCOVERY_SURFACES = Object.freeze([
   "well_known_x402_probe",
   "well_known_mcp_probe",
   "well_known_agent_probe",
+  "well_known_ai_catalog_probe",
   "skill_md_probe",
   "agent_manifest_probe",
 ] as const);
@@ -244,6 +245,7 @@ const DISCOVERY_SURFACE_BY_PATH = new Map<string, FunnelDiscoverySurface>([
   ["/.well-known/x402", "well_known_x402_probe"],
   ["/.well-known/mcp.json", "well_known_mcp_probe"],
   ["/.well-known/agent.json", "well_known_agent_probe"],
+  ["/.well-known/ai-catalog.json", "well_known_ai_catalog_probe"],
   ["/SKILL.md", "skill_md_probe"],
   ["/agent-manifest.json", "agent_manifest_probe"],
 ]);

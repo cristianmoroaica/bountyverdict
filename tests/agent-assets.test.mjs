@@ -39,6 +39,7 @@ test("agent manifest is honest and links inspectable products", async () => {
   assert.equal(manifest.reliability.scheduled_functional_canaries, true);
   assert.equal(manifest.mcp.server_version, "1.1.0");
   assert.equal(manifest.mcp.machine_readable_output_contracts, true);
+  assert.equal(manifest.ard_catalog, "https://bountyverdict-agent-production.mimirslab.workers.dev/.well-known/ai-catalog.json");
   assert.match(manifest.skill, /route-github-agent-checks\/SKILL\.md$/);
   assert.equal(manifest.payment.scheme, "exact");
   assert.equal(manifest.payment.asset, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
@@ -210,6 +211,7 @@ test("agent landing page exposes all seven self-serve products", async () => {
   assert.match(page, /agent-manifest\.json/);
   assert.match(page, /io\.github\.cristianmoroaica\/bountyverdict/);
   assert.match(page, /bountyverdict-agent-production\.mimirslab\.workers\.dev\/mcp/);
+  assert.match(page, /rel="ai-catalog" href="https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/\.well-known\/ai-catalog\.json"/);
   assert.match(page, /call <code>tools\/list<\/code>/);
   assert.match(page, /six paid, read-only tools/);
   assert.match(page, /SkillVerdict remains available through its dedicated skill and API, but is intentionally excluded from MCP/);
@@ -241,6 +243,7 @@ test("GitHub Actions MCP intent page is crawlable, bounded, and excludes the fro
   ]);
   assert.match(page, /<title>GitHub Actions Failure Diagnosis MCP Server<\/title>/);
   assert.match(page, /rel="canonical" href="https:\/\/cristianmoroaica\.github\.io\/bountyverdict\/mcp-github-actions-diagnosis\.html"/);
+  assert.match(page, /rel="ai-catalog" href="https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/\.well-known\/ai-catalog\.json"/);
   assert.match(page, /application\/ld\+json/);
   assert.match(page, /diagnose_github_actions_run/);
   assert.match(page, /classify_github_actions_flake/);
@@ -258,6 +261,7 @@ test("human landing page links directly to the measurable router funnel", async 
   const page = await readFile(new URL("../index.html", import.meta.url), "utf8");
   assert.match(page, /skills\.sh\/cristianmoroaica\/bountyverdict\/route-github-agent-checks/);
   assert.match(page, /Install the router on skills\.sh/);
+  assert.match(page, /rel="ai-catalog" href="https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/\.well-known\/ai-catalog\.json"/);
 });
 
 test("public trust disclosures cover payment, retention, and private reporting", async () => {

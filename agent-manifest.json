@@ -39,6 +39,7 @@
     "skillverdict_excluded": true,
     "payment": "x402 v2 exact Base USDC"
   },
+  "ard_catalog": "https://bountyverdict-agent-production.mimirslab.workers.dev/.well-known/ai-catalog.json",
   "products": [
     {
       "name": "BountyVerdict",

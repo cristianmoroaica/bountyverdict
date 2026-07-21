@@ -352,6 +352,17 @@ test("ignores irrelevant discovery paths and non-GET probes", () => {
   assert.equal(classifyDiscoveryTailEvent(event("/openapi.json", 405, {}, "POST")), null);
 });
 
+test("classifies ARD well-known catalog fetches as a distinct discovery surface", () => {
+  const observation = classifyDiscoveryTailEvent(event(
+    "/.well-known/ai-catalog.json",
+    200,
+    { "user-agent": "ard-registry-crawler/1.0", accept: "application/json" },
+  ));
+  assert.ok(observation);
+  assert.equal(observation.surface, "well_known_ai_catalog_probe");
+  assert.equal(observation.response_preference, "json");
+});
+
 test("schema enrichment preserves previously learned discovery aggregates", () => {
   const snapshot = createFunnelSnapshot("2026-07-20T19:00:00.000Z") as unknown as Record<string, unknown>;
   const observation = classifyDiscoveryTailEvent(event("/llms.txt", 200, { "user-agent": "Agent402/1.0" }));

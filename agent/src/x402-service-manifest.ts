@@ -66,6 +66,7 @@ export function createX402ServiceManifest(origin: string, network: string, payTo
       agentSkill: `${PRODUCT_SITE}skills/route-github-agent-checks/SKILL.md`,
       mcp: `${canonicalOrigin}/mcp`,
       mcpMetadata: `${canonicalOrigin}/.well-known/mcp.json`,
+      aiCatalog: `${canonicalOrigin}/.well-known/ai-catalog.json`,
       mcpRegistryLatest: "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest",
     },
     capabilities: {

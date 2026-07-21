@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import app from "../src/index.ts";
-import { createMcpWellKnown, createOriginAgentManifest, createOriginSkillMarkdown } from "../src/origin-discovery.ts";
+import { createAiCatalog, createMcpWellKnown, createOriginAgentManifest, createOriginSkillMarkdown } from "../src/origin-discovery.ts";
 import { PRODUCT_CATALOG } from "../src/product-catalog.ts";
 
 const origin = "https://bountyverdict-agent-production.mimirslab.workers.dev";
@@ -71,12 +71,47 @@ test("well-known MCP metadata resolves the exact paid remote without secrets", a
   assert.equal(metadata.transport, "streamable-http");
   assert.equal(metadata.protocol_version, "2025-11-25");
   assert.deepEqual(metadata.payment.price_range_usdc, { minimum: "0.02", maximum: "0.40" });
+  assert.equal(metadata.ai_catalog, `${origin}/.well-known/ai-catalog.json`);
   assert.doesNotMatch(JSON.stringify(metadata), /secret|private.?key|api.?key/i);
 
   const response = await app.request(`${origin}/.well-known/mcp.json`, {}, { X402_NETWORK: "eip155:8453" });
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") || "", /^application\/json/);
   assert.deepEqual(await response.json(), metadata);
+});
+
+test("ARD catalog publishes one semantic MCP entry without inventing an agent runtime", async () => {
+  const catalog = createAiCatalog(origin);
+  assert.equal(catalog.specVersion, "1.0");
+  assert.deepEqual(Object.keys(catalog).sort(), ["entries", "host", "specVersion"]);
+  assert.equal(catalog.host.displayName, "BountyVerdict Agent Decision APIs");
+  assert.match(catalog.host.documentationUrl, /\/agents\.html$/);
+  assert.equal(catalog.entries.length, 1);
+  const entry = catalog.entries[0];
+  assert.equal(entry.identifier, "urn:air:bountyverdict-agent-production.mimirslab.workers.dev:server:bountyverdict");
+  assert.equal(entry.type, "application/mcp-server-card+json");
+  assert.equal(entry.url, `${origin}/.well-known/mcp.json`);
+  assert.equal(entry.representativeQueries.length, 5);
+  assert.ok(entry.representativeQueries.every((query) => query === query.toLowerCase() && !/bountyverdict/i.test(query)));
+  assert.deepEqual(entry.capabilities, [
+    "check_github_bounty",
+    "rank_github_bounties",
+    "audit_agent_harness",
+    "diagnose_github_actions_run",
+    "classify_github_actions_flake",
+    "check_mcp_tool_drift",
+  ]);
+  assert.equal(entry.metadata.paymentProtocol, "x402-v2");
+  assert.equal(entry.metadata.paymentNetwork, "eip155:8453");
+  assert.equal(entry.metadata.mutatesExternalSystems, false);
+  assert.doesNotMatch(JSON.stringify(catalog), /SkillVerdict|secret|private.?key|api.?key/i);
+
+  const response = await app.request(`${origin}/.well-known/ai-catalog.json`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") || "", /^application\/json/);
+  assert.equal(response.headers.get("access-control-allow-origin"), "*");
+  assert.equal(response.headers.get("cache-control"), "public, max-age=300");
+  assert.deepEqual(await response.json(), catalog);
 });
 
 test("Worker serves origin-native manifest and skill with exact content types", async () => {
@@ -100,6 +135,7 @@ test("Worker serves origin-native manifest and skill with exact content types", 
   assert.equal(root.agent_skill, "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md");
   assert.equal(root.distributed_agent_manifest, "/agent-manifest.json");
   assert.equal(root.distributed_agent_skill, "/SKILL.md");
+  assert.equal(root.ai_catalog, "/.well-known/ai-catalog.json");
   assert.equal(root.mcp.endpoint, "/mcp");
 });
 
@@ -107,6 +143,7 @@ test("origin discovery rejects non-origin or non-HTTPS identities", () => {
   for (const value of ["http://example.com", "https://example.com/path", "https://user:pass@example.com"]) {
     assert.throws(() => createOriginAgentManifest(value, "eip155:8453"), /exact HTTPS origin/);
     assert.throws(() => createMcpWellKnown(value, "eip155:8453"), /exact HTTPS origin/);
+    assert.throws(() => createAiCatalog(value), /exact HTTPS origin/);
   }
   assert.throws(() => createMcpWellKnown("https://example.com", "eip155:1"), /supported Base network/);
 });

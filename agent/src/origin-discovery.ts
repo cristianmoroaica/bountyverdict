@@ -18,6 +18,14 @@ const MCP_TOOL_BY_PRODUCT = Object.freeze({
   flake: "classify_github_actions_flake",
   mcpdrift: "check_mcp_tool_drift",
 } as const satisfies Record<typeof DISTRIBUTED_PRODUCTS[number], string>);
+const AI_CATALOG_UPDATED_AT = "2026-07-21T06:35:00Z";
+const AI_CATALOG_QUERIES = Object.freeze([
+  "check whether a github bounty issue is still open claimed or worth coding",
+  "compare github bounty issues and choose the best candidate",
+  "audit repository coding agent instructions before autonomous work",
+  "diagnose a failed github actions workflow and decide whether to fix or retry",
+  "check whether an mcp tools list schema change will break an agent",
+] as const);
 
 const PRODUCT_GUIDANCE = Object.freeze({
   single: Object.freeze({
@@ -181,7 +189,41 @@ export function createMcpWellKnown(originInput: string, network: string) {
       name: "io.github.cristianmoroaica/bountyverdict",
       latest: "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest",
     },
+    ai_catalog: `${origin}/.well-known/ai-catalog.json`,
     repository: REPOSITORY,
+  };
+}
+
+export function createAiCatalog(originInput: string) {
+  const origin = canonicalOrigin(originInput);
+  const host = new URL(origin).host;
+  return {
+    specVersion: "1.0",
+    host: {
+      displayName: "BountyVerdict Agent Decision APIs",
+      documentationUrl: `${SITE}/agents.html`,
+    },
+    entries: [{
+      identifier: `urn:air:${host}:server:bountyverdict`,
+      displayName: "BountyVerdict GitHub Engineering Decision MCP",
+      type: "application/mcp-server-card+json",
+      url: `${origin}/.well-known/mcp.json`,
+      description: "Six paid, read-only MCP tools for GitHub bounty selection, coding-agent instruction audits, Actions failure diagnosis, flaky-retry decisions, and MCP schema compatibility checks.",
+      tags: ["github", "coding-agents", "ci", "mcp", "x402", "read-only"],
+      capabilities: DISTRIBUTED_PRODUCTS.map((product) => MCP_TOOL_BY_PRODUCT[product]),
+      representativeQueries: [...AI_CATALOG_QUERIES],
+      version: "1.1.0",
+      updatedAt: AI_CATALOG_UPDATED_AT,
+      metadata: {
+        authentication: "none",
+        paymentProtocol: "x402-v2",
+        paymentNetwork: "eip155:8453",
+        paymentCurrency: "USDC",
+        minimumPriceUsd: 0.02,
+        maximumPriceUsd: 0.40,
+        mutatesExternalSystems: false,
+      },
+    }],
   };
 }
 
@@ -229,6 +271,7 @@ ${products}
 - OpenAPI: ${origin}/openapi.json
 - x402 resources: ${origin}/.well-known/x402
 - MCP endpoint metadata: ${origin}/.well-known/mcp.json
+- Agentic Resource Discovery catalog: ${origin}/.well-known/ai-catalog.json
 - Agent guide: ${origin}/llms.txt
 - Remote MCP server: ${origin}/mcp
 

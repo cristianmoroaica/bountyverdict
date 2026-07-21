@@ -92,6 +92,22 @@ const kiloMarketplacePrUrl = `https://github.com/Kilo-Org/kilo-marketplace/pull/
 const kiloMarketplaceDefinitionUrl = "https://raw.githubusercontent.com/Kilo-Org/kilo-marketplace/main/mcps/bountyverdict/MCP.yaml";
 const kiloMarketplaceCatalogUrl = "https://raw.githubusercontent.com/Kilo-Org/kilo-marketplace/main/mcps/marketplace.yaml";
 const geminiCliGalleryUrl = "https://geminicli.com/extensions.json";
+const ardCatalogUrl = `${productionOrigin}/.well-known/ai-catalog.json`;
+const ardRepresentativeQueries = Object.freeze([
+  "check whether a github bounty issue is still open claimed or worth coding",
+  "compare github bounty issues and choose the best candidate",
+  "audit repository coding agent instructions before autonomous work",
+  "diagnose a failed github actions workflow and decide whether to fix or retry",
+  "check whether an mcp tools list schema change will break an agent",
+]);
+const ardCapabilities = Object.freeze([
+  "check_github_bounty",
+  "rank_github_bounties",
+  "audit_agent_harness",
+  "diagnose_github_actions_run",
+  "classify_github_actions_flake",
+  "check_mcp_tool_drift",
+]);
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -1741,6 +1757,57 @@ async function githubSkillStatus(previousStatus: Record<string, any>, observedAt
   }
 }
 
+async function ardCatalogStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(ardCatalogUrl, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "bountyverdict-directory-monitor/1.0",
+      },
+    });
+    const payload = response.ok ? await response.json() as Record<string, any> : null;
+    const entry = Array.isArray(payload?.entries) && payload.entries.length === 1
+      ? payload.entries[0] as Record<string, any>
+      : null;
+    const contractVerified = response.status === 200 &&
+      response.headers.get("access-control-allow-origin") === "*" &&
+      payload?.specVersion === "1.0" &&
+      entry?.identifier === "urn:air:bountyverdict-agent-production.mimirslab.workers.dev:server:bountyverdict" &&
+      entry?.type === "application/mcp-server-card+json" &&
+      entry?.url === `${productionOrigin}/.well-known/mcp.json` &&
+      JSON.stringify(entry?.representativeQueries) === JSON.stringify(ardRepresentativeQueries) &&
+      JSON.stringify(entry?.capabilities) === JSON.stringify(ardCapabilities) &&
+      entry?.metadata?.paymentProtocol === "x402-v2" &&
+      entry?.metadata?.paymentNetwork === "eip155:8453" &&
+      entry?.metadata?.paymentCurrency === "USDC" &&
+      entry?.metadata?.mutatesExternalSystems === false;
+    return {
+      url: ardCatalogUrl,
+      http_status: response.status,
+      cors: response.headers.get("access-control-allow-origin"),
+      live: contractVerified,
+      contract_verified: contractVerified,
+      status: contractVerified ? "live" : response.ok ? "contract_drift" : "not_live",
+      first_live_at: contractVerified ? previousStatus.first_live_at || observedAt : null,
+      representative_queries: contractVerified ? ardRepresentativeQueries.length : 0,
+      capabilities: contractVerified ? ardCapabilities.length : 0,
+      measurement: "origin_owned_ard_catalog_availability_not_registry_indexing_impressions_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: ardCatalogUrl,
+      live: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "origin_owned_ard_catalog_availability_not_registry_indexing_impressions_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
 let previous: Record<string, any> = {};
 try {
   previous = JSON.parse(await readFile(stateFile, "utf8"));
@@ -1770,6 +1837,7 @@ const [
   clineMarketplace,
   kiloMarketplace,
   geminiCliGallery,
+  ardCatalog,
   agent402,
   x402scout,
   x402scan,
@@ -1801,6 +1869,7 @@ const [
   clineMarketplaceStatus(previous.cline_marketplace || {}, new Date().toISOString()),
   kiloMarketplaceStatus(previous.kilo_marketplace || {}, new Date().toISOString()),
   geminiCliGalleryStatus(previous.gemini_cli_gallery || {}, new Date().toISOString()),
+  ardCatalogStatus(previous.ard_catalog || {}, new Date().toISOString()),
   agent402Status(),
   x402ScoutStatus(),
   x402ScanStatus(),
@@ -1878,6 +1947,7 @@ const state = {
   cline_marketplace: clineMarketplace,
   kilo_marketplace: kiloMarketplace,
   gemini_cli_gallery: geminiCliGallery,
+  ard_catalog: ardCatalog,
   agent402,
   x402scout,
   x402scan,

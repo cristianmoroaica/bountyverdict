@@ -37,7 +37,7 @@ import {
 } from "./mcp-drift-discovery.ts";
 import { PRODUCT_CATALOG } from "./product-catalog.ts";
 import { createX402ServiceManifest } from "./x402-service-manifest.ts";
-import { createMcpWellKnown, createOriginAgentManifest, createOriginSkillMarkdown } from "./origin-discovery.ts";
+import { createAiCatalog, createMcpWellKnown, createOriginAgentManifest, createOriginSkillMarkdown } from "./origin-discovery.ts";
 import {
   canaryErrorCode,
   isCanaryProduct,
@@ -565,6 +565,7 @@ app.get("/", (c) =>
     openapi: "/openapi.json",
     llms: "/llms.txt",
     x402_manifest: "/.well-known/x402",
+    ai_catalog: "/.well-known/ai-catalog.json",
     agent_manifest: MANIFEST_URL,
     agent_skill: SKILL_URL,
     distributed_agent_manifest: "/agent-manifest.json",
@@ -601,6 +602,14 @@ app.get("/.well-known/x402", (c) => {
 app.get("/.well-known/mcp.json", (c) => {
   const origin = new URL(c.req.url).origin;
   return c.json(createMcpWellKnown(origin, c.env.X402_NETWORK || TESTNET_NETWORK));
+});
+
+app.get("/.well-known/ai-catalog.json", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(createAiCatalog(origin), 200, {
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "public, max-age=300",
+  });
 });
 
 app.get("/agent-manifest.json", (c) => {
