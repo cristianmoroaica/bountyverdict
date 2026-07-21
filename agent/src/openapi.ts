@@ -516,6 +516,9 @@ export function createLlmsText(origin: string): string {
 - MCP endpoint metadata: ${origin}/.well-known/mcp.json
 - Agentic Resource Discovery catalog: ${origin}/.well-known/ai-catalog.json (five neutral representative queries; publication is not proof of third-party indexing)
 - MCP Registry name: io.github.cristianmoroaica/bountyverdict
+- Client-specific MCP install and paid-call guide: https://cristianmoroaica.github.io/bountyverdict/llms-install.md
+- A remote MCP connection does not provide a wallet; direct automatic payment requires an x402-aware MCP client such as @x402/mcp
+- Every valid unpaid MCP call includes io.github.cristianmoroaica/bountyverdict/http-payment-handoff with the equivalent exact HTTP x402 request for an authorized wallet
 - Umbrella routing skill: https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md
 - Install router: npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y
 - Install all operating skills: npx skills add cristianmoroaica/bountyverdict --skill '*' -y

@@ -36,9 +36,12 @@
     "stateless": true,
     "paid_tools": 6,
     "machine_readable_output_contracts": true,
+    "direct_automatic_payment_requires": "@x402/mcp",
+    "http_payment_handoff_extension": "io.github.cristianmoroaica/bountyverdict/http-payment-handoff",
     "skillverdict_excluded": true,
     "payment": "x402 v2 exact Base USDC"
   },
+  "client_setup": "https://cristianmoroaica.github.io/bountyverdict/llms-install.md",
   "ard_catalog": "https://bountyverdict-agent-production.mimirslab.workers.dev/.well-known/ai-catalog.json",
   "products": [
     {

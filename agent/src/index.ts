@@ -36,6 +36,7 @@ import {
   mcpDriftExampleInput,
 } from "./mcp-drift-discovery.ts";
 import { PRODUCT_CATALOG } from "./product-catalog.ts";
+import { buildPaymentHandoff } from "./payment-handoff.ts";
 import { createX402ServiceManifest } from "./x402-service-manifest.ts";
 import { createAiCatalog, createMcpWellKnown, createOriginAgentManifest, createOriginSkillMarkdown } from "./origin-discovery.ts";
 import {
@@ -196,8 +197,8 @@ function preflightFailure(
 }
 
 type UnpaidDecisionPreview = {
+  productKey: keyof typeof PRODUCT_CATALOG;
   product: string;
-  price: string;
   description: string;
   useWhen: string;
   notFor: string;
@@ -209,34 +210,28 @@ type UnpaidDecisionPreview = {
 };
 
 async function unpaidDecisionBody(preview: UnpaidDecisionPreview, context: HTTPRequestContext) {
-  const requestHint = preview.method === "GET"
-    ? "Use the exact request URL, including its encoded query string."
-    : "Use POST with the intended validated JSON body. Standard x402 authorizes the resource URL, not the POST body; review the normalized body hash and resend the same JSON on the signed retry.";
   const requestUrl = context.adapter.getUrl();
   const requestBody = preview.method === "POST" && context.adapter.getBody
     ? await context.adapter.getBody()
     : undefined;
-  const maxAmountAtomic = String(Math.round(Number(preview.price.replace(/^\$/, "")) * 1_000_000));
   if (preview.method === "POST" && requestBody === undefined) {
     throw new Error(`Validated POST body is unavailable for ${preview.product}; refusing to construct a payment challenge.`);
   }
-  const awalArgv = ["awal@2.12.0", "x402", "pay", requestUrl];
-  const normalizedBodyJson = requestBody === undefined ? undefined : JSON.stringify(requestBody);
-  const normalizedBodySha256 = normalizedBodyJson === undefined
-    ? undefined
-    : `sha256:${[...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalizedBodyJson)))]
-      .map((value) => value.toString(16).padStart(2, "0")).join("")}`;
-  if (preview.method === "POST") {
-    awalArgv.push("-X", "POST");
-    if (normalizedBodyJson !== undefined) awalArgv.push("-d", normalizedBodyJson);
+  const catalog = PRODUCT_CATALOG[preview.productKey];
+  if (catalog.method !== preview.method) {
+    throw new Error(`Payment handoff method drifted for ${preview.product}.`);
   }
-  awalArgv.push("--max-amount", maxAmountAtomic, "--json");
+  const payment = await buildPaymentHandoff({
+    method: preview.method,
+    url: requestUrl,
+    ...(requestBody === undefined ? {} : { body: requestBody }),
+  }, catalog.amountAtomic.toString());
   return {
     contentType: "application/json",
     body: {
       error: "PAYMENT_REQUIRED",
       product: preview.product,
-      price: preview.price,
+      price: catalog.priceUsd,
       currency: "USDC",
       description: preview.description,
       use_when: preview.useWhen,
@@ -246,34 +241,7 @@ async function unpaidDecisionBody(preview: UnpaidDecisionPreview, context: HTTPR
       free_sample: preview.samplePath,
       skill: `${SKILLS_URL}${preview.skillName}/SKILL.md`,
       documentation: `${PRODUCT_URL}agents.html`,
-      payment: {
-        protocol: "x402 v2",
-        network: "Base",
-        asset: "USDC",
-        max_amount_atomic: maxAmountAtomic,
-        inspect_challenge_before_signing: true,
-        request_binding: requestHint,
-        exact_request: {
-          method: preview.method,
-          url: requestUrl,
-          ...(requestBody === undefined ? {} : { body: requestBody }),
-          ...(normalizedBodySha256 === undefined ? {} : { normalized_body_sha256: normalizedBodySha256 }),
-        },
-        authorization_scope: preview.method === "POST" ? "resource_url_not_post_body" : "resource_url",
-        agentic_wallet: {
-          executable: "npx",
-          argv: awalArgv,
-          execute_as_argument_vector: true,
-          do_not_join_into_shell_string: true,
-        },
-        retry_semantics: {
-          reuse_exact_method_url_and_body: true,
-          payment_header: "Payment-Signature",
-          expected_success_status: 200,
-          never_raise_max_amount_without_new_authorization: true,
-        },
-        execution_risk: "Input shape is validated before payment. Third-party GitHub availability or state can still change after settlement; a payment does not guarantee upstream success.",
-      },
+      payment,
     },
   };
 }
@@ -298,8 +266,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     tags: ["github", "bounty", "eligibility", "claimability", "already-claimed", "assignment-status", "due-diligence"],
     iconUrl: ICON_URL,
     unpaidResponseBody: (context) => unpaidDecisionBody({
+      productKey: "single",
       product: "BountyVerdict",
-      price: SINGLE_PRICE_USD,
       description: "Pay once to receive a fresh evidence-linked bounty risk verdict.",
       useWhen: "Before coding one public GitHub bounty issue.",
       notFor: "Private repositories or payout guarantees.",
@@ -323,8 +291,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     tags: ["compare-bounties", "best-candidate", "candidate-selection", "opportunity-ranking", "github-bounties", "portfolio"],
     iconUrl: ICON_URL,
     unpaidResponseBody: (context) => unpaidDecisionBody({
+      productKey: "portfolio",
       product: "BountyVerdict Portfolio",
-      price: PORTFOLIO_PRICE_USD,
       description: "Pay once to rank up to ten bounty candidates with full evidence-linked verdicts.",
       useWhen: "When choosing among two to ten public GitHub bounty candidates.",
       notFor: "One candidate, duplicate issue URLs, or private issues.",
@@ -348,8 +316,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     tags: ["github", "agents-md", "claude-md", "agent-harness", "developer-tools", "lint"],
     iconUrl: ICON_URL,
     unpaidResponseBody: (context) => unpaidDecisionBody({
+      productKey: "harness",
       product: "HarnessVerdict",
-      price: HARNESS_PRICE_USD,
       description: "Pay once for a commit-pinned, evidence-linked repository instruction audit.",
       useWhen: "Before autonomous coding in a public GitHub repository.",
       notFor: "Generic code quality review or private repositories.",
@@ -373,8 +341,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     tags: ["agent-skills", "skill-md", "security", "supply-chain", "prompt-injection", "pre-install"],
     iconUrl: ICON_URL,
     unpaidResponseBody: (context) => unpaidDecisionBody({
+      productKey: "skill",
       product: "SkillVerdict",
-      price: SKILL_PRICE_USD,
       description: "Pay once for a commit-pinned, non-executing security audit before installing a public agent skill.",
       useWhen: "Before installing or running a third-party public SKILL.md bundle.",
       notFor: "Runtime sandboxing, private skills, or a guarantee that code is safe.",
@@ -398,8 +366,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     tags: ["workflow-failure", "why-failed", "root-cause", "failed-run", "next-action", "github-actions"],
     iconUrl: ICON_URL,
     unpaidResponseBody: (context) => unpaidDecisionBody({
+      productKey: "run",
       product: "RunVerdict",
-      price: RUN_PRICE_USD,
       description: "Pay once to learn why a public GitHub Actions run failed and what to do next.",
       useWhen: "After a failed run when the agent needs root cause and next action.",
       notFor: "The narrower retry-once-versus-fix flake decision.",
@@ -423,8 +391,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     tags: ["flaky-ci", "should-i-retry", "retry-or-fix", "workflow-attempts", "historical-run-comparison", "github-actions"],
     iconUrl: ICON_URL,
     unpaidResponseBody: (context) => unpaidDecisionBody({
+      productKey: "flake",
       product: "FlakeVerdict",
-      price: FLAKE_PRICE_USD,
       description: "Pay once to decide whether one public GitHub Actions failure merits exactly one retry or needs a fix.",
       useWhen: "After a completed failed run when the decision is retry once versus fix.",
       notFor: "Root-cause diagnosis; use RunVerdict when the question is why the run failed.",
@@ -448,8 +416,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
     tags: ["mcp", "tools-list", "schema-drift", "breaking-change", "agent-compatibility", "server-upgrade", "required-argument"],
     iconUrl: ICON_URL,
     unpaidResponseBody: (context) => unpaidDecisionBody({
+      productKey: "mcpdrift",
       product: "MCPDriftVerdict",
-      price: MCP_DRIFT_PRICE_USD,
       description: "Pay once to receive the already-computed compatibility verdict for this exact MCP tools/list snapshot pair.",
       useWhen: "After a complete MCP tools/list change and before an agent accepts the server upgrade.",
       notFor: "Malware or prompt-injection scanning, private catalogs, or invoking MCP tools.",

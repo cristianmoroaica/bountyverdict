@@ -13,6 +13,7 @@ import { diagnoseGithubFlake, FlakeError, parseFlakeAttempt } from "./flake.ts";
 import { MCP_DRIFT_MAX_BODY_BYTES, McpDriftError, parseAndAnalyzeMcpDrift } from "./mcp-drift.ts";
 import { mcpDriftInputSchema } from "./mcp-drift-discovery.ts";
 import { MCP_SUCCESS_OUTPUT_SCHEMAS } from "./mcp-output-contracts.ts";
+import { declareMcpHttpPaymentHandoff } from "./payment-handoff.ts";
 import { PRODUCT_CATALOG, type ProductKey } from "./product-catalog.ts";
 import { createX402ServerContext, type X402ServerEnvironment } from "./x402-resource-server.ts";
 
@@ -239,6 +240,7 @@ function hasPayment(extra: unknown): boolean {
 
 async function paidCall(
   payment: PaymentContext,
+  origin: string,
   toolName: ToolName,
   product: DistributedProduct,
   normalizedArgs: Record<string, unknown>,
@@ -247,6 +249,7 @@ async function paidCall(
   execute: () => Promise<ToolResult>,
 ): Promise<ToolResult> {
   const argumentsHash = await sha256(JSON.stringify(normalizedArgs));
+  const httpPaymentHandoff = await declareMcpHttpPaymentHandoff(origin, product, normalizedArgs);
   const paymentPresent = hasPayment(extra);
   emitMcpEvent(paymentPresent ? "payment_present" : "payment_required", product, request);
   const wrapped = createPaymentWrapper(payment.resourceServer, {
@@ -258,7 +261,10 @@ async function paidCall(
       serviceName: PRODUCT_CATALOG[product].service,
       tags: ["github", "agent", "decision", product],
     },
-    extensions: declareDiscoveryExtension({ toolName, description: TOOL_DESCRIPTIONS[toolName], transport: "streamable-http", inputSchema: BAZAAR_INPUT_SCHEMAS[toolName] }),
+    extensions: {
+      ...declareDiscoveryExtension({ toolName, description: TOOL_DESCRIPTIONS[toolName], transport: "streamable-http", inputSchema: BAZAAR_INPUT_SCHEMAS[toolName] }),
+      ...httpPaymentHandoff,
+    },
   })(async () => execute());
   try {
     const result = await wrapped(normalizedArgs, extra as never) as ToolResult;
@@ -288,7 +294,7 @@ function normalizeRunUrl(value: string): string {
   return `https://github.com/${parsed.owner}/${parsed.repo}/actions/runs/${parsed.runId}`;
 }
 
-async function createMcpServer(env: McpEnvironment, request: RequestClassification): Promise<McpServer> {
+async function createMcpServer(env: McpEnvironment, origin: string, request: RequestClassification): Promise<McpServer> {
   const payment = await getPaymentContext(env);
   const server = new McpServer({
     name: "BountyVerdict",
@@ -307,7 +313,7 @@ async function createMcpServer(env: McpEnvironment, request: RequestClassificati
       emitMcpEvent("validation_error", "single", request);
       return errorResult("single", "INVALID_ISSUE_URL", error instanceof Error ? error.message : "Invalid GitHub issue URL.");
     }
-    return paidCall(payment, "check_github_bounty", "single", { issue_url: normalized }, extra, request, async () => {
+    return paidCall(payment, origin, "check_github_bounty", "single", { issue_url: normalized }, extra, request, async () => {
       try { return jsonResult(await checkGithubIssue(normalized, { GITHUB_TOKEN: env.GITHUB_TOKEN })); }
       catch (error) { return error instanceof CheckError ? errorResult("single", error.code, error.message) : errorResult("single", "CHECK_FAILED", "The bounty verdict could not be produced."); }
     });
@@ -319,7 +325,7 @@ async function createMcpServer(env: McpEnvironment, request: RequestClassificati
       emitMcpEvent("validation_error", "portfolio", request);
       return errorResult("portfolio", error instanceof CheckError ? error.code : "INVALID_PORTFOLIO", error instanceof Error ? error.message : "Invalid bounty portfolio.");
     }
-    return paidCall(payment, "rank_github_bounties", "portfolio", { issue_urls: normalized }, extra, request, async () => {
+    return paidCall(payment, origin, "rank_github_bounties", "portfolio", { issue_urls: normalized }, extra, request, async () => {
       try { return jsonResult(await checkBountyPortfolio(normalized, { GITHUB_TOKEN: env.GITHUB_TOKEN })); }
       catch (error) { return error instanceof CheckError ? errorResult("portfolio", error.code, error.message) : errorResult("portfolio", "PORTFOLIO_CHECK_FAILED", "The bounty portfolio could not be produced."); }
     });
@@ -331,7 +337,7 @@ async function createMcpServer(env: McpEnvironment, request: RequestClassificati
       emitMcpEvent("validation_error", "harness", request);
       return errorResult("harness", "INVALID_REPOSITORY_URL", error instanceof Error ? error.message : "Invalid GitHub repository URL.");
     }
-    return paidCall(payment, "audit_agent_harness", "harness", { repo_url: normalized }, extra, request, async () => {
+    return paidCall(payment, origin, "audit_agent_harness", "harness", { repo_url: normalized }, extra, request, async () => {
       try { return jsonResult(await checkGithubHarness(normalized, { GITHUB_TOKEN: env.GITHUB_TOKEN })); }
       catch (error) { return error instanceof HarnessError ? errorResult("harness", error.code, error.message) : errorResult("harness", "HARNESS_CHECK_FAILED", "The agent harness audit could not be produced."); }
     });
@@ -343,7 +349,7 @@ async function createMcpServer(env: McpEnvironment, request: RequestClassificati
       emitMcpEvent("validation_error", "run", request);
       return errorResult("run", "INVALID_RUN_URL", error instanceof Error ? error.message : "Invalid GitHub Actions run URL.");
     }
-    return paidCall(payment, "diagnose_github_actions_run", "run", { run_url: normalized }, extra, request, async () => {
+    return paidCall(payment, origin, "diagnose_github_actions_run", "run", { run_url: normalized }, extra, request, async () => {
       try { return jsonResult(await diagnoseGithubRun(normalized, { GITHUB_TOKEN: env.GITHUB_TOKEN })); }
       catch (error) { return error instanceof HarnessError ? errorResult("run", error.code, error.message) : errorResult("run", "RUN_DIAGNOSIS_FAILED", "The workflow run could not be diagnosed."); }
     });
@@ -367,7 +373,7 @@ async function createMcpServer(env: McpEnvironment, request: RequestClassificati
       emitMcpEvent("validation_error", "flake", request);
       return errorResult("flake", error instanceof HarnessError ? error.code : "INVALID_INPUT", error instanceof Error ? error.message : "Invalid flake input.");
     }
-    return paidCall(payment, "classify_github_actions_flake", "flake", { run_url: normalized, ...(normalizedAttempt === undefined ? {} : { attempt: normalizedAttempt }) }, extra, request, async () => {
+    return paidCall(payment, origin, "classify_github_actions_flake", "flake", { run_url: normalized, ...(normalizedAttempt === undefined ? {} : { attempt: normalizedAttempt }) }, extra, request, async () => {
       try { return jsonResult(await diagnoseGithubFlake(normalized, normalizedAttempt, { GITHUB_TOKEN: env.GITHUB_TOKEN })); }
       catch (error) { return error instanceof FlakeError ? errorResult("flake", error.code, error.message) : errorResult("flake", "FLAKE_CHECK_FAILED", "The workflow flake classification could not be produced."); }
     });
@@ -381,7 +387,7 @@ async function createMcpServer(env: McpEnvironment, request: RequestClassificati
       emitMcpEvent("validation_error", "mcpdrift", request);
       return error instanceof McpDriftError ? errorResult("mcpdrift", error.code, error.message) : errorResult("mcpdrift", "INVALID_INPUT", "The MCP snapshots are invalid.");
     }
-    return paidCall(payment, "check_mcp_tool_drift", "mcpdrift", normalized, extra, request, async () => jsonResult(result));
+    return paidCall(payment, origin, "check_mcp_tool_drift", "mcpdrift", normalized, extra, request, async () => jsonResult(result));
   });
 
   return server;
@@ -440,7 +446,7 @@ export async function handleMcpRequest(request: Request, env: McpEnvironment): P
   if (method === "tools/list") emitMcpEvent("tools_list", null, classification);
 
   try {
-    const server = await createMcpServer(env, classification);
+    const server = await createMcpServer(env, url.origin, classification);
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     await server.connect(transport);
     const response = await transport.handleRequest(request, parsedBody === undefined ? undefined : { parsedBody });

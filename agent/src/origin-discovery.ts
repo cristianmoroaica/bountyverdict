@@ -1,5 +1,6 @@
 import { PRODUCT_CATALOG, type ProductKey } from "./product-catalog.ts";
 import { mcpDriftExampleInput } from "./mcp-drift-discovery.ts";
+import { MCP_HTTP_PAYMENT_HANDOFF_EXTENSION } from "./payment-handoff.ts";
 
 const REPOSITORY = "https://github.com/cristianmoroaica/bountyverdict";
 const SITE = "https://cristianmoroaica.github.io/bountyverdict";
@@ -105,6 +106,7 @@ export function createOriginAgentManifest(originInput: string, network: string, 
     repository: REPOSITORY,
     openapi: `${origin}/openapi.json`,
     llms: `${origin}/llms.txt`,
+    client_setup: `${SITE}/llms-install.md`,
     skill: `${origin}/SKILL.md`,
     payment: {
       protocol: "x402",
@@ -145,6 +147,8 @@ export function createOriginAgentManifest(originInput: string, network: string, 
       stateless: true,
       url: `${origin}/mcp`,
       payment: "x402 v2 exact USDC on Base",
+      direct_automatic_payment_requires: "@x402/mcp",
+      http_payment_handoff_extension: MCP_HTTP_PAYMENT_HANDOFF_EXTENSION,
       tools: DISTRIBUTED_PRODUCTS.map((product) => ({
         name: MCP_TOOL_BY_PRODUCT[product],
         product,
@@ -184,7 +188,10 @@ export function createMcpWellKnown(originInput: string, network: string) {
       network_name: paymentNetwork,
       currency: "USDC",
       price_range_usdc: { minimum: "0.02", maximum: "0.40" },
+      direct_automatic_payment_requires: "@x402/mcp",
+      http_payment_handoff_extension: MCP_HTTP_PAYMENT_HANDOFF_EXTENSION,
     },
+    client_setup: `${SITE}/llms-install.md`,
     registry: {
       name: "io.github.cristianmoroaica/bountyverdict",
       latest: "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest",

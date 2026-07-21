@@ -7,6 +7,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import app from "../src/index.ts";
 import { classifyMcpClientFamily, MCP_DISTRIBUTED_TOOL_NAMES } from "../src/mcp-server.ts";
 import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
+import { MCP_HTTP_PAYMENT_HANDOFF_EXTENSION } from "../src/payment-handoff.ts";
 
 const origin = "https://bountyverdict.example";
 const payTo = "0x1111111111111111111111111111111111111111";
@@ -167,8 +168,46 @@ for (const [name, args, amount] of challengeCases) {
     assert.equal(challenge.extensions.bazaar.info.input.type, "mcp");
     assert.equal(challenge.extensions.bazaar.info.input.toolName, name);
     assert.equal(challenge.extensions.bazaar.info.input.transport, "streamable-http");
+    const handoff = challenge.extensions[MCP_HTTP_PAYMENT_HANDOFF_EXTENSION];
+    assert.equal(handoff.info.version, "1");
+    assert.equal(handoff.info.direct_mcp.automatic_payment_requires, "@x402/mcp");
+    assert.equal(handoff.info.direct_mcp.payment_meta_key, "x402/payment");
+    assert.equal(handoff.info.wallet_mcp.capability, "make_x402_request");
+    assert.equal(handoff.info.wallet_mcp.use_exact_request, true);
+    assert.equal(handoff.info.payment.max_amount_atomic, amount);
+    assert.equal(handoff.info.payment.agentic_wallet.executable, "npx");
+    assert.equal(handoff.info.payment.agentic_wallet.execute_as_argument_vector, true);
+    assert.equal(handoff.info.payment.agentic_wallet.do_not_join_into_shell_string, true);
+    assert.deepEqual(handoff.info.payment.agentic_wallet.argv.slice(-3), ["--max-amount", amount, "--json"]);
+    assert.equal(handoff.schema.properties.version.const, "1");
   });
 }
+
+test("all MCP payment handoffs exactly match the equivalent protected REST challenge", async () => {
+  for (const [name, args] of challengeCases) {
+    const call = await rpcBody(14, "tools/call", { name, arguments: args });
+    const challenge = JSON.parse(call.result.content[0].text);
+    const payment = challenge.extensions[MCP_HTTP_PAYMENT_HANDOFF_EXTENSION].info.payment;
+    const exact = payment.exact_request;
+    const response = await app.request(exact.url, {
+      method: exact.method,
+      headers: exact.method === "POST" ? { "Content-Type": "application/json" } : undefined,
+      body: exact.method === "POST" ? JSON.stringify(exact.body) : undefined,
+    }, env);
+    assert.equal(response.status, 402, name);
+    const rest = await response.json() as any;
+    assert.deepEqual(rest.payment, payment, name);
+    if (exact.method === "POST") {
+      assert.match(exact.normalized_body_sha256, /^sha256:[a-f0-9]{64}$/);
+      assert.match(payment.request_binding, /authorizes the resource URL, not the POST body/);
+      assert.ok(payment.agentic_wallet.argv.includes(JSON.stringify(exact.body)));
+    } else {
+      assert.equal(exact.body, undefined);
+      assert.equal(exact.normalized_body_sha256, undefined);
+      assert.match(exact.url, /^https:\/\/bountyverdict\.example\/api\//);
+    }
+  }
+});
 
 test("Bazaar payment discovery preserves the live MCP input boundaries", async () => {
   const listed = (await rpcBody(11, "tools/list")).result.tools;
@@ -221,6 +260,7 @@ test("all six MCP tools reject representative boundary violations before payment
     assert.equal(body.result.isError, true, name);
     assert.equal(body.result.structuredContent, undefined, name);
     assert.doesNotMatch(body.result.content[0].text, /"accepts"|"x402Version"/, name);
+    assert.doesNotMatch(body.result.content[0].text, /http-payment-handoff|agentic_wallet/, name);
   }
 });
 
@@ -246,6 +286,10 @@ test("official MCP and x402 clients can read an unpaid challenge after output di
     });
     assert.equal(challenge?.x402Version, 2);
     assert.equal(challenge?.accepts[0]?.amount, "50000");
+    assert.equal(
+      (challenge?.extensions?.[MCP_HTTP_PAYMENT_HANDOFF_EXTENSION] as any)?.info?.payment?.max_amount_atomic,
+      "50000",
+    );
   } finally {
     await client.close();
   }

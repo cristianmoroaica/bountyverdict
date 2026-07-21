@@ -3,6 +3,7 @@ import test from "node:test";
 import app from "../src/index.ts";
 import { createAiCatalog, createMcpWellKnown, createOriginAgentManifest, createOriginSkillMarkdown } from "../src/origin-discovery.ts";
 import { PRODUCT_CATALOG } from "../src/product-catalog.ts";
+import { MCP_HTTP_PAYMENT_HANDOFF_EXTENSION } from "../src/payment-handoff.ts";
 
 const origin = "https://bountyverdict-agent-production.mimirslab.workers.dev";
 
@@ -33,6 +34,9 @@ test("origin manifest publishes six exact products without changing SkillVerdict
   assert.equal(manifest.reliability.mutates_external_systems, false);
   assert.equal(manifest.mcp.url, `${origin}/mcp`);
   assert.equal(manifest.mcp.transport, "streamable-http");
+  assert.equal(manifest.client_setup, "https://cristianmoroaica.github.io/bountyverdict/llms-install.md");
+  assert.equal(manifest.mcp.direct_automatic_payment_requires, "@x402/mcp");
+  assert.equal(manifest.mcp.http_payment_handoff_extension, MCP_HTTP_PAYMENT_HANDOFF_EXTENSION);
   assert.deepEqual(manifest.mcp.tools.map(({ name }) => name), [
     "check_github_bounty",
     "rank_github_bounties",
@@ -71,6 +75,9 @@ test("well-known MCP metadata resolves the exact paid remote without secrets", a
   assert.equal(metadata.transport, "streamable-http");
   assert.equal(metadata.protocol_version, "2025-11-25");
   assert.deepEqual(metadata.payment.price_range_usdc, { minimum: "0.02", maximum: "0.40" });
+  assert.equal(metadata.payment.direct_automatic_payment_requires, "@x402/mcp");
+  assert.equal(metadata.payment.http_payment_handoff_extension, MCP_HTTP_PAYMENT_HANDOFF_EXTENSION);
+  assert.equal(metadata.client_setup, "https://cristianmoroaica.github.io/bountyverdict/llms-install.md");
   assert.equal(metadata.ai_catalog, `${origin}/.well-known/ai-catalog.json`);
   assert.doesNotMatch(JSON.stringify(metadata), /secret|private.?key|api.?key/i);
 
