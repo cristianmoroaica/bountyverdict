@@ -3,12 +3,14 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
 import { trustedFunnelBaseline } from "../src/funnel-epoch.ts";
+import { loadDistributionMonitorConfiguration } from "../src/monitor-configuration.ts";
 
 const execFileAsync = promisify(execFile);
 const monitor = process.env.AUDITED_MONITOR;
 if (monitor !== "directory" && monitor !== "distribution") {
   throw new Error("AUDITED_MONITOR must be directory or distribution.");
 }
+if (monitor === "distribution") loadDistributionMonitorConfiguration(process.env);
 const baselineFile = process.env.TRUSTED_FUNNEL_BASELINE_FILE ||
   `${homedir()}/.local/state/bountyverdict/funnel-trusted-baseline.json`;
 const historyFile = process.env.TRUSTED_FUNNEL_HISTORY_FILE ||

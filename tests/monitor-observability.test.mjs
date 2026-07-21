@@ -13,11 +13,12 @@ const demandServiceUrl = new URL("../ops/systemd/bountyverdict-demand-watch.serv
 test("frequent reporting samples merchant activity without semantic retrieval while full audits establish a drain", async () => {
   const distribution = await readFile(distributionUrl, "utf8");
   const auditedRunner = await readFile(auditedRunnerUrl, "utf8");
-  assert.match(distribution, /const reportOnly = process\.env\.REPORT_ONLY === "YES"/);
+  assert.match(distribution, /const reportOnly = configuration\.reportOnly/);
   assert.match(distribution, /if \(reportOnly\) \{[\s\S]+merchantDiscoveryStatus\(previousReport\.discovery \|\| \{\}, checkedAt\)[\s\S]+\} else \{\s+try \{\s+discovery = await discoveryStatus/);
   assert.match(distribution, /marketplace_search: previousReport\.acquisition\?\.marketplace_search/);
   assert.match(distribution, /agenticMarket = previousReport\.marketplaces\?\.agentic_market/);
   assert.match(auditedRunner, /FUNNEL_ROTATION_ID: rotationId/);
+  assert.match(auditedRunner, /if \(monitor === "distribution"\) loadDistributionMonitorConfiguration\(process\.env\)/);
   assert.match(auditedRunner, /if \(monitor === "directory"\).*directory-monitor/s);
   assert.match(auditedRunner, /else await import\("\.\/distribution-monitor\.ts"\)/);
 });
@@ -98,4 +99,13 @@ test("all scheduled broad directory audits establish or reuse a funnel drain", a
   assert.match(snapshotService, /AUDITED_MONITOR=directory[\s\S]+scripts\/run-audited-monitor\.ts/);
   assert.match(snapshotService, /AUDITED_MONITOR=distribution[\s\S]+scripts\/run-audited-monitor\.ts/);
   assert.doesNotMatch(snapshotService, /ExecStart=.*scripts\/(?:directory|distribution)-monitor\.ts/);
+});
+
+test("the normal distribution timer is report-only and retains explicit accounting identity", async () => {
+  const service = await readFile(new URL("../ops/systemd/bountyverdict-distribution-monitor.service", import.meta.url), "utf8");
+  assert.match(service, /Environment=REPORT_ONLY=YES/);
+  assert.match(service, /Environment=REVENUE_WALLET=0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614/);
+  assert.match(service, /Environment=START_BLOCK=48876000/);
+  assert.match(service, /Environment=TRACKED_COSTS_USDC=1\.01/);
+  assert.doesNotMatch(service, /run-audited-monitor/);
 });

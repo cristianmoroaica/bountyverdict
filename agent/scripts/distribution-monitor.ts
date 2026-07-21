@@ -32,10 +32,8 @@ import {
   normalizeCdpMerchantQuality,
   normalizeThe402ServiceOutcome,
 } from "../src/marketplace-telemetry.ts";
+import { loadDistributionMonitorConfiguration } from "../src/monitor-configuration.ts";
 
-const DEFAULT_API = "https://bountyverdict-agent-production.mimirslab.workers.dev";
-const DEFAULT_WALLET = "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
-const DEFAULT_START_BLOCK = "48876000";
 const CDP_DISCOVERY = "https://api.cdp.coinbase.com/platform/v2/x402/discovery";
 const AGENTIC_MARKET_SERVICE =
   "https://api.agentic.market/v1/services/bountyverdict-agent-production-mimirslab-workers-dev";
@@ -45,9 +43,10 @@ const TIMEOUT_MS = 30_000;
 const execFileAsync = promisify(execFile);
 const GITHUB_REPOSITORY = "cristianmoroaica/bountyverdict";
 
-const api = new URL(process.env.PRODUCTION_API_URL || DEFAULT_API).origin;
-const wallet = process.env.REVENUE_WALLET || DEFAULT_WALLET;
-const startBlockInput = process.env.START_BLOCK || DEFAULT_START_BLOCK;
+const configuration = loadDistributionMonitorConfiguration(process.env);
+const api = configuration.productionApi;
+const wallet = configuration.revenueWallet;
+const startBlockInput = configuration.startBlock;
 const stateFile = process.env.STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/distribution-status.json`;
 const canaryStateFile = process.env.CANARY_STATE_FILE ||
@@ -67,18 +66,18 @@ const trustedFunnelBaselineFile = process.env.TRUSTED_FUNNEL_BASELINE_FILE ||
 const trustedFunnelEpochFile = process.env.TRUSTED_FUNNEL_HISTORY_FILE ||
   `${homedir()}/.local/state/bountyverdict/funnel-trusted-epochs.json`;
 const monitorNoteFile = process.env.MONITOR_NOTE_FILE || `${homedir()}/notes/mimirx402.md`;
-const trackedCostsInput = process.env.TRACKED_COSTS_USDC || "0";
+const trackedCostsInput = configuration.trackedCostsUsdc;
 const historicalTestGasEth = process.env.HISTORICAL_TEST_GAS_ETH || "0.00000525";
-const reportOnly = process.env.REPORT_ONLY === "YES";
-const settlementBuyer = process.env.SETTLEMENT_BUYER_ADDRESS;
-const settlementCanaryEnabled = process.env.SETTLEMENT_CANARY_ENABLED === "YES";
-const the402ApiKey = process.env.THE402_API_KEY;
-const the402ParticipantId = process.env.THE402_PARTICIPANT_ID;
-const nearMarketApiKey = process.env.NEAR_MARKET_API_KEY;
-const nearMarketAgentId = process.env.NEAR_MARKET_AGENT_ID;
-const payanApiKey = process.env.PAYAN_API_KEY;
-const payanAgentId = process.env.PAYAN_AGENT_ID;
-const payanOfferMapInput = process.env.PAYAN_OFFER_MAP;
+const reportOnly = configuration.reportOnly;
+const settlementBuyer = configuration.settlementBuyerAddress;
+const settlementCanaryEnabled = configuration.settlementCanaryEnabled;
+const the402ApiKey = configuration.the402ApiKey;
+const the402ParticipantId = configuration.the402ParticipantId;
+const nearMarketApiKey = configuration.nearMarketApiKey;
+const nearMarketAgentId = configuration.nearMarketAgentId;
+const payanApiKey = configuration.payanApiKey;
+const payanAgentId = configuration.payanAgentId;
+const payanOfferMapInput = configuration.payanOfferMap;
 const MAX_CANARY_AGE_MS = 8 * 60 * 60 * 1000;
 const EXPECTED_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "flake", "mcpdrift"] as const;
 const BUYER_QUERY_BENCHMARK: Readonly<Record<ProductKey, readonly string[]>> = Object.freeze({

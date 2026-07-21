@@ -105,8 +105,10 @@ The production origin publishes a canonical machine-readable router at `/agent-m
 The production monitor verifies all free routes, all seven exact mainnet payment challenges, Coinbase Bazaar merchant visibility, Agent402 listing health, Agent Tools Cloud's organically discovered resource/health/payment metadata, disclosed unbranded buyer-query benchmarks, on-chain Base USDC revenue, the402 catalog/jobs/earnings, 402 Index presence, privacy-safe aggregate discovery and paid-route arrivals, and the freshness of the latest authenticated functional-canary pass in one run. Catalog presence and health are never treated as impressions, purchases, or revenue. Benchmarks measure retrieval robustness, not marketplace search volume or impressions. Edge telemetry classifies discovery surface, product, coarse source/channel and client class, input readiness, response preference, payment-header generation, outcome, and hourly/daily trends. It discards raw URLs, query values, request bodies, headers, payment payloads, IP addresses, geolocation, and full user-agent strings:
 
 ```bash
-npm run distribution:monitor
+systemctl --user start bountyverdict-distribution-monitor.service
 ```
+
+The monitor refuses to write commerce state unless the receiving wallet, deployment block, tracked costs, owner-canary buyer address, canary mode, and all three marketplace identities are explicitly configured. This fail-closed gate prevents a bare CLI invocation from relabeling an owner proof as customer revenue or silently dropping acquisition costs. Full semantic retrieval audits use the same private service environment with `AUDITED_MONITOR=distribution npm run monitor:audited`; the scheduled report-only service remains the normal refresh path.
 
 Payan's open-request automation is separate from offer fulfillment. It polls the public feed, bids only when the brief itself contains a complete canonical input for one existing non-SkillVerdict product, rechecks authenticated detail for duplicate bids, and refuses accepted hidden inputs that differ from the public SHA-256 contract. The provider then calls the existing bounded production handler and submits the validated JSON output once. Runtime state is private and contains no API key:
 
