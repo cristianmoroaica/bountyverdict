@@ -281,9 +281,10 @@ test("directory monitoring tracks exact GitHub Agent Finder PR, catalog, Registr
 });
 
 test("directory monitoring verifies the origin ARD catalog without calling publication demand", async () => {
-  const [directory, distribution] = await Promise.all([
+  const [directory, distribution, deployWorkflow] = await Promise.all([
     readFile(directoryMonitorUrl, "utf8"),
     readFile(distributionUrl, "utf8"),
+    readFile(new URL("../.github/workflows/deploy-worker.yml", import.meta.url), "utf8"),
   ]);
   assert.match(directory, /async function ardCatalogStatus/);
   assert.match(directory, /\.well-known\/ai-catalog\.json/);
@@ -294,6 +295,7 @@ test("directory monitoring verifies the origin ARD catalog without calling publi
   assert.match(directory, /ard_catalog: ardCatalog/);
   assert.match(distribution, /Agentic Resource Discovery catalog/);
   assert.match(distribution, /direct catalog availability is not registry indexing/);
+  assert.match(deployWorkflow, /representativeQueries\?\.length !== 6/);
 });
 
 test("declared MCP source attribution remains allowlisted, aggregate, and separate from purchase proof", async () => {

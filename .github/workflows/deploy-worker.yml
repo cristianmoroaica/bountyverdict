@@ -159,7 +159,7 @@ jobs:
               if (value.specVersion !== "1.0" || value.entries?.length !== 1) process.exit(1);
               if (entry?.identifier !== "urn:air:bountyverdict-agent-production.mimirslab.workers.dev:server:bountyverdict") process.exit(1);
               if (entry?.type !== "application/mcp-server-card+json" || entry?.url !== `${process.env.PRODUCTION_API_URL}/.well-known/mcp.json`) process.exit(1);
-              if (entry?.representativeQueries?.length !== 5 || entry.representativeQueries.some((query) => query !== query.toLowerCase() || /bountyverdict/i.test(query))) process.exit(1);
+              if (entry?.representativeQueries?.length !== 6 || entry.representativeQueries.some((query) => query !== query.toLowerCase() || /bountyverdict/i.test(query))) process.exit(1);
               if (JSON.stringify(entry?.capabilities) !== JSON.stringify(tools)) process.exit(1);
               if (entry?.metadata?.paymentProtocol !== "x402-v2" || entry?.metadata?.paymentNetwork !== "eip155:8453" || entry?.metadata?.paymentCurrency !== "USDC" || entry?.metadata?.mutatesExternalSystems !== false) process.exit(1);
             });
