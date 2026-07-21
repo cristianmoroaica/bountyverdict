@@ -20,6 +20,8 @@ test("x402 seller manifest exposes exactly the seven paid resources", () => {
   assert.equal(manifest.payment.x402.primaryNetwork, "eip155:8453");
   assert.equal(manifest.payment.x402.payTo, "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614");
   assert.deepEqual(manifest.payment.x402.priceRange, { minimumUsd: 0.02, maximumUsd: 0.4 });
+  assert.equal(manifest.discovery.agentManifest, "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json");
+  assert.equal(manifest.discovery.agentSkill, "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md");
   assert.equal(manifest.capabilities.freeSamples.length, 7);
   assert.equal(manifest.capabilities.mutatesExternalSystems, false);
 });

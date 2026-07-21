@@ -8,6 +8,11 @@ import {
   parseSkillsShInstallCounts,
   PUBLISHED_SKILLS,
 } from "../src/acquisition.ts";
+import {
+  AgentToolsCloudContractDrift,
+  parseAgentToolsCloudListing,
+} from "../src/agent-tools-cloud.ts";
+import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
 
 const repository = "https://github.com/cristianmoroaica/bountyverdict";
 const agentToolUrl = "https://agenttool.sh/tools/bountyverdict-agent-decision-apis";
@@ -23,6 +28,9 @@ const agent402Api = "https://agent402.tools/api";
 const productionOrigin = "https://bountyverdict-agent-production.mimirslab.workers.dev";
 const x402ScanUrl = "https://www.x402scan.com";
 const x402gleHostUrl = "https://x402gle.com/servers/bountyverdict-agent-production.mimirslab.workers.dev";
+const agentToolsCloudApi = "https://agent-tools.cloud/api/v1";
+const agentToolsCloudSlug = "bountyverdict-agent-production-mimirslab-workers-dev-bazaar";
+const revenueWallet = "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
 const monetizeYourAgentApi = "https://monetizeyouragent.fun/api/v1";
 const monetizeYourAgentSubmissionId = 234;
 const directory402Api = "https://402directory.com/api";
@@ -39,14 +47,14 @@ const index402Listings = Object.freeze([
   { product: "flake", id: "2d2fb88a-7402-4d1a-ab66-63d4e9ba1031", path: "/api/flake", method: "GET" },
 ]);
 const x402ScanResources = Object.freeze([
-  { url: `${productionOrigin}/api/verdict`, method: "GET" },
-  { url: `${productionOrigin}/api/portfolio`, method: "POST" },
-  { url: `${productionOrigin}/api/harness`, method: "GET" },
-  { url: `${productionOrigin}/api/skill`, method: "GET" },
-  { url: `${productionOrigin}/api/run`, method: "GET" },
-  { url: `${productionOrigin}/api/flake`, method: "GET" },
-  { url: `${productionOrigin}/api/mcp-drift`, method: "POST" },
-]);
+  { product: "single", url: `${productionOrigin}/api/verdict`, method: "GET" },
+  { product: "portfolio", url: `${productionOrigin}/api/portfolio`, method: "POST" },
+  { product: "harness", url: `${productionOrigin}/api/harness`, method: "GET" },
+  { product: "skill", url: `${productionOrigin}/api/skill`, method: "GET" },
+  { product: "run", url: `${productionOrigin}/api/run`, method: "GET" },
+  { product: "flake", url: `${productionOrigin}/api/flake`, method: "GET" },
+  { product: "mcpdrift", url: `${productionOrigin}/api/mcp-drift`, method: "POST" },
+] as const satisfies readonly { product: ProductKey; url: string; method: "GET" | "POST" }[]);
 const x402ScoutIds = Object.freeze([
   "be000191-00e6-41d6-aed5-da35c6123e52",
   "f2ae9481-cfb9-4bbc-bf7c-9c1fb32523e4",
@@ -471,7 +479,8 @@ async function x402ScoutStatus(): Promise<Record<string, unknown>> {
 }
 
 async function x402ScanStatus(): Promise<Record<string, unknown>> {
-  const input = encodeURIComponent(JSON.stringify({ json: { resources: x402ScanResources } }));
+  const resources = x402ScanResources.map(({ url, method }) => ({ url, method }));
+  const input = encodeURIComponent(JSON.stringify({ json: { resources } }));
   const apiUrl = `${x402ScanUrl}/api/trpc/public.resources.checkRegistered?input=${input}`;
   try {
     const response = await fetch(apiUrl, { signal: AbortSignal.timeout(timeoutMs) });
@@ -488,7 +497,7 @@ async function x402ScanStatus(): Promise<Record<string, unknown>> {
     const unregistered = Array.isArray(result?.unregistered)
       ? result.unregistered.filter((value): value is string => typeof value === "string")
       : [];
-    const expected = new Set(x402ScanResources.map(({ url }) => url));
+    const expected = new Set<string>(x402ScanResources.map(({ url }) => url));
     const exact = registered.length === expected.size &&
       new Set(registered).size === expected.size && registered.every((url) => expected.has(url));
     return {
@@ -555,6 +564,56 @@ async function x402gleStatus(): Promise<Record<string, unknown>> {
   }
 }
 
+async function agentToolsCloudStatus(): Promise<Record<string, unknown>> {
+  const searchUrl = `${agentToolsCloudApi}/search?q=bountyverdict&limit=100`;
+  const detailUrl = `${agentToolsCloudApi}/services/${agentToolsCloudSlug}`;
+  try {
+    const [searchResponse, detailResponse] = await Promise.all([
+      fetch(searchUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(detailUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    ]);
+    if (!searchResponse.ok || !detailResponse.ok) {
+      return {
+        url: "https://agent-tools.cloud/",
+        search_url: searchUrl,
+        detail_url: detailUrl,
+        listed: false,
+        status: "unexpected_response",
+        search_http_status: searchResponse.status,
+        detail_http_status: detailResponse.status,
+      };
+    }
+    const search = await searchResponse.json() as Record<string, any>;
+    const detail = await detailResponse.json() as Record<string, any>;
+    return {
+      url: "https://agent-tools.cloud/",
+      search_url: searchUrl,
+      detail_url: detailUrl,
+      ...parseAgentToolsCloudListing(search, detail, {
+        productionOrigin,
+        slug: agentToolsCloudSlug,
+        revenueWallet,
+        expectedResources: x402ScanResources,
+      }),
+    };
+  } catch (error) {
+    return {
+      url: "https://agent-tools.cloud/",
+      search_url: searchUrl,
+      detail_url: detailUrl,
+      listed: false,
+      status: error instanceof AgentToolsCloudContractDrift ? "contract_drift" : "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function monetizeYourAgentStatus(): Promise<Record<string, unknown>> {
   const apiUrl = `${monetizeYourAgentApi}/entries?limit=250`;
   try {
@@ -598,7 +657,7 @@ async function directory402Status(): Promise<Record<string, unknown>> {
     }
     const payload = await response.json() as { entries?: Array<Record<string, unknown>> };
     if (!Array.isArray(payload.entries)) throw new Error("402directory returned malformed directory telemetry.");
-    const expected = new Set(x402ScanResources.map(({ url }) => url));
+    const expected = new Set<string>(x402ScanResources.map(({ url }) => url));
     const entries = payload.entries.filter(({ endpoint }) => expected.has(String(endpoint)));
     const exact = entries.length === expected.size && new Set(entries.map(({ endpoint }) => endpoint)).size === expected.size;
     return {
@@ -856,6 +915,7 @@ const [
   x402scout,
   x402scan,
   x402gle,
+  agentToolsCloud,
   monetizeYourAgent,
   directory402,
   index402,
@@ -872,6 +932,7 @@ const [
   x402ScoutStatus(),
   x402ScanStatus(),
   x402gleStatus(),
+  agentToolsCloudStatus(),
   monetizeYourAgentStatus(),
   directory402Status(),
   index402Status(),
@@ -934,6 +995,7 @@ const state = {
   x402scout,
   x402scan,
   x402gle,
+  agent_tools_cloud: agentToolsCloud,
   monetize_your_agent: monetizeYourAgent,
   directory_402: directory402,
   index_402: index402,

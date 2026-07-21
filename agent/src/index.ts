@@ -41,6 +41,7 @@ import {
 } from "./mcp-drift-discovery.ts";
 import { PRODUCT_CATALOG } from "./product-catalog.ts";
 import { createX402ServiceManifest } from "./x402-service-manifest.ts";
+import { createOriginAgentManifest, createOriginSkillMarkdown } from "./origin-discovery.ts";
 import {
   canaryErrorCode,
   isCanaryProduct,
@@ -607,6 +608,8 @@ app.get("/", (c) =>
     x402_manifest: "/.well-known/x402",
     agent_manifest: MANIFEST_URL,
     agent_skill: SKILL_URL,
+    distributed_agent_manifest: "/agent-manifest.json",
+    distributed_agent_skill: "/SKILL.md",
     install_skill: "npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y",
     human_checker: PRODUCT_URL,
   }),
@@ -627,6 +630,26 @@ app.get("/.well-known/x402", (c) => {
     c.env.X402_NETWORK || TESTNET_NETWORK,
     c.env.PAY_TO_ADDRESS,
   ));
+});
+
+app.get("/agent-manifest.json", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(createOriginAgentManifest(
+    origin,
+    c.env.X402_NETWORK || TESTNET_NETWORK,
+    c.env.PAY_TO_ADDRESS,
+  ));
+});
+
+app.get("/SKILL.md", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.text(createOriginSkillMarkdown(
+    origin,
+    c.env.X402_NETWORK || TESTNET_NETWORK,
+    c.env.PAY_TO_ADDRESS,
+  ), 200, {
+    "Content-Type": "text/markdown; charset=utf-8",
+  });
 });
 
 app.get("/openapi.json", (c) => {

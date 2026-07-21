@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=%h/Projects/sandbox/bountyverdict/agent
 Environment=PATH=%h/.local/share/mise/shims:/usr/local/bin:/usr/bin
-ExecStart=/usr/bin/env node --experimental-strip-types scripts/directory-monitor.ts
-ExecStart=/usr/bin/env node --experimental-strip-types scripts/distribution-monitor.ts
+ExecStart=/usr/bin/env AUDITED_MONITOR=directory node --experimental-strip-types scripts/run-audited-monitor.ts
+ExecStart=/usr/bin/env AUDITED_MONITOR=distribution node --experimental-strip-types scripts/run-audited-monitor.ts
 NoNewPrivileges=yes
 PrivateTmp=yes
 UMask=0077

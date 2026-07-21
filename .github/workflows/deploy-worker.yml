@@ -103,6 +103,8 @@ jobs:
               ];
               const actual = value.products?.map(({ name, price, endpoint, method }) => [name, price, endpoint, method]);
               if (value.status !== "available" || JSON.stringify(actual) !== JSON.stringify(expected)) process.exit(1);
+              if (value.agent_manifest !== "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json" || value.agent_skill !== "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md") process.exit(1);
+              if (value.distributed_agent_manifest !== "/agent-manifest.json" || value.distributed_agent_skill !== "/SKILL.md") process.exit(1);
             });
           '
           owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/sample" >/dev/null
@@ -134,6 +136,24 @@ jobs:
               if (value.spec !== "agent402-service-manifest/1" || value.version !== 1) process.exit(1);
               if (JSON.stringify(value.resources) !== JSON.stringify(expected)) process.exit(1);
               if (value.payment?.x402?.primaryNetwork !== "eip155:8453" || !/^0x[a-fA-F0-9]{40}$/.test(value.payment?.x402?.payTo || "")) process.exit(1);
+              if (value.discovery?.agentManifest !== "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json") process.exit(1);
+              if (value.discovery?.agentSkill !== "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md") process.exit(1);
+            });
+          '
+          owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/agent-manifest.json" | node -e '
+            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+              const value = JSON.parse(body);
+              const expected = ["single", "portfolio", "harness", "run", "flake", "mcpdrift"];
+              if (value.spec !== "bountyverdict-agent-manifest/1" || value.version !== 1) process.exit(1);
+              if (value.origin !== process.env.PRODUCTION_API_URL || JSON.stringify(value.products?.map(({ id }) => id)) !== JSON.stringify(expected)) process.exit(1);
+              if (value.products?.some(({ id }) => id === "skill") || JSON.stringify(value.distribution_scope?.excluded_products) !== JSON.stringify(["SkillVerdict"])) process.exit(1);
+              if (value.payment?.network !== "eip155:8453" || !/^0x[a-fA-F0-9]{40}$/.test(value.payment?.pay_to || "")) process.exit(1);
+            });
+          '
+          owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/SKILL.md" | node -e '
+            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+              if (!body.startsWith("---\nname: bountyverdict-agent-decisions\n") || !body.includes("### HarnessVerdict") || !body.includes("### MCPDriftVerdict") || body.includes("### SkillVerdict")) process.exit(1);
+              if (!body.includes(`${process.env.PRODUCTION_API_URL}/agent-manifest.json`) || !body.includes("network `eip155:8453` (Base mainnet)")) process.exit(1);
             });
           '
           owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/openapi.json" | node -e '

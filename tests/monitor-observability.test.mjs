@@ -5,6 +5,7 @@ import test from "node:test";
 const distributionUrl = new URL("../agent/scripts/distribution-monitor.ts", import.meta.url);
 const auditedRunnerUrl = new URL("../agent/scripts/run-audited-monitor.ts", import.meta.url);
 const directoryMonitorUrl = new URL("../agent/scripts/directory-monitor.ts", import.meta.url);
+const agentToolsCloudUrl = new URL("../agent/src/agent-tools-cloud.ts", import.meta.url);
 const acquisitionUrl = new URL("../agent/src/acquisition.ts", import.meta.url);
 const demandWatchUrl = new URL("../agent/scripts/demand-watch.ts", import.meta.url);
 const demandServiceUrl = new URL("../ops/systemd/bountyverdict-demand-watch.service", import.meta.url);
@@ -70,4 +71,31 @@ test("public demand monitoring is scheduled read-only and excluded from commerce
   assert.match(distribution, /public_inventory_and_exact_fit_acquisition_evidence_never_purchase_or_revenue/);
   assert.match(distribution, /Public funded-demand watcher/);
   assert.doesNotMatch(service, /EnvironmentFile/);
+});
+
+test("directory monitoring validates the organic Agent Tools Cloud placement without calling it revenue", async () => {
+  const directory = await readFile(directoryMonitorUrl, "utf8");
+  const distribution = await readFile(distributionUrl, "utf8");
+  const parser = await readFile(agentToolsCloudUrl, "utf8");
+  assert.match(directory, /async function agentToolsCloudStatus/);
+  assert.match(directory, /bountyverdict-agent-production-mimirslab-workers-dev-bazaar/);
+  assert.match(parser, /organic_catalog_health_and_resource_presence_not_impressions_purchases_or_revenue/);
+  assert.match(parser, /typeof payment\.pay_to !== "string" \|\| payment\.pay_to\.toLowerCase\(\) !== revenueWallet\.toLowerCase\(\)/);
+  assert.match(parser, /listed_partial_probe_failed/);
+  assert.match(directory, /AgentToolsCloudContractDrift \? "contract_drift"/);
+  assert.match(directory, /agent_tools_cloud: agentToolsCloud/);
+  assert.match(distribution, /Agent Tools Cloud contract drift/);
+  assert.match(distribution, /Agent Tools Cloud organic catalog/);
+  assert.match(distribution, /presence and health are never purchases/);
+});
+
+test("all scheduled broad directory audits establish or reuse a funnel drain", async () => {
+  const directoryService = await readFile(new URL("../ops/systemd/bountyverdict-directory-monitor.service", import.meta.url), "utf8");
+  const snapshotService = await readFile(new URL("../ops/systemd/bountyverdict-acquisition-snapshot.service", import.meta.url), "utf8");
+  assert.match(directoryService, /Environment=AUDITED_MONITOR=directory/);
+  assert.match(directoryService, /scripts\/run-audited-monitor\.ts/);
+  assert.doesNotMatch(directoryService, /ExecStart=.*scripts\/directory-monitor\.ts/);
+  assert.match(snapshotService, /AUDITED_MONITOR=directory[\s\S]+scripts\/run-audited-monitor\.ts/);
+  assert.match(snapshotService, /AUDITED_MONITOR=distribution[\s\S]+scripts\/run-audited-monitor\.ts/);
+  assert.doesNotMatch(snapshotService, /ExecStart=.*scripts\/(?:directory|distribution)-monitor\.ts/);
 });
