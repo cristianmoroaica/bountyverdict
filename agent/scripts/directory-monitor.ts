@@ -14,6 +14,9 @@ import {
 } from "../src/agent-tools-cloud.ts";
 import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
 import {
+  parseAgentFinderCatalogEntry,
+  parseAgentFinderRegistryLatest,
+  parseAgentFinderSearchPage,
   parseClineMarketplaceCatalog,
   parseAgentageGetResponse,
   parseAwesomeMcpServersReadme,
@@ -27,6 +30,10 @@ import {
   parseTensorBlockProfile,
   parseTensorBlockSearch,
 } from "../src/mcp-downstreams.ts";
+
+if (process.env.BOUNTYVERDICT_AUDITED_ROTATION_ACTIVE !== "directory") {
+  throw new Error("Directory retrieval must run through run-audited-monitor.ts after establishing a draining funnel rotation.");
+}
 
 const repository = "https://github.com/cristianmoroaica/bountyverdict";
 const agentToolUrl = "https://agenttool.sh/tools/bountyverdict-agent-decision-apis";
@@ -92,6 +99,14 @@ const kiloMarketplacePrUrl = `https://github.com/Kilo-Org/kilo-marketplace/pull/
 const kiloMarketplaceDefinitionUrl = "https://raw.githubusercontent.com/Kilo-Org/kilo-marketplace/main/mcps/bountyverdict/MCP.yaml";
 const kiloMarketplaceCatalogUrl = "https://raw.githubusercontent.com/Kilo-Org/kilo-marketplace/main/mcps/marketplace.yaml";
 const geminiCliGalleryUrl = "https://geminicli.com/extensions.json";
+const agentFinderPrNumber = 10;
+const agentFinderPrUrl = `https://github.com/github/agentfinder-catalog/pull/${agentFinderPrNumber}`;
+const agentFinderCatalogEntryPath = "catalog/cristianmoroaica/bountyverdict.json";
+const agentFinderCatalogEntryUrl = `https://raw.githubusercontent.com/github/agentfinder-catalog/main/${agentFinderCatalogEntryPath}`;
+const agentFinderSearchUrl = "https://github.com/agentfinder?search=bountyverdict";
+const agentFinderIdentifier = "urn:ai:registry.modelcontextprotocol.io:io.github.cristianmoroaica:bountyverdict";
+const officialMcpServerName = "io.github.cristianmoroaica/bountyverdict";
+const officialMcpRegistryLatestUrl = "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest";
 const ardCatalogUrl = `${productionOrigin}/.well-known/ai-catalog.json`;
 const ardRepresentativeQueries = Object.freeze([
   "check whether a github bounty issue is still open claimed or worth coding",
@@ -1010,6 +1025,145 @@ async function geminiCliGalleryStatus(
   }
 }
 
+async function agentFinderCatalogStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  const githubHeaders = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "bountyverdict-directory-monitor",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  try {
+    const [prResponse, prFilesResponse, catalogResponse, registryResponse, searchResponse] = await Promise.all([
+      fetch(`https://api.github.com/repos/github/agentfinder-catalog/pulls/${agentFinderPrNumber}`, {
+        headers: githubHeaders,
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(`https://api.github.com/repos/github/agentfinder-catalog/pulls/${agentFinderPrNumber}/files?per_page=100`, {
+        headers: githubHeaders,
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(agentFinderCatalogEntryUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(officialMcpRegistryLatestUrl, {
+        headers: { Accept: "application/json", "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(agentFinderSearchUrl, {
+        headers: { Accept: "text/html", "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    ]);
+    if (prResponse.status !== 200 || prFilesResponse.status !== 200 ||
+      ![200, 404].includes(catalogResponse.status) || registryResponse.status !== 200 || searchResponse.status !== 200) {
+      throw new Error(`Agent Finder returned HTTP ${prResponse.status}/${prFilesResponse.status}/${catalogResponse.status}/${registryResponse.status}/${searchResponse.status}.`);
+    }
+    const pr = await prResponse.json() as Record<string, any>;
+    const prFiles = await prFilesResponse.json() as unknown;
+    if (!Array.isArray(prFiles) || prFiles.length > 100 ||
+      prFiles.some((file: unknown) => !file || typeof file !== "object" || Array.isArray(file) ||
+        typeof (file as Record<string, unknown>).filename !== "string" ||
+        String((file as Record<string, unknown>).filename).length > 1_000)) {
+      throw new Error("Agent Finder PR files are malformed or unbounded.");
+    }
+    const prContractVerified = pr.number === agentFinderPrNumber && pr.html_url === agentFinderPrUrl &&
+      pr.base?.repo?.full_name === "github/agentfinder-catalog" && pr.base?.ref === "main" &&
+      pr.head?.label === "cristianmoroaica:add-bountyverdict-agent-tools" && pr.changed_files === 1 &&
+      prFiles.length === 1 && prFiles[0].filename === agentFinderCatalogEntryPath && prFiles[0].status === "added";
+    const prStatus = pr.merged_at ? "merged" : typeof pr.state === "string" ? pr.state : "unknown";
+
+    let catalog = null;
+    if (catalogResponse.status === 200) {
+      const body = await catalogResponse.text();
+      if (body.length > 100_000) throw new Error("Agent Finder catalog entry is unbounded.");
+      catalog = parseAgentFinderCatalogEntry(
+        JSON.parse(body),
+        agentFinderIdentifier,
+        officialMcpRegistryLatestUrl,
+        officialMcpServerName,
+      );
+    }
+    const registryBody = await registryResponse.text();
+    if (registryBody.length > 500_000) throw new Error("Agent Finder Registry response is unbounded.");
+    const registry = parseAgentFinderRegistryLatest(
+      JSON.parse(registryBody),
+      officialMcpServerName,
+      repository,
+      `${productionOrigin}/mcp`,
+    );
+    const search = parseAgentFinderSearchPage(
+      await searchResponse.text(),
+      agentFinderIdentifier,
+      officialMcpRegistryLatestUrl,
+    );
+    const status = !registry.contract_verified
+      ? "registry_contract_drift"
+      : search.listed
+        ? search.contract_verified ? "agent_finder_search_listed" : "agent_finder_search_contract_drift"
+        : catalog?.listed
+          ? catalog.contract_verified ? "catalog_listed_awaiting_search_index" : "catalog_contract_drift"
+          : !prContractVerified
+            ? "pr_contract_drift"
+            : prStatus === "merged"
+              ? "pr_merged_awaiting_catalog"
+              : prStatus === "open"
+                ? "pr_open"
+                : prStatus === "closed"
+                  ? "pr_closed_without_catalog"
+                  : "pr_status_unknown";
+    return {
+      url: agentFinderPrUrl,
+      pr_number: agentFinderPrNumber,
+      pr_status: prStatus,
+      pr_merged_at: pr.merged_at || null,
+      pr_draft: pr.draft === true,
+      pr_mergeable: pr.mergeable ?? null,
+      pr_contract_verified: prContractVerified,
+      catalog_url: agentFinderCatalogEntryUrl,
+      catalog_http_status: catalogResponse.status,
+      catalog_listed: catalog?.listed === true,
+      catalog_contract_verified: catalog?.contract_verified === true,
+      registry_url: officialMcpRegistryLatestUrl,
+      registry_http_status: registryResponse.status,
+      registry_contract_verified: registry.contract_verified,
+      registry_version: registry.version,
+      search_url: agentFinderSearchUrl,
+      search_http_status: searchResponse.status,
+      search_listed: search.listed,
+      search_contract_verified: search.contract_verified,
+      search_rank: search.rank,
+      search_total_results: search.total_results,
+      status,
+      first_catalog_listed_at: catalog?.contract_verified === true
+        ? previousStatus.first_catalog_listed_at || observedAt
+        : null,
+      first_search_listed_at: search.contract_verified
+        ? previousStatus.first_search_listed_at || observedAt
+        : null,
+      measurement: "exact_pr_catalog_registry_and_owner_run_search_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: agentFinderPrUrl,
+      pr_number: agentFinderPrNumber,
+      catalog_url: agentFinderCatalogEntryUrl,
+      registry_url: officialMcpRegistryLatestUrl,
+      search_url: agentFinderSearchUrl,
+      catalog_listed: false,
+      catalog_contract_verified: false,
+      registry_contract_verified: false,
+      search_listed: false,
+      search_contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "exact_pr_catalog_registry_and_owner_run_search_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
 async function agentToolStatus(): Promise<Record<string, unknown>> {
   const apiUrl = "https://agenttool.sh/api/tools/bountyverdict-agent-decision-apis";
   try {
@@ -1837,6 +1991,7 @@ const [
   clineMarketplace,
   kiloMarketplace,
   geminiCliGallery,
+  agentFinderCatalog,
   ardCatalog,
   agent402,
   x402scout,
@@ -1869,6 +2024,7 @@ const [
   clineMarketplaceStatus(previous.cline_marketplace || {}, new Date().toISOString()),
   kiloMarketplaceStatus(previous.kilo_marketplace || {}, new Date().toISOString()),
   geminiCliGalleryStatus(previous.gemini_cli_gallery || {}, new Date().toISOString()),
+  agentFinderCatalogStatus(previous.agent_finder_catalog || {}, new Date().toISOString()),
   ardCatalogStatus(previous.ard_catalog || {}, new Date().toISOString()),
   agent402Status(),
   x402ScoutStatus(),
@@ -1947,6 +2103,7 @@ const state = {
   cline_marketplace: clineMarketplace,
   kilo_marketplace: kiloMarketplace,
   gemini_cli_gallery: geminiCliGallery,
+  agent_finder_catalog: agentFinderCatalog,
   ard_catalog: ardCatalog,
   agent402,
   x402scout,

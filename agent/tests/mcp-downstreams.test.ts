@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canReuseMcpDownstreamStatus,
+  parseAgentFinderCatalogEntry,
+  parseAgentFinderRegistryLatest,
+  parseAgentFinderSearchPage,
   parseClineMarketplaceCatalog,
   glamaConnectorStatus,
   parseAgentageGetResponse,
@@ -26,6 +29,97 @@ const name = "io.github.cristianmoroaica/bountyverdict";
 const version = "1.1.0";
 const endpoint = "https://bountyverdict-agent-production.mimirslab.workers.dev/mcp";
 const repository = "https://github.com/cristianmoroaica/bountyverdict";
+const agentFinderIdentifier = "urn:ai:registry.modelcontextprotocol.io:io.github.cristianmoroaica:bountyverdict";
+const registryLatestUrl = "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest";
+
+test("recognizes only the exact Agent Finder catalog, Registry, and owner-run search contracts", () => {
+  const catalogEntry = {
+    identifier: agentFinderIdentifier,
+    displayName: "BountyVerdict Agent Decision Tools",
+    mediaType: "application/mcp-server+json",
+    url: registryLatestUrl,
+    description: "Choose GitHub bounties, diagnose Actions failures, audit agent instructions, and detect MCP drift.",
+    metadata: {
+      sourceSet: "bountyverdict",
+      repoPath: "server.json",
+      serverName: name,
+      version: "latest",
+    },
+  };
+  assert.deepEqual(parseAgentFinderCatalogEntry(catalogEntry, agentFinderIdentifier, registryLatestUrl, name), {
+    listed: true,
+    contract_verified: true,
+    identifier: agentFinderIdentifier,
+    registry_url: registryLatestUrl,
+  });
+  assert.equal(parseAgentFinderCatalogEntry({
+    ...catalogEntry,
+    url: "https://wrong.example/registry",
+  }, agentFinderIdentifier, registryLatestUrl, name).contract_verified, false);
+  assert.throws(() => parseAgentFinderCatalogEntry([], agentFinderIdentifier, registryLatestUrl, name), /not an object/);
+
+  const registry = {
+    server: {
+      name,
+      title: "BountyVerdict Agent Decision Tools",
+      description: "Choose GitHub bounties, diagnose Actions failures, audit agent instructions, and detect MCP drift.",
+      version,
+      repository: { url: repository, source: "github" },
+      remotes: [{ type: "streamable-http", url: endpoint }],
+    },
+    _meta: {
+      "io.modelcontextprotocol.registry/official": { status: "active", isLatest: true },
+    },
+  };
+  assert.deepEqual(parseAgentFinderRegistryLatest(registry, name, repository, endpoint), {
+    contract_verified: true,
+    name,
+    version,
+    endpoint,
+    active: true,
+    latest: true,
+  });
+  assert.equal(parseAgentFinderRegistryLatest({
+    ...registry,
+    server: { ...registry.server, remotes: [{ type: "streamable-http", url: "https://wrong.example/mcp" }] },
+  }, name, repository, endpoint).contract_verified, false);
+
+  const searchEntry = {
+    id: agentFinderIdentifier,
+    name: agentFinderIdentifier,
+    full_name: agentFinderIdentifier,
+    api_name: agentFinderIdentifier,
+    display_name: "BountyVerdict Agent Decision Tools",
+    description: catalogEntry.description,
+    url: registryLatestUrl,
+    extension_type: "MCP server",
+  };
+  const searchPage = (servers: Array<Record<string, unknown>>) =>
+    `<html><script type="application/json" data-target="react-app.embeddedData">${JSON.stringify({
+      payload: {
+        agentFinderRoute: {
+          serversData: { servers, metadata: { count: servers.length, total: servers.length, total_pages: 1 } },
+        },
+      },
+    })}</script></html>`;
+  assert.deepEqual(parseAgentFinderSearchPage(searchPage([searchEntry]), agentFinderIdentifier, registryLatestUrl), {
+    listed: true,
+    contract_verified: true,
+    rank: 1,
+    total_results: 1,
+    identifier: agentFinderIdentifier,
+    registry_url: registryLatestUrl,
+  });
+  assert.equal(parseAgentFinderSearchPage(searchPage([]), agentFinderIdentifier, registryLatestUrl).listed, false);
+  const driftedSearch = parseAgentFinderSearchPage(searchPage([{
+    ...searchEntry,
+    extension_type: "Skill",
+  }]), agentFinderIdentifier, registryLatestUrl);
+  assert.equal(driftedSearch.listed, true);
+  assert.equal(driftedSearch.contract_verified, false);
+  assert.throws(() => parseAgentFinderSearchPage(searchPage([searchEntry, searchEntry]), agentFinderIdentifier, registryLatestUrl), /duplicated/);
+  assert.throws(() => parseAgentFinderSearchPage("<html></html>", agentFinderIdentifier, registryLatestUrl), /missing or duplicate/);
+});
 
 test("recognizes only the exact bounded Awesome MCP Servers contract", () => {
   const entry = `- [cristianmoroaica/bountyverdict](${repository}) 📇 ☁️ - Six read-only tools. Remote [endpoint](${endpoint}) over x402.`;

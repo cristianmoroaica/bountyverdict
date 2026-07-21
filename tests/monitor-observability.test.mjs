@@ -14,16 +14,22 @@ const marketplaceTimerUrl = new URL("../ops/systemd/bountyverdict-marketplace-au
 const geminiExtensionUrl = new URL("../gemini-extension.json", import.meta.url);
 
 test("frequent reporting samples merchant activity without semantic retrieval while full audits establish a drain", async () => {
-  const distribution = await readFile(distributionUrl, "utf8");
-  const auditedRunner = await readFile(auditedRunnerUrl, "utf8");
+  const [distribution, auditedRunner, directory] = await Promise.all([
+    readFile(distributionUrl, "utf8"),
+    readFile(auditedRunnerUrl, "utf8"),
+    readFile(directoryMonitorUrl, "utf8"),
+  ]);
   assert.match(distribution, /const reportOnly = configuration\.reportOnly/);
+  assert.match(distribution, /!reportOnly && process\.env\.BOUNTYVERDICT_AUDITED_ROTATION_ACTIVE !== "distribution"/);
   assert.match(distribution, /if \(reportOnly\) \{[\s\S]+merchantDiscoveryStatus\(previousReport\.discovery \|\| \{\}, checkedAt\)[\s\S]+\} else \{\s+try \{\s+discovery = await discoveryStatus/);
   assert.match(distribution, /marketplace_search: previousReport\.acquisition\?\.marketplace_search/);
   assert.match(distribution, /agenticMarket = previousReport\.marketplaces\?\.agentic_market/);
   assert.match(auditedRunner, /FUNNEL_ROTATION_ID: rotationId/);
   assert.match(auditedRunner, /if \(monitor === "distribution"\) loadDistributionMonitorConfiguration\(process\.env\)/);
+  assert.match(auditedRunner, /process\.env\.BOUNTYVERDICT_AUDITED_ROTATION_ACTIVE = monitor/);
   assert.match(auditedRunner, /if \(monitor === "directory"\).*directory-monitor/s);
   assert.match(auditedRunner, /else await import\("\.\/distribution-monitor\.ts"\)/);
+  assert.match(directory, /BOUNTYVERDICT_AUDITED_ROTATION_ACTIVE !== "directory"/);
 });
 
 test("directory monitoring retains public AgentSkill and GitHub Skill conversion signals", async () => {
@@ -205,6 +211,27 @@ test("directory monitoring tracks Gemini CLI gallery propagation without claimin
   assert.match(distribution, /catalog presence is never an impression, install, tool call, purchase, or revenue/);
 });
 
+test("directory monitoring tracks exact GitHub Agent Finder PR, catalog, Registry, and search state without claiming demand", async () => {
+  const [directory, distribution] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+  ]);
+  assert.match(directory, /const agentFinderPrNumber = 10/);
+  assert.match(directory, /github\/agentfinder-catalog\/pull\/\$\{agentFinderPrNumber\}/);
+  assert.match(directory, /catalog\/cristianmoroaica\/bountyverdict\.json/);
+  assert.match(directory, /registry\.modelcontextprotocol\.io\/v0\.1\/servers\/io\.github\.cristianmoroaica%2Fbountyverdict\/versions\/latest/);
+  assert.match(directory, /https:\/\/github\.com\/agentfinder\?search=bountyverdict/);
+  assert.match(directory, /async function agentFinderCatalogStatus/);
+  assert.match(directory, /parseAgentFinderCatalogEntry/);
+  assert.match(directory, /parseAgentFinderRegistryLatest/);
+  assert.match(directory, /parseAgentFinderSearchPage/);
+  assert.match(directory, /agent_finder_catalog: agentFinderCatalog/);
+  assert.match(directory, /exact_pr_catalog_registry_and_owner_run_search_presence_not_impressions_installs_tool_calls_purchases_or_revenue/);
+  assert.match(distribution, /agent_finder_catalog: state\.agent_finder_catalog/);
+  assert.match(distribution, /GitHub Agent Finder/);
+  assert.match(distribution, /PR, catalog, and search presence are distribution only, never an impression, install, tool call, purchase, or revenue/);
+});
+
 test("directory monitoring verifies the origin ARD catalog without calling publication demand", async () => {
   const [directory, distribution] = await Promise.all([
     readFile(directoryMonitorUrl, "utf8"),
@@ -289,7 +316,7 @@ test("directory monitoring retains AgentNDX review and exact listing state", asy
   assert.match(distribution, /catalog presence is never an impression, tool call, purchase, or revenue/);
 });
 
-test("public demand monitoring is scheduled read-only and excluded from commerce accounting", async () => {
+test("public demand monitoring is read-only and Taskmarket accounting requires Base receipts", async () => {
   const [distribution, watcher, service] = await Promise.all([
     readFile(distributionUrl, "utf8"),
     readFile(demandWatchUrl, "utf8"),
@@ -297,11 +324,30 @@ test("public demand monitoring is scheduled read-only and excluded from commerce
   ]);
   assert.match(watcher, /read_only: true/);
   assert.match(watcher, /actions_enabled: false/);
-  assert.match(watcher, /acquisition evidence only; they are never purchases, settlements, or revenue/);
-  assert.doesNotMatch(watcher, /Authorization|api[_-]?key|place_bid|accept_job/i);
+  assert.match(watcher, /A tracked Taskmarket submission becomes one purchase and positive worker-payment revenue only after its completed task exposes a canonical award and a live successful Base receipt binds it to the canonical Taskmarket Diamond TaskCompleted event/);
+  assert.match(watcher, /pageNumber < 5/);
+  assert.match(watcher, /searchParams\.set\("limit", "100"\)/);
+  assert.doesNotMatch(watcher, /Authorization|api[_-]?key|place_bid|accept_job|x-taskmarket-api-token|keystore/i);
+  assert.match(watcher, /method: "eth_getTransactionReceipt"/);
+  assert.doesNotMatch(watcher, /method: "(?:eth_sendRawTransaction|eth_sendTransaction)"/);
   assert.match(distribution, /async function publicDemandStatus/);
   assert.match(distribution, /state\.read_only !== true \|\| state\.actions_enabled !== false/);
-  assert.match(distribution, /public_inventory_and_exact_fit_acquisition_evidence_never_purchase_or_revenue/);
+  assert.match(distribution, /public_inventory_exact_fits_submissions_and_API_awards_are_not_purchases_or_revenue/);
+  assert.match(distribution, /onchain-verified Taskmarket awards/);
+  assert.match(distribution, /unverified_award_submissions/);
+  assert.match(distribution, /onchain\?\.verified !== true/);
+  assert.match(distribution, /workerPayment <= 0n/);
+  assert.match(distribution, /consumedReceiptEvidence/);
+  assert.match(distribution, /consumedCanonicalEvents/);
+  assert.match(distribution, /authoritative_proof_key/);
+  assert.match(distribution, /0xddc6cc3e4d11c1f3527b867c7dad4ed9869c33f7/);
+  assert.match(distribution, /0x0c01e82f21f6dc480e3553e62cba7e6511685aa15d312f971ea64663bef07ecb/);
+  assert.match(distribution, /reuse the same receipt transfer evidence/);
+  assert.match(distribution, /reported worker earnings do not equal the sum of uniquely verified settlement records/);
+  assert.match(distribution, /pending opportunity totals do not equal the pending submission records/);
+  assert.match(distribution, /Pending Taskmarket opportunity \(not revenue\)/);
+  assert.match(distribution, /settled_worker_earnings_usdc/);
+  assert.match(distribution, /API award rows alone remain zero purchases and zero revenue/);
   assert.match(distribution, /Public funded-demand watcher/);
   assert.doesNotMatch(service, /EnvironmentFile/);
 });

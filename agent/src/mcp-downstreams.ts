@@ -96,6 +96,181 @@ export type KiloMarketplaceStatus = {
   skillverdict_contamination_risk: boolean;
 };
 
+export type AgentFinderCatalogEntryStatus = {
+  listed: true;
+  contract_verified: boolean;
+  identifier: string | null;
+  registry_url: string | null;
+};
+
+export type AgentFinderRegistryStatus = {
+  contract_verified: boolean;
+  name: string | null;
+  version: string | null;
+  endpoint: string | null;
+  active: boolean;
+  latest: boolean;
+};
+
+export type AgentFinderSearchStatus = {
+  listed: boolean;
+  contract_verified: boolean;
+  rank: number | null;
+  total_results: number;
+  identifier: string | null;
+  registry_url: string | null;
+};
+
+export function parseAgentFinderCatalogEntry(
+  value: unknown,
+  expectedIdentifier: string,
+  expectedRegistryUrl: string,
+  expectedServerName: string,
+): AgentFinderCatalogEntryStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Agent Finder catalog entry is not an object.");
+  }
+  const entry = value as Record<string, any>;
+  if (typeof entry.identifier !== "string" || entry.identifier.length > 500 ||
+    typeof entry.displayName !== "string" || entry.displayName.length > 200 ||
+    typeof entry.mediaType !== "string" || entry.mediaType.length > 200 ||
+    typeof entry.url !== "string" || entry.url.length > 2_048 ||
+    typeof entry.description !== "string" || entry.description.length > 1_000 ||
+    !entry.metadata || typeof entry.metadata !== "object" || Array.isArray(entry.metadata)) {
+    throw new Error("Agent Finder catalog entry is malformed or unbounded.");
+  }
+  const contractVerified = entry.identifier === expectedIdentifier &&
+    entry.displayName === "BountyVerdict Agent Decision Tools" &&
+    entry.mediaType === "application/mcp-server+json" &&
+    entry.url === expectedRegistryUrl &&
+    entry.description === "Choose GitHub bounties, diagnose Actions failures, audit agent instructions, and detect MCP drift." &&
+    entry.metadata.sourceSet === "bountyverdict" &&
+    entry.metadata.repoPath === "server.json" &&
+    entry.metadata.serverName === expectedServerName &&
+    entry.metadata.version === "latest";
+  return {
+    listed: true,
+    contract_verified: contractVerified,
+    identifier: entry.identifier,
+    registry_url: entry.url,
+  };
+}
+
+export function parseAgentFinderRegistryLatest(
+  value: unknown,
+  expectedServerName: string,
+  expectedRepository: string,
+  expectedEndpoint: string,
+): AgentFinderRegistryStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Agent Finder MCP Registry response is not an object.");
+  }
+  const payload = value as Record<string, any>;
+  const server = payload.server;
+  const official = payload._meta?.["io.modelcontextprotocol.registry/official"];
+  if (!server || typeof server !== "object" || Array.isArray(server) ||
+    typeof server.name !== "string" || server.name.length > 500 ||
+    typeof server.title !== "string" || server.title.length > 200 ||
+    typeof server.description !== "string" || server.description.length > 1_000 ||
+    typeof server.version !== "string" || !server.version || server.version.length > 100 ||
+    !server.repository || typeof server.repository !== "object" || Array.isArray(server.repository) ||
+    !Array.isArray(server.remotes) || server.remotes.length > 20 ||
+    server.remotes.some((remote: unknown) => !remote || typeof remote !== "object" || Array.isArray(remote) ||
+      typeof (remote as Record<string, unknown>).type !== "string" ||
+      typeof (remote as Record<string, unknown>).url !== "string" ||
+      String((remote as Record<string, unknown>).url).length > 2_048) ||
+    !official || typeof official !== "object" || Array.isArray(official)) {
+    throw new Error("Agent Finder MCP Registry response is malformed or unbounded.");
+  }
+  const matchingRemotes = server.remotes.filter((remote: Record<string, unknown>) =>
+    remote.type === "streamable-http" && remote.url === expectedEndpoint
+  );
+  const active = official.status === "active";
+  const latest = official.isLatest === true;
+  return {
+    contract_verified: server.name === expectedServerName &&
+      server.title === "BountyVerdict Agent Decision Tools" &&
+      server.description === "Choose GitHub bounties, diagnose Actions failures, audit agent instructions, and detect MCP drift." &&
+      server.repository.url === expectedRepository && server.repository.source === "github" &&
+      matchingRemotes.length === 1 && active && latest,
+    name: server.name,
+    version: server.version,
+    endpoint: matchingRemotes.length === 1 ? expectedEndpoint : null,
+    active,
+    latest,
+  };
+}
+
+export function parseAgentFinderSearchPage(
+  html: unknown,
+  expectedIdentifier: string,
+  expectedRegistryUrl: string,
+): AgentFinderSearchStatus {
+  if (typeof html !== "string" || html.length > 5_000_000) {
+    throw new Error("Agent Finder search page is invalid or unbounded.");
+  }
+  const marker = 'data-target="react-app.embeddedData"';
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex < 0 || html.indexOf(marker, markerIndex + marker.length) >= 0) {
+    throw new Error("Agent Finder search page has missing or duplicate embedded data.");
+  }
+  const scriptStart = html.lastIndexOf("<script", markerIndex);
+  const bodyStart = html.indexOf(">", markerIndex);
+  const bodyEnd = bodyStart >= 0 ? html.indexOf("</script>", bodyStart + 1) : -1;
+  if (scriptStart < 0 || markerIndex - scriptStart > 1_000 || bodyStart < 0 || bodyEnd < 0 || bodyEnd - bodyStart > 2_000_000) {
+    throw new Error("Agent Finder search page embedded data is malformed or unbounded.");
+  }
+  let embedded: Record<string, any>;
+  try {
+    embedded = JSON.parse(html.slice(bodyStart + 1, bodyEnd)) as Record<string, any>;
+  } catch {
+    throw new Error("Agent Finder search page embedded data is not valid JSON.");
+  }
+  const serversData = embedded?.payload?.agentFinderRoute?.serversData;
+  const servers = serversData?.servers;
+  const metadata = serversData?.metadata;
+  if (!Array.isArray(servers) || servers.length > 100 ||
+    !metadata || typeof metadata !== "object" || Array.isArray(metadata) ||
+    !Number.isSafeInteger(metadata.count) || metadata.count !== servers.length ||
+    !Number.isSafeInteger(metadata.total) || metadata.total < 0 || metadata.total > 1_000_000 ||
+    servers.some((server: unknown) => !server || typeof server !== "object" || Array.isArray(server) ||
+      typeof (server as Record<string, unknown>).id !== "string" || String((server as Record<string, unknown>).id).length > 500 ||
+      typeof (server as Record<string, unknown>).display_name !== "string" || String((server as Record<string, unknown>).display_name).length > 200 ||
+      typeof (server as Record<string, unknown>).description !== "string" || String((server as Record<string, unknown>).description).length > 1_000 ||
+      typeof (server as Record<string, unknown>).url !== "string" || String((server as Record<string, unknown>).url).length > 2_048 ||
+      typeof (server as Record<string, unknown>).extension_type !== "string" || String((server as Record<string, unknown>).extension_type).length > 200)) {
+    throw new Error("Agent Finder search results are malformed or unbounded.");
+  }
+  const matches = servers
+    .map((entry: Record<string, unknown>, index: number) => ({ entry, rank: index + 1 }))
+    .filter(({ entry }) => entry.id === expectedIdentifier || entry.url === expectedRegistryUrl ||
+      entry.display_name === "BountyVerdict Agent Decision Tools");
+  if (matches.length > 1) throw new Error("Agent Finder search duplicated the BountyVerdict entry.");
+  if (matches.length === 0) {
+    return {
+      listed: false,
+      contract_verified: false,
+      rank: null,
+      total_results: metadata.total,
+      identifier: null,
+      registry_url: null,
+    };
+  }
+  const { entry, rank } = matches[0];
+  return {
+    listed: true,
+    contract_verified: entry.id === expectedIdentifier && entry.name === expectedIdentifier &&
+      entry.full_name === expectedIdentifier && entry.api_name === expectedIdentifier &&
+      entry.display_name === "BountyVerdict Agent Decision Tools" &&
+      entry.description === "Choose GitHub bounties, diagnose Actions failures, audit agent instructions, and detect MCP drift." &&
+      entry.url === expectedRegistryUrl && entry.extension_type === "MCP server",
+    rank,
+    total_results: metadata.total,
+    identifier: String(entry.id),
+    registry_url: String(entry.url),
+  };
+}
+
 export function parseAwesomeMcpServersReadme(
   markdown: unknown,
   expectedRepository: string,

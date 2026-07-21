@@ -34,6 +34,7 @@ import {
 } from "../src/marketplace-telemetry.ts";
 import { loadDistributionMonitorConfiguration } from "../src/monitor-configuration.ts";
 import { canReuseMcpDownstreamStatus, glamaConnectorStatus, parseMcpubGetResponse, parseMcpubSearchLiveResponse, parseOneMcpRegistryShow, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
+import { TASKMARKET_OWNER_IDENTITIES, TASKMARKET_WORKER_ADDRESS } from "../src/taskmarket-demand.ts";
 
 const CDP_DISCOVERY = "https://api.cdp.coinbase.com/platform/v2/x402/discovery";
 const AGENTIC_MARKET_SERVICE =
@@ -78,6 +79,9 @@ const monitorNoteFile = process.env.MONITOR_NOTE_FILE || `${homedir()}/notes/mim
 const trackedCostsInput = configuration.trackedCostsUsdc;
 const historicalTestGasEth = process.env.HISTORICAL_TEST_GAS_ETH || "0.00000525";
 const reportOnly = configuration.reportOnly;
+if (!reportOnly && process.env.BOUNTYVERDICT_AUDITED_ROTATION_ACTIVE !== "distribution") {
+  throw new Error("Full marketplace retrieval must run through run-audited-monitor.ts after establishing a draining funnel rotation.");
+}
 const settlementBuyer = configuration.settlementBuyerAddress;
 const settlementCanaryEnabled = configuration.settlementCanaryEnabled;
 const the402ApiKey = configuration.the402ApiKey;
@@ -1036,10 +1040,14 @@ async function publicDemandStatus(): Promise<Record<string, any>> {
   const state = JSON.parse(await readFile(publicDemandStateFile, "utf8")) as Record<string, any>;
   const molt = state.sources?.moltjobs;
   const open = state.sources?.openjobs;
-  if (state.schema_version !== 1 || state.read_only !== true || state.actions_enabled !== false ||
+  const taskmarket = state.sources?.taskmarket;
+  const taskmarketTracked = taskmarket?.tracked_worker;
+  if (state.schema_version !== 2 || state.read_only !== true || state.actions_enabled !== false ||
     state.errors !== 0 || typeof state.checked_at !== "string" || !Number.isFinite(Date.parse(state.checked_at)) ||
     !molt || typeof molt !== "object" || Array.isArray(molt) ||
-    !open || typeof open !== "object" || Array.isArray(open)) {
+    !open || typeof open !== "object" || Array.isArray(open) ||
+    !taskmarket || typeof taskmarket !== "object" || Array.isArray(taskmarket) ||
+    !taskmarketTracked || typeof taskmarketTracked !== "object" || Array.isArray(taskmarketTracked)) {
     throw new Error("Public demand watcher state is malformed or not strictly read-only.");
   }
   const ageMs = Date.now() - Date.parse(state.checked_at);
@@ -1049,6 +1057,9 @@ async function publicDemandStatus(): Promise<Record<string, any>> {
     "rejected_unfunded_or_expired", "rejected_funded_non_matches",
   ]], [open, [
     "open_jobs", "usdc_open_jobs", "eligible_usdc_open_jobs", "wage_open_jobs", "exact_candidate_count",
+  ]], [taskmarket, [
+    "open_tasks", "api_escrow_backed_open_tasks", "unassigned_unexpired_submission_open_tasks",
+    "exact_candidate_count", "rejected_escrow_non_matches", "excluded_expired_assigned_or_closed_window",
   ]]] as Array<[Record<string, any>, string[]]>) {
     for (const field of fields) {
       if (!Number.isSafeInteger(source[field]) || source[field] < 0) {
@@ -1060,8 +1071,152 @@ async function publicDemandStatus(): Promise<Record<string, any>> {
     }
   }
   if (!/^\d+(?:\.\d{1,6})?$/.test(molt.nominal_open_budget_usdc) ||
-    !/^\d+(?:\.\d{1,6})?$/.test(molt.verified_funded_budget_usdc)) {
+    !/^\d+(?:\.\d{1,6})?$/.test(molt.verified_funded_budget_usdc) ||
+    !/^\d+(?:\.\d{1,6})?$/.test(taskmarket.api_escrow_backed_reward_usdc) ||
+    !/^\d+(?:\.\d{1,6})?$/.test(taskmarket.unassigned_unexpired_reward_usdc)) {
     throw new Error("Public demand watcher budget telemetry is invalid.");
+  }
+  const taskmarketUsdcAtomic = (value: unknown): bigint | null => {
+    if (typeof value !== "string" || !/^\d+(?:\.\d{1,6})?$/.test(value)) return null;
+    const [whole, fraction = ""] = value.split(".");
+    const atomic = BigInt(whole) * 1_000_000n + BigInt((fraction + "000000").slice(0, 6));
+    return atomic <= 1_000_000_000_000_000n ? atomic : null;
+  };
+  const taskmarketAwardAmounts = (award: Record<string, any> | null | undefined) => {
+    if (!award || typeof award !== "object" || Array.isArray(award)) return null;
+    const gross = taskmarketUsdcAtomic(award.gross_usdc);
+    const workerPayment = taskmarketUsdcAtomic(award.worker_payment_usdc);
+    const platformFee = taskmarketUsdcAtomic(award.platform_fee_usdc);
+    if (gross === null || workerPayment === null || platformFee === null || workerPayment <= 0n ||
+      gross !== workerPayment + platformFee) return null;
+    return { gross, workerPayment, platformFee };
+  };
+  for (const field of [
+    "tracked_submissions", "pending_submissions", "rejected_submissions", "not_awarded_submissions",
+    "unverified_award_submissions", "settled_submissions",
+  ]) {
+    if (!Number.isSafeInteger(taskmarketTracked[field]) || taskmarketTracked[field] < 0) {
+      throw new Error(`Taskmarket tracked counter ${field} is invalid.`);
+    }
+  }
+  if (typeof taskmarketTracked.worker_address !== "string" ||
+    taskmarketTracked.worker_address.toLowerCase() !== TASKMARKET_WORKER_ADDRESS.toLowerCase() ||
+    !/^\d+(?:\.\d{1,6})?$/.test(taskmarketTracked.settled_worker_earnings_usdc) ||
+    !Array.isArray(taskmarketTracked.submissions) ||
+    taskmarketTracked.submissions.length !== taskmarketTracked.tracked_submissions ||
+    taskmarketTracked.tracked_submissions !== taskmarketTracked.pending_submissions +
+      taskmarketTracked.rejected_submissions + taskmarketTracked.not_awarded_submissions +
+      taskmarketTracked.unverified_award_submissions + taskmarketTracked.settled_submissions) {
+    throw new Error("Taskmarket tracked worker accounting is malformed or does not reconcile.");
+  }
+  let settledRecords = 0;
+  let unverifiedAwardRecords = 0;
+  let settledWorkerAtomic = 0n;
+  let pendingGrossAtomic = 0n;
+  let pendingNetAtomic = 0n;
+  const consumedReceiptEvidence = new Set<string>();
+  const consumedCanonicalEvents = new Set<string>();
+  for (const record of taskmarketTracked.submissions as Array<Record<string, any>>) {
+    if (!/^0x[a-f0-9]{64}$/i.test(record.task_id || "") ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(record.submission_id || "") ||
+      !/^0x[a-f0-9]{64}$/i.test(record.submit_tx_hash || "") ||
+      !["pending_award", "rejected", "not_awarded", "award_unverified", "settled_award"].includes(record.submission_state)) {
+      throw new Error("Taskmarket tracked submission record is malformed.");
+    }
+    const recordGrossPotential = taskmarketUsdcAtomic(record.escrow_reward_usdc);
+    const recordNetPotential = taskmarketUsdcAtomic(record.potential_net_usdc);
+    if (recordGrossPotential === null || recordGrossPotential <= 0n || recordNetPotential === null ||
+      recordNetPotential <= 0n || recordNetPotential > recordGrossPotential) {
+      throw new Error("Taskmarket tracked submission potential amounts are malformed.");
+    }
+    if (record.submission_state === "pending_award") {
+      pendingGrossAtomic += recordGrossPotential;
+      pendingNetAtomic += recordNetPotential;
+    }
+    if (record.submission_state === "settled_award") {
+      settledRecords += 1;
+      const platformAmounts = taskmarketAwardAmounts(record.platform_award);
+      const settlementAmounts = taskmarketAwardAmounts(record.settlement);
+      const onchain = record.settlement?.onchain_evidence;
+      const onchainWorkerAtomic = typeof onchain?.worker_payment_atomic === "string" &&
+        /^[1-9][0-9]{0,15}$/.test(onchain.worker_payment_atomic)
+        ? BigInt(onchain.worker_payment_atomic)
+        : null;
+      const onchainPlatformFeeAtomic = typeof onchain?.platform_fee_atomic === "string" &&
+        /^(?:0|[1-9][0-9]{0,15})$/.test(onchain.platform_fee_atomic)
+        ? BigInt(onchain.platform_fee_atomic)
+        : null;
+      const onchainRequester = String(onchain?.onchain_requester_address || "").toLowerCase();
+      const canonicalEventIndex = onchain?.task_completed_log_index;
+      if (!record.settlement || !/^0x[a-f0-9]{64}$/i.test(record.settlement.settlement_tx_hash || "") ||
+        !record.platform_award || !/^0x[a-f0-9]{64}$/i.test(record.platform_award.settlement_tx_hash || "") ||
+        record.platform_award.settlement_tx_hash.toLowerCase() !== record.settlement.settlement_tx_hash.toLowerCase() ||
+        !platformAmounts || !settlementAmounts || platformAmounts.gross !== settlementAmounts.gross ||
+        platformAmounts.workerPayment !== settlementAmounts.workerPayment ||
+        platformAmounts.platformFee !== settlementAmounts.platformFee || onchainWorkerAtomic === null ||
+        onchainPlatformFeeAtomic === null || onchainPlatformFeeAtomic !== settlementAmounts.platformFee ||
+        onchainWorkerAtomic !== settlementAmounts.workerPayment || onchain?.verified !== true ||
+        onchain?.network !== "eip155:8453" || onchain?.task_id_topic_present !== true ||
+        String(onchain?.task_id || "").toLowerCase() !== String(record.task_id).toLowerCase() ||
+        String(onchain?.settlement_tx_hash || "").toLowerCase() !== record.settlement.settlement_tx_hash.toLowerCase() ||
+        String(onchain?.taskmarket_settlement_contract || "").toLowerCase() !==
+          "0xddc6cc3e4d11c1f3527b867c7dad4ed9869c33f7" ||
+        String(onchain?.task_completed_topic || "").toLowerCase() !==
+          "0x0c01e82f21f6dc480e3553e62cba7e6511685aa15d312f971ea64663bef07ecb" ||
+        !Number.isSafeInteger(canonicalEventIndex) || Number(canonicalEventIndex) < 0 ||
+        !/^0x[a-f0-9]{40}$/i.test(onchainRequester) ||
+        onchainRequester !== String(record.platform_award.requester_address || "").toLowerCase() ||
+        onchainRequester !== String(record.settlement.requester_address || "").toLowerCase() ||
+        onchainRequester === TASKMARKET_WORKER_ADDRESS.toLowerCase() ||
+        TASKMARKET_OWNER_IDENTITIES.some((address) => address.toLowerCase() === onchainRequester) ||
+        String(onchain?.base_usdc_address || "").toLowerCase() !==
+          "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" ||
+        String(onchain?.transfer_source_address || "").toLowerCase() !==
+          "0xddc6cc3e4d11c1f3527b867c7dad4ed9869c33f7" ||
+        String(onchain?.transfer_source_topic || "").toLowerCase() !==
+          "0x000000000000000000000000ddc6cc3e4d11c1f3527b867c7dad4ed9869c33f7" ||
+        String(onchain?.worker_address || "").toLowerCase() !== TASKMARKET_WORKER_ADDRESS.toLowerCase() ||
+        !Number.isSafeInteger(onchain?.matching_transfer_log_index) ||
+        Number(onchain.matching_transfer_log_index) < 0) {
+        throw new Error("Taskmarket settled submission lacks authoritative Base receipt evidence.");
+      }
+      const canonicalEventKey = `eip155:8453:${record.settlement.settlement_tx_hash.toLowerCase()}:${Number(canonicalEventIndex)}`;
+      if (onchain.authoritative_proof_key !== canonicalEventKey || consumedCanonicalEvents.has(canonicalEventKey)) {
+        throw new Error("Taskmarket settled submissions reuse or misstate canonical event evidence.");
+      }
+      const evidenceKey = `${record.settlement.settlement_tx_hash.toLowerCase()}:${Number(onchain.matching_transfer_log_index)}`;
+      if (consumedReceiptEvidence.has(evidenceKey)) {
+        throw new Error("Taskmarket settled submissions reuse the same receipt transfer evidence.");
+      }
+      consumedCanonicalEvents.add(canonicalEventKey);
+      consumedReceiptEvidence.add(evidenceKey);
+      settledWorkerAtomic += settlementAmounts.workerPayment;
+    } else if (record.submission_state === "award_unverified") {
+      unverifiedAwardRecords += 1;
+      if (!record.platform_award || !/^0x[a-f0-9]{64}$/i.test(record.platform_award.settlement_tx_hash || "") ||
+        !taskmarketAwardAmounts(record.platform_award) || !record.award_verification ||
+        record.award_verification.verified !== false || record.settlement !== null) {
+        throw new Error("Taskmarket unverified award state is malformed or contains revenue accounting.");
+      }
+    } else if (record.settlement !== null) {
+      throw new Error("Taskmarket unsettled submission contains settlement accounting.");
+    }
+  }
+  if (settledRecords !== taskmarketTracked.settled_submissions) {
+    throw new Error("Taskmarket settled submission records disagree with their counter.");
+  }
+  if (unverifiedAwardRecords !== taskmarketTracked.unverified_award_submissions) {
+    throw new Error("Taskmarket unverified award records disagree with their counter.");
+  }
+  const reportedSettledWorkerAtomic = taskmarketUsdcAtomic(taskmarketTracked.settled_worker_earnings_usdc);
+  if (reportedSettledWorkerAtomic === null || reportedSettledWorkerAtomic !== settledWorkerAtomic) {
+    throw new Error("Taskmarket reported worker earnings do not equal the sum of uniquely verified settlement records.");
+  }
+  const reportedPendingGrossAtomic = taskmarketUsdcAtomic(taskmarketTracked.pending_gross_potential_usdc);
+  const reportedPendingNetAtomic = taskmarketUsdcAtomic(taskmarketTracked.pending_net_potential_usdc);
+  if (reportedPendingGrossAtomic === null || reportedPendingNetAtomic === null ||
+    reportedPendingGrossAtomic !== pendingGrossAtomic || reportedPendingNetAtomic !== pendingNetAtomic) {
+    throw new Error("Taskmarket pending opportunity totals do not equal the pending submission records.");
   }
   return {
     healthy: true,
@@ -1071,8 +1226,9 @@ async function publicDemandStatus(): Promise<Record<string, any>> {
     actions_enabled: false,
     moltjobs: molt,
     openjobs: open,
+    taskmarket,
     excluded: state.sources.excluded || {},
-    measurement: "public_inventory_and_exact_fit_acquisition_evidence_never_purchase_or_revenue",
+    measurement: "public_inventory_exact_fits_submissions_and_API_awards_are_not_purchases_or_revenue; only non-owner awards with successful Base receipts, exact task topics, and exact Base-USDC worker transfers settle",
   };
 }
 
@@ -1285,6 +1441,7 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
       cline_marketplace: state.cline_marketplace || null,
       kilo_marketplace: state.kilo_marketplace || null,
       gemini_cli_gallery: state.gemini_cli_gallery || null,
+      agent_finder_catalog: state.agent_finder_catalog || null,
       ard_catalog: state.ard_catalog || null,
       agent402: state.agent402 || null,
       x402scout: state.x402scout || null,
@@ -1596,20 +1753,23 @@ function renderMonitorNote(report: Record<string, any>): string {
   const directRevenueValue = Number(report.revenue?.recognized_usdc || 0);
   const marketplaceRevenueValue = Number(report.marketplaces?.the402?.settled_usd || 0);
   const nearRevenueValue = Number(report.marketplaces?.near?.earned_usdc_balance || 0);
-  const revenueValue = directRevenueValue + marketplaceRevenueValue + nearRevenueValue;
+  const taskmarketTracked = report.acquisition?.public_demand_watch?.taskmarket?.tracked_worker || {};
+  const taskmarketRevenueValue = Number(taskmarketTracked.settled_worker_earnings_usdc || 0);
+  const revenueValue = directRevenueValue + marketplaceRevenueValue + nearRevenueValue + taskmarketRevenueValue;
   const costsValue = Number(trackedCostsInput);
   const profitValue = revenueValue - costsValue;
   const purchases = report.revenue?.purchases || {};
   const marketplacePurchases = Number(report.marketplaces?.the402?.completed_jobs || 0);
   const subscriptionPurchases = Number(report.marketplaces?.the402?.subscription_purchases || 0);
   const nearPurchases = Number(report.marketplaces?.near?.completed_external_jobs || 0);
+  const taskmarketPurchases = Number(taskmarketTracked.settled_submissions || 0);
   const payanAttributedSales = Number(report.marketplaces?.payan?.delivered_external_sales || 0);
   const payanDemand = report.marketplaces?.payan?.demand_capture || {};
   const agenticIndexed = report.marketplaces?.agentic_market?.indexed_products || {};
   const agenticMissing = Array.isArray(report.marketplaces?.agentic_market?.missing_products)
     ? report.marketplaces.agentic_market.missing_products
     : [];
-  const totalPurchases = Number(purchases.total || 0) + marketplacePurchases + subscriptionPurchases + nearPurchases;
+  const totalPurchases = Number(purchases.total || 0) + marketplacePurchases + subscriptionPurchases + nearPurchases + taskmarketPurchases;
   const skillInstalls = report.acquisition?.skills_sh?.install_counts || {};
   const totalSkillInstalls = report.acquisition?.skills_sh?.total_installs;
   const skillsShSearch = report.acquisition?.skills_sh?.search_index || {};
@@ -1617,6 +1777,7 @@ function renderMonitorNote(report: Record<string, any>): string {
   const publicDemand = report.acquisition?.public_demand_watch || {};
   const moltDemand = publicDemand.moltjobs || {};
   const openDemand = publicDemand.openjobs || {};
+  const taskmarketDemand = publicDemand.taskmarket || {};
   const buyerQuerySummary = report.discovery?.buyer_query_summary || {};
   const buyerQueryBenchmark = report.discovery?.buyer_query_benchmark || {};
   const buyerBenchmarkSummary = Number.isFinite(Number(buyerQuerySummary.query_count))
@@ -1659,6 +1820,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Current profit (recognized-USDC basis):** ${money(profitValue)} (customer revenue minus ${money(costsValue)} tracked USD costs)
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${totalPurchases} / 10 genuine external purchases
+- **Pending Taskmarket opportunity (not revenue):** ${Number(taskmarketTracked.pending_submissions || 0)} submissions; $${String(taskmarketTracked.pending_gross_potential_usdc || "0")} gross / $${String(taskmarketTracked.pending_net_potential_usdc || "0")} net if awarded
 - **Neutral buyer-query retrieval:** ${buyerBenchmarkSummary}
 - **CDP Bazaar activity deltas:** ${cdpMerchantQualityAvailable ? (cdpReconciliationProducts.length ? `${cdpReconciliationProducts.join(", ")} changed and require settlement reconciliation` : "no counter or call-recency advance from the owner-contaminated baseline") : "baseline pending the next audited marketplace observation"} (never revenue by itself)
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
@@ -1679,7 +1841,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Current funnel diagnosis:** ${funnel.learning_stage || "unavailable"}
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
 - **Experiment next action:** ${experiment.next_action?.code || "unavailable"} — ${experiment.next_action?.reason || "No classified action available."}
-- **Customer purchases:** ${totalPurchases} (${Number(purchases.total || 0)} direct x402; ${marketplacePurchases} the402 one-off jobs; ${subscriptionPurchases} the402 subscriptions; ${nearPurchases} NEAR Agent Market jobs)
+- **Customer purchases:** ${totalPurchases} (${Number(purchases.total || 0)} direct x402; ${marketplacePurchases} the402 one-off jobs; ${subscriptionPurchases} the402 subscriptions; ${nearPurchases} NEAR Agent Market jobs; ${taskmarketPurchases} onchain-verified Taskmarket awards)
 - **the402 listing contracts:** ${report.marketplaces?.the402?.listing_contracts_verified ? "6 / 6 exact input and deliverable schemas verified" : "unavailable or drifted"}
 - **the402 buyer-request feed:** ${report.marketplaces?.the402?.request_notifications_enabled ? "enabled; unset minimum budgets normalized before exact-match autonomous bidding" : "unavailable"}
 - **the402 service attempts:** ${Number(the402OutcomeTotals.total_jobs || 0)} total (${Number(the402OutcomeTotals.successful_jobs || 0)} successful, ${Number(the402OutcomeTotals.failed_jobs || 0)} failed, ${Number(the402OutcomeTotals.disputed_jobs || 0)} disputed; marketplace telemetry, not settlement proof)
@@ -1687,7 +1849,8 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **NEAR Agent Market listings:** ${report.marketplaces?.near?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"}
 - **PayanAgent offers:** ${report.marketplaces?.payan?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"} (${payanAttributedSales} delivered sales, attributed inside direct onchain totals)
 - **Payan exact-fit demand capture:** ${payanDemand.healthy ? "enabled and healthy" : "unavailable or degraded"}; ${Number(payanDemand.open_requests_seen || 0)} open seen, ${Number(payanDemand.exact_matches || 0)} exact fits, ${Number(payanDemand.tracked_requests || 0)} tracked bids, ${Number(payanDemand.accepted || 0)} accepted, ${Number(payanDemand.fulfilled || 0)} fulfilled, ${Number(payanDemand.approved || 0)} approved (never bids on incomplete or mismatched briefs)
-- **Public funded-demand watcher:** ${publicDemand.healthy ? "healthy and strictly read-only" : "unavailable or degraded"}; MoltJobs ${Number(moltDemand.verified_funded_open_jobs || 0)} verified funded / $${String(moltDemand.verified_funded_budget_usdc || "0")} USDC and ${Number(moltDemand.exact_candidate_count || 0)} exact fits; OpenJobs ${Number(openDemand.usdc_open_jobs || 0)} USDC jobs and ${Number(openDemand.exact_candidate_count || 0)} exact fits (inventory is never counted as revenue)
+- **Public funded-demand watcher:** ${publicDemand.healthy ? "healthy and strictly read-only" : "unavailable or degraded"}; MoltJobs ${Number(moltDemand.verified_funded_open_jobs || 0)} verified funded / $${String(moltDemand.verified_funded_budget_usdc || "0")} USDC and ${Number(moltDemand.exact_candidate_count || 0)} exact fits; OpenJobs ${Number(openDemand.usdc_open_jobs || 0)} USDC jobs and ${Number(openDemand.exact_candidate_count || 0)} exact fits; Taskmarket ${Number(taskmarketDemand.api_escrow_backed_open_tasks || 0)} API escrow-backed / $${String(taskmarketDemand.api_escrow_backed_reward_usdc || "0")} USDC and ${Number(taskmarketDemand.exact_candidate_count || 0)} exact existing-product fits (inventory is never revenue)
+- **Taskmarket worker settlement:** ${Number(taskmarketTracked.tracked_submissions || 0)} tracked submissions for ${taskmarketTracked.worker_address || "unavailable"}; ${Number(taskmarketTracked.pending_submissions || 0)} pending ($${String(taskmarketTracked.pending_gross_potential_usdc || "0")} gross / $${String(taskmarketTracked.pending_net_potential_usdc || "0")} net potential), ${Number(taskmarketTracked.rejected_submissions || 0)} rejected, ${Number(taskmarketTracked.unverified_award_submissions || 0)} API awards awaiting/failed Base verification, ${taskmarketPurchases} onchain-verified awards / ${money(taskmarketRevenueValue)} worker earnings (submissions, submit transactions, and API award rows alone remain zero purchases and zero revenue)
 - **Agentic Market automatic directory:** ${report.marketplaces?.agentic_market?.exact_contracts_verified ? `${report.marketplaces.agentic_market.endpoint_count} / 7 exact contracts indexed` : "unavailable or drifted"}${agenticMissing.length ? `; pending ${agenticMissing.join(", ")}` : ""}
 - **Agent402 open router:** ${report.acquisition?.agent402?.listed ? `${report.acquisition.agent402.found_queries ?? 0} / ${report.acquisition.agent402.query_count ?? 7} unbranded buyer queries retrieve the exact route; ${report.acquisition.agent402.top_three_queries ?? 0} top-three` : "unavailable or missing"} (${report.acquisition?.agent402?.listing_source || "unknown source"}; owner-run benchmark, not impressions)
 - **x402scan registry:** ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} paid endpoints (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence only, never a purchase)
@@ -1710,6 +1873,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Cline in-agent marketplace:** ${report.acquisition?.cline_marketplace?.status || "unavailable"} (${report.acquisition?.cline_marketplace?.url || "https://github.com/cline/marketplace/pull/13"}; exact PR/catalog checks only, never an impression, install, tool call, purchase, or revenue)
 - **Kilo in-agent marketplace:** ${report.acquisition?.kilo_marketplace?.status || "unavailable"} (${report.acquisition?.kilo_marketplace?.url || "https://github.com/Kilo-Org/kilo-marketplace/pull/192"}; exact PR/catalog checks only, never an impression, install, tool call, purchase, or revenue)
 - **Gemini CLI Extensions Gallery:** ${report.acquisition?.gemini_cli_gallery?.status || "unavailable"} (${report.acquisition?.gemini_cli_gallery?.url || "https://geminicli.com/extensions/"}; exact daily-catalog checks only, never an impression, install, tool call, purchase, or revenue)
+- **GitHub Agent Finder:** ${report.acquisition?.agent_finder_catalog?.status || "unavailable"}; PR #10 ${report.acquisition?.agent_finder_catalog?.pr_status || "unknown"}; exact catalog ${report.acquisition?.agent_finder_catalog?.catalog_contract_verified ? "verified" : "pending"}; exact owner-run search ${report.acquisition?.agent_finder_catalog?.search_contract_verified ? `listed at rank ${report.acquisition.agent_finder_catalog.search_rank}` : "not indexed"} (${report.acquisition?.agent_finder_catalog?.url || "https://github.com/github/agentfinder-catalog/pull/10"}; PR, catalog, and search presence are distribution only, never an impression, install, tool call, purchase, or revenue)
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
 - **Unrelated incoming transfers:** ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
 - **Last refreshed:** ${report.checked_at}
@@ -1723,8 +1887,8 @@ The seven-product suite is healthy in production and unattended GitHub-to-Cloudf
 ## What is next
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
-2. Measure whether agents discover the official MCP Registry entry, ARD catalog, general remote-MCP handoff, mcpub registration, AgentNDX listing, MCPRepository listing, Awesome MCP Servers entry, TensorBlock MCP Index, Agentage directory, Docker MCP Registry, MCPServers.org entry, MCP.Directory entry, Cline or Kilo in-agent marketplace entry, Gemini CLI extension, or GitHub Actions intent page; then call \`tools/list\`, select a specific tool, and present payment. Track the ARD catalog fetch surface separately and wait for evidence of third-party registry ingestion before calling it indexed. Watch scheduled Qt Creator and Glama propagation plus whether Agent Tools Cloud adds MCPDriftVerdict or broadens its incomplete suite metadata. Do not confuse registry presence, crawler verification, or owner checks with buyer demand.
-3. Monitor AgentNDX review, TensorBlock issue/PR/catalog activation, Agentage official-registry ingestion, Docker MCP Registry PR/catalog activation, MCPServers.org submission 4842, MCP.Directory review, Cline and Kilo marketplace PR/catalog activation, Gemini CLI's daily gallery crawl, GitHub Skill, AgentTool, AgentSkill, Agent Plugins PR/catalog activation, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
+2. Measure whether agents discover the official MCP Registry entry, ARD catalog, general remote-MCP handoff, mcpub registration, AgentNDX listing, MCPRepository listing, Awesome MCP Servers entry, TensorBlock MCP Index, Agentage directory, Docker MCP Registry, MCPServers.org entry, MCP.Directory entry, Cline or Kilo in-agent marketplace entry, Gemini CLI extension, GitHub Agent Finder entry, or GitHub Actions intent page; then call \`tools/list\`, select a specific tool, and present payment. Track the ARD catalog fetch surface separately and wait for evidence of third-party registry ingestion before calling it indexed. Watch scheduled Qt Creator and Glama propagation plus whether Agent Tools Cloud adds MCPDriftVerdict or broadens its incomplete suite metadata. Do not confuse registry presence, crawler verification, or owner checks with buyer demand.
+3. Monitor AgentNDX review, TensorBlock issue/PR/catalog activation, Agentage official-registry ingestion, Docker MCP Registry PR/catalog activation, MCPServers.org submission 4842, MCP.Directory review, Cline and Kilo marketplace PR/catalog activation, Gemini CLI's daily gallery crawl, GitHub Agent Finder PR #10/catalog/search activation, GitHub Skill, AgentTool, AgentSkill, Agent Plugins PR/catalog activation, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
 4. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, Agent402 listing and unbranded retrieval, all seven x402scan routes, six 402 Index listings, x402gle synthesized skills, Monetize Your Agent and 402directory reviews, Agentic Market's automatic mirror, null-tolerant exact-match buyer-request feed, edge challenges, and exact receipt attribution.
 5. Use the neutral buyer-query benchmark and edge funnel—not best-case phrase ranks—to decide the next distribution change after the frozen experiment. Do not build an eighth product before ten external purchases are recognized.
 
@@ -1801,6 +1965,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Cline in-agent marketplace: ${report.acquisition?.cline_marketplace?.status || "unavailable"}; PR ${report.acquisition?.cline_marketplace?.pr_status || "unknown"}; exact marketplace install/wizard contract ${report.acquisition?.cline_marketplace?.contract_verified ? "verified in the live catalog" : "pending catalog publication"} (${report.acquisition?.cline_marketplace?.url || "https://github.com/cline/marketplace/pull/13"}; PR or catalog presence is never an impression, install, tool call, purchase, or revenue)
 - Kilo in-agent marketplace: ${report.acquisition?.kilo_marketplace?.status || "unavailable"}; PR ${report.acquisition?.kilo_marketplace?.pr_status || "unknown"}; exact secret-free remote contract ${report.acquisition?.kilo_marketplace?.contract_verified ? "verified in the live catalog" : "pending catalog publication"} (${report.acquisition?.kilo_marketplace?.url || "https://github.com/Kilo-Org/kilo-marketplace/pull/192"}; PR or catalog presence is never an impression, install, tool call, purchase, or revenue)
 - Gemini CLI Extensions Gallery: ${report.acquisition?.gemini_cli_gallery?.status || "unavailable"}; exact remote MCP contract ${report.acquisition?.gemini_cli_gallery?.contract_verified ? "verified in the live catalog" : "pending the daily catalog crawl"} (${report.acquisition?.gemini_cli_gallery?.url || "https://geminicli.com/extensions/"}; catalog presence is never an impression, install, tool call, purchase, or revenue)
+- GitHub Agent Finder: ${report.acquisition?.agent_finder_catalog?.status || "unavailable"}; PR #10 ${report.acquisition?.agent_finder_catalog?.pr_status || "unknown"}; exact PR ${report.acquisition?.agent_finder_catalog?.pr_contract_verified ? "verified" : "drifted or unavailable"}; Registry ${report.acquisition?.agent_finder_catalog?.registry_contract_verified ? `verified at ${report.acquisition.agent_finder_catalog.registry_version}` : "drifted or unavailable"}; exact catalog ${report.acquisition?.agent_finder_catalog?.catalog_contract_verified ? "verified" : "pending"}; exact owner-run search ${report.acquisition?.agent_finder_catalog?.search_contract_verified ? `listed at rank ${report.acquisition.agent_finder_catalog.search_rank}` : "not indexed"} (${report.acquisition?.agent_finder_catalog?.url || "https://github.com/github/agentfinder-catalog/pull/10"}; PR, catalog, and search presence are distribution only, never an impression, install, tool call, purchase, or revenue)
 - Agent402 open router: ${report.acquisition?.agent402?.listed ? "listed" : "unavailable"}; exact-route retrieval ${report.acquisition?.agent402?.found_queries ?? 0} / ${report.acquisition?.agent402?.query_count ?? 7}, top-three ${report.acquisition?.agent402?.top_three_queries ?? 0} (${report.acquisition?.agent402?.listing_source || "unknown source"}; fixed owner-run queries are not impressions)
 - x402Scout GET listings: ${report.acquisition?.x402scout?.listed_entries ?? "unavailable"} / ${report.acquisition?.x402scout?.expected_entries ?? 5} (${report.acquisition?.x402scout?.status || "unavailable"}; positions ${Array.isArray(report.acquisition?.x402scout?.catalog_positions) ? report.acquisition.x402scout.catalog_positions.join(", ") : "unavailable"} of ${report.acquisition?.x402scout?.catalog_entries ?? "unavailable"}; ${typeof report.acquisition?.x402scout?.total_query_count === "number" ? report.acquisition.x402scout.total_query_count : "unavailable"} catalog queries)
 - x402scan paid endpoints: ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence is not counted as purchase activity)
@@ -2171,6 +2336,10 @@ if (reportOnly) {
 
 funnel = await funnelStatus();
 
+const taskmarketCommerce = (
+  (acquisition.public_demand_watch as Record<string, any> | undefined)?.taskmarket?.tracked_worker || {}
+) as Record<string, any>;
+
 const report = {
   product: "BountyVerdict",
   checked_at: checkedAt,
@@ -2186,10 +2355,12 @@ const report = {
   commerce: {
     genuine_purchases: Number((revenue.purchases as Record<string, unknown> | undefined)?.total || 0) +
       Number(the402.completed_jobs || 0) + Number(the402.subscription_purchases || 0) +
-      Number(nearMarket.completed_external_jobs || 0),
+      Number(nearMarket.completed_external_jobs || 0) +
+      Number(taskmarketCommerce.settled_submissions || 0),
     customer_revenue_usdc: (
       Number(revenue.recognized_usdc || 0) + Number(the402.settled_usd || 0) +
-      Number(nearMarket.earned_usdc_balance || 0)
+      Number(nearMarket.earned_usdc_balance || 0) +
+      Number(taskmarketCommerce.settled_worker_earnings_usdc || 0)
     ).toFixed(6).replace(/\.?0+$/, ""),
     tracked_costs_usdc: trackedCostsInput,
   },

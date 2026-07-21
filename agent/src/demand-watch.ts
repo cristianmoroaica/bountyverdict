@@ -15,7 +15,7 @@ const maximumRecords = 200;
 const maximumTextBytes = 20_000;
 
 export type DemandCandidate = {
-  market: "moltjobs" | "openjobs";
+  market: "moltjobs" | "openjobs" | "taskmarket";
   job_id: string;
   title: string;
   product: The402Product;

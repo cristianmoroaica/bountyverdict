@@ -48,5 +48,6 @@ if (ledger.rotation?.status !== "draining") {
   }));
 }
 
+process.env.BOUNTYVERDICT_AUDITED_ROTATION_ACTIVE = monitor;
 if (monitor === "directory") await import("./directory-monitor.ts");
 else await import("./distribution-monitor.ts");
