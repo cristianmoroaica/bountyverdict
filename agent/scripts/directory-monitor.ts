@@ -15,7 +15,11 @@ import {
 import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
 import { parseAgentSkillsInSearchPayload } from "../src/agentskills-in.ts";
 import { parseSkillsMdSearchPayload } from "../src/skillsmd.ts";
-import { parseAskillSearchPayload } from "../src/askill.ts";
+import {
+  ASKILL_BUYER_QUERIES,
+  parseAskillBuyerQueryPayload,
+  parseAskillSearchPayload,
+} from "../src/askill.ts";
 import {
   parseAgentFinderCatalogEntry,
   parseAgentFinderRegistryLatest,
@@ -2034,12 +2038,43 @@ async function askillStatus(
     }
     const catalog = parseAskillSearchPayload(await response.json());
     const listed = catalog.listed === true;
+    let buyerQueryBenchmark: Record<string, unknown>;
+    try {
+      const queryResults = await Promise.all(ASKILL_BUYER_QUERIES.map(async (query) => {
+        const url = new URL("https://askill.sh/api/v1/skills");
+        url.searchParams.set("q", query);
+        url.searchParams.set("limit", "50");
+        const queryResponse = await fetch(url, {
+          headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!queryResponse.ok) throw new Error(`askill buyer query returned HTTP ${queryResponse.status}.`);
+        return { query, ...parseAskillBuyerQueryPayload(await queryResponse.json()) };
+      }));
+      const found = queryResults.filter((result) => result.found === true);
+      buyerQueryBenchmark = {
+        available: true,
+        queries: queryResults,
+        query_count: queryResults.length,
+        found_queries: found.length,
+        top_three_queries: found.filter((result) => Number(result.rank) <= 3).length,
+        worst_found_rank: found.length ? Math.max(...found.map((result) => Number(result.rank))) : null,
+        measurement: "fixed_owner_run_unbranded_catalog_queries_not_search_volume_impressions_installs_or_demand",
+      };
+    } catch (error) {
+      buyerQueryBenchmark = {
+        available: false,
+        error: error instanceof Error ? error.message : String(error),
+        measurement: "fixed_owner_run_unbranded_catalog_queries_not_search_volume_impressions_installs_or_demand",
+      };
+    }
     return {
       url: listed ? catalog.listing_url : "https://askill.sh/",
       search_url: askillSearchUrl,
       http_status: response.status,
       ...catalog,
       submission: { submitted_at: askillSubmittedAt, indexed: true },
+      buyer_query_benchmark: buyerQueryBenchmark,
       exposed_at: listed ? previousStatus.exposed_at || askillSubmittedAt : null,
       measurement: "exact_catalog_presence_and_public_favorites_not_impressions_installs_tool_calls_purchases_or_revenue",
     };

@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ASKILL_FILE_PATH,
+  ASKILL_BUYER_QUERIES,
   ASKILL_INSTALL_REF,
   ASKILL_OWNER,
   ASKILL_PATH,
   ASKILL_REPO,
   ASKILL_SKILL_NAME,
+  parseAskillBuyerQueryPayload,
   parseAskillSearchPayload,
 } from "../src/askill.ts";
 
@@ -66,4 +68,19 @@ test("rejects duplicate, malformed, and unbounded askill telemetry", () => {
   assert.throws(() => parseAskillSearchPayload({ data: [], pagination: { page: 1, limit: 101, total: 0, hasMore: false } }), /unbounded/);
   assert.throws(() => parseAskillSearchPayload(payload([{ ...exactEntry, favoriteCount: -1 }])), /favorite/);
   assert.throws(() => parseAskillSearchPayload(payload([{ ...exactEntry, tags: new Array(51).fill("tag") }])), /tags/);
+});
+
+test("retains bounded unbranded askill retrieval ranks", () => {
+  assert.equal(ASKILL_BUYER_QUERIES.length, 6);
+  assert.deepEqual(parseAskillBuyerQueryPayload(payload([
+    { installRef: "gh:other/repo@skill" },
+    exactEntry,
+  ])), { found: true, rank: 2, returned_results: 2 });
+  assert.deepEqual(parseAskillBuyerQueryPayload(payload([])), {
+    found: false,
+    rank: null,
+    returned_results: 0,
+  });
+  assert.throws(() => parseAskillBuyerQueryPayload(payload([exactEntry, exactEntry])), /duplicated/);
+  assert.throws(() => parseAskillBuyerQueryPayload(payload([{ ...exactEntry, path: "wrong" }])), /drifted/);
 });

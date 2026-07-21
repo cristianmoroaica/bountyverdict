@@ -5,6 +5,20 @@ export const ASKILL_SKILL_NAME = "route-github-agent-decisions";
 export const ASKILL_PATH = `skills/${ASKILL_SKILL_NAME}`;
 export const ASKILL_FILE_PATH = `${ASKILL_PATH}/SKILL.md`;
 export const ASKILL_INSTALL_REF = `gh:${ASKILL_REPOSITORY}@${ASKILL_SKILL_NAME}`;
+export const ASKILL_BUYER_QUERIES = Object.freeze([
+  "github actions root cause",
+  "should I retry failed github action",
+  "check github bounty",
+  "audit AGENTS.md",
+  "MCP schema drift",
+  "rank github bounties",
+] as const);
+
+export type AskillBuyerQueryResult = {
+  found: boolean;
+  rank: number | null;
+  returned_results: number;
+};
 
 function boundedString(value: unknown, label: string, maximum = 2_000): string {
   if (typeof value !== "string" || value.length === 0 || value.length > maximum) {
@@ -97,5 +111,41 @@ export function parseAskillSearchPayload(value: unknown): Record<string, unknown
     tags: [...entry.tags] as string[],
     updated_at: updatedAt,
     status: "listed",
+  };
+}
+
+export function parseAskillBuyerQueryPayload(value: unknown): AskillBuyerQueryResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("askill returned a malformed buyer-query payload.");
+  }
+  const payload = value as Record<string, unknown>;
+  if (!Array.isArray(payload.data) || payload.data.length > 100 ||
+    !payload.pagination || typeof payload.pagination !== "object" || Array.isArray(payload.pagination)) {
+    throw new Error("askill returned malformed or unbounded buyer-query telemetry.");
+  }
+  const pagination = payload.pagination as Record<string, unknown>;
+  if (counter(pagination.page, "buyer-query page") !== 1 || counter(pagination.limit, "buyer-query limit") > 100 ||
+    counter(pagination.total, "buyer-query catalog total") < payload.data.length || typeof pagination.hasMore !== "boolean") {
+    throw new Error("askill buyer-query pagination is malformed or unbounded.");
+  }
+  const matches: number[] = [];
+  payload.data.forEach((value, index) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("askill returned a malformed buyer-query entry.");
+    }
+    const entry = value as Record<string, unknown>;
+    if (entry.installRef === ASKILL_INSTALL_REF) {
+      if (entry.repoOwner !== ASKILL_OWNER || entry.repoName !== ASKILL_REPO || entry.name !== ASKILL_SKILL_NAME ||
+        entry.path !== ASKILL_PATH || entry.filePath !== ASKILL_FILE_PATH) {
+        throw new Error("askill buyer-query target contract drifted.");
+      }
+      matches.push(index + 1);
+    }
+  });
+  if (matches.length > 1) throw new Error("askill duplicated the buyer-query target.");
+  return {
+    found: matches.length === 1,
+    rank: matches[0] || null,
+    returned_results: payload.data.length,
   };
 }
