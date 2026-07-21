@@ -383,7 +383,7 @@ test("attributes MCP directory discovery and enumeration to registry crawlers", 
   }
 });
 
-test("attributes only the exact Kiro Power source marker without retaining query data", () => {
+test("attributes only exact allowlisted MCP source markers without retaining query data", () => {
   const kiro = event("/mcp?source=kiro-power", 200, { "user-agent": "Kiro IDE/1.0" }, "POST");
   Object.assign(kiro, { logs: [{ message: [JSON.stringify({
     type: "bountyverdict_mcp_funnel",
@@ -397,12 +397,37 @@ test("attributes only the exact Kiro Power source marker without retaining query
   assert.equal(exact.length, 1);
   assert.equal(exact[0].channel, "kiro_power");
 
+  const agentSkills = event("/mcp?source=agent-skills-marketplace", 200, { "user-agent": "Codex/1.0" }, "POST");
+  Object.assign(agentSkills, { logs: kiro.logs });
+  const marketplace = classifyMcpTailEvents(agentSkills);
+  assert.equal(marketplace.length, 1);
+  assert.equal(marketplace[0].channel, "agent_skills_marketplace");
+
+  const owner = event("/mcp?source=agent-skills-marketplace", 200, { "user-agent": "bountyverdict-owner-audit/1.0" }, "POST");
+  Object.assign(owner, { logs: [{ message: [JSON.stringify({
+    type: "bountyverdict_mcp_funnel",
+    schema_version: 2,
+    stage: "tools_list",
+    product: null,
+    source: "owner_automation",
+    client_family: "not_applicable",
+  })] }] });
+  const ownerMarker = classifyMcpTailEvents(owner);
+  assert.equal(ownerMarker.length, 1);
+  assert.equal(ownerMarker[0].channel, "owner_automation");
+
   const spoofed = event("/mcp?source=kiro-power&private=discard", 200, { "user-agent": "Kiro IDE/1.0" }, "POST");
   Object.assign(spoofed, { logs: kiro.logs });
   const rejected = classifyMcpTailEvents(spoofed);
   assert.equal(rejected.length, 1);
   assert.equal(rejected[0].channel, "direct_or_hidden");
-  assert.doesNotMatch(JSON.stringify([...exact, ...rejected]), /private|discard|kiro-power/i);
+
+  const unknown = event("/mcp?source=private-campaign", 200, { "user-agent": "Codex/1.0" }, "POST");
+  Object.assign(unknown, { logs: kiro.logs });
+  const unknownMarker = classifyMcpTailEvents(unknown);
+  assert.equal(unknownMarker.length, 1);
+  assert.equal(unknownMarker[0].channel, "direct_or_hidden");
+  assert.doesNotMatch(JSON.stringify([...exact, ...marketplace, ...ownerMarker, ...rejected, ...unknownMarker]), /private|discard|kiro-power|campaign/i);
 });
 
 test("ignores irrelevant discovery paths and non-GET probes", () => {
