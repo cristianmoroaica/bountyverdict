@@ -104,6 +104,15 @@ test("distribution monitoring measures the MCP preview-copy rollout from an immu
   assert.match(distribution, /AbortSignal\.timeout\(timeoutMs\)/);
 });
 
+test("MCPDrift indexing remains owner-attributed and outside purchase accounting", async () => {
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(distribution, /CDP MCPDrift indexing path/);
+  assert.match(distribution, /owner marker and revenue exclusion are enforced/);
+  assert.match(distribution, /no early self-payment will be made/);
+  assert.match(distribution, /never customer demand, purchase, or revenue/);
+  assert.match(distribution, /strict invalid-input-before-payment behavior remains intact/);
+});
+
 test("directory monitoring separates Awesome Copilot review and catalog presence from demand", async () => {
   const directory = await readFile(directoryMonitorUrl, "utf8");
   const distribution = await readFile(distributionUrl, "utf8");

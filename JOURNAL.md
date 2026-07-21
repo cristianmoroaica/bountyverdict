@@ -1,5 +1,17 @@
 # BountyVerdict Journey
 
+## 2026-07-21 — MCPDrift Bazaar indexing path armed without fake demand
+
+- Customer revenue: **$0.00**
+- Genuine external purchases: **0 / 10**
+- Current recognized-USDC profit before historic gas conversion: **-$1.01**
+
+Coinbase's current Bazaar contract has no seller-side publish or reindex API: a Bazaar-enabled URL enters the catalog after a successful CDP-facilitated settlement. The missing MCPDriftVerdict entry is therefore armed as the next weekly, policy-bound owner canary, after both the seven-day spend interval and frozen SkillVerdict experiment boundary. The dedicated buyer holds **0.93 USDC**, sufficient for the single capped **$0.02** call. No early self-payment was made, and the result will remain owner indexing cost rather than customer demand, purchase, revenue, or profit.
+
+An adversarial audit found that the canary's payer address was correctly excluded from onchain revenue, but its two HTTP requests lacked the specific owner `User-Agent` already recognized by funnel telemetry. Commit `6cef77b` now applies `bountyverdict-settlement-canary/1.0` to both the unsigned challenge and signed retry. All **299 agent tests**, **62 repository tests**, typechecking, Worker dry-build verification, and GitHub CI passed. The one-shot `mcpdrift` override is mode 0600 and the weekly service will delete it after execution.
+
+The official read-only CDP validator was also exercised once inside the existing draining measurement epoch. It sent an empty POST and received the product's intentional HTTP 400 because MCPDrift rejects incomplete catalogs before issuing a payment challenge. The real representative POST body and its strict Bazaar extension remain verified. We will not weaken invalid-input-before-payment behavior merely to satisfy a bodyless validator probe; the supported representative-body settlement is the bounded indexing path.
+
 ## 2026-07-20 — Policy-bound autonomous settlement
 
 - Customer revenue: **$0.00**
