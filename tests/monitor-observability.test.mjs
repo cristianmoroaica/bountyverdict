@@ -267,6 +267,7 @@ test("directory PR monitoring uses authenticated GitHub reads instead of exhaust
   assert.match(directory, /action_required_check_names/);
   assert.match(directory, /\["agent_finder_catalog", agentFinderCatalog\]/);
   assert.match(distribution, /githubWorkflowRuns\.action_required/);
+  assert.match(distribution, /workflow outcomes are unavailable until the next audited directory refresh and zero is not asserted/);
   assert.doesNotMatch(directory, /fetch\(`https:\/\/api\.github\.com\/repos\/github\/agentfinder-catalog\/pulls/);
   assert.match(distribution, /Authenticated GitHub PR telemetry/);
   assert.doesNotMatch(directory, /fetch\(`https:\/\/api\.github\.com\/repos\/\$\{owner\}\/\$\{repo\}\/pulls\/\$\{pull\}`/);
