@@ -12,6 +12,8 @@ An adversarial audit found that the canary's payer address was correctly exclude
 
 The official read-only CDP validator was also exercised once inside the existing draining measurement epoch. It sent an empty POST and received the product's intentional HTTP 400 because MCPDrift rejects incomplete catalogs before issuing a payment challenge. The real representative POST body and its strict Bazaar extension remain verified. We will not weaken invalid-input-before-payment behavior merely to satisfy a bodyless validator probe; the supported representative-body settlement is the bounded indexing path.
 
+The first clean epoch after that audit recorded two successful Agent402 discovery fetches—one OpenAPI and one `/.well-known/x402`—plus two direct or hidden unknown paid-route attempts against RunVerdict and FlakeVerdict with the required `run_url` missing. Both invalid attempts received the existing typed corrective response and stopped before a payment challenge. The monitor now renders up to five bounded discovery and paid-route cohorts at the top of `~/notes/mimirx402.md`, retaining only product, channel, client class, input class, payment-carrier class, response class, and aggregate count. It stores no arguments, URLs, payloads, identities, IPs, or raw user agents.
+
 ## 2026-07-20 — Policy-bound autonomous settlement
 
 - Customer revenue: **$0.00**

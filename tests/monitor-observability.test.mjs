@@ -113,6 +113,15 @@ test("MCPDrift indexing remains owner-attributed and outside purchase accounting
   assert.match(distribution, /strict invalid-input-before-payment behavior remains intact/);
 });
 
+test("the monitor turns privacy-safe hits into bounded actionable cohort summaries", async () => {
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(distribution, /trusted_by_discovery_cohort/);
+  assert.match(distribution, /trusted_by_cohort/);
+  assert.match(distribution, /\.slice\(0, 5\)/);
+  assert.match(distribution, /Latest privacy-safe hit learning/);
+  assert.match(distribution, /no arguments, URLs, payloads, identities, IPs, or raw user agents retained/);
+});
+
 test("directory monitoring separates Awesome Copilot review and catalog presence from demand", async () => {
   const directory = await readFile(directoryMonitorUrl, "utf8");
   const distribution = await readFile(distributionUrl, "utf8");
