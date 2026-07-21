@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /agent
+    schedule:
+      interval: weekly
+    groups:
+      agent-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /glama
+    schedule:
+      interval: weekly
+    groups:
+      glama-dependencies:
+        patterns:
+          - "*"

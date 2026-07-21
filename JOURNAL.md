@@ -1,5 +1,18 @@
 # BountyVerdict Journey
 
+## 2026-07-21 — Clean conversion measurement restored
+
+- Customer revenue: **$0.00**
+- Genuine external purchases: **0 / 10**
+- Current recognized-USDC profit before historic gas conversion: **-$1.01**
+- Pending Taskmarket opportunity: **5 submissions / $10.788919 gross / $9.97975 net if awarded**
+
+Closed the owner-triggered Tollbooth audit window without promoting any of its traffic into buyer demand. Epoch 19 is permanently conversion-ineligible, and epoch 20 opened at `2026-07-21T12:38:38.638Z` only after the relevant aggregate funnel fingerprint stayed unchanged for 902 seconds across eight observations. The new boundary begins with zero trusted discovery hits, payment challenges, signed attempts, or paid successes.
+
+Reconciled the Base USDC ledger through block 48,924,088. The only product-shaped settlement remains the owner's $0.07 canary and is excluded; the unrelated 5 USDC transfer remains wallet capital rather than revenue. There are still no genuine purchases and no customer revenue. The five Taskmarket submissions remain pending, while Clawlancer still has no funding or release transaction.
+
+Validated the existing remote MCP server for Smithery publication without changing product behavior: SmitheryBot successfully initialized protocol `2025-11-25` and listed all six documented tools. The standard Streamable HTTP endpoint is publish-ready and needs no extra server-card fallback, transport authentication, or configuration schema. Publication remains gated only by one-time Smithery publisher authentication and namespace ownership; no token belongs in Git.
+
 ## 2026-07-21 — Autonomous work gate rejects unsafe or non-settling demand
 
 - Customer revenue: **$0.00**
