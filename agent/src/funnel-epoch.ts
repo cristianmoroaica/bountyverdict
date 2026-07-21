@@ -143,15 +143,25 @@ export function trustedBoundaryFingerprint(baseline: TrustedFunnelBaseline): str
     "owner_automation", "coinbase_bazaar", "index_402", "x402scan", "x402gle",
     "agent402", "x402_observer", "registry_or_directory",
   ]);
+  // The drain exists to isolate owner-triggered downstream catalog probes before
+  // opening a conversion epoch. Keep every discovery and rejection in the
+  // baseline/report, but do not let anonymous malformed probes hold conversion
+  // measurement closed forever. Any payment-capable event, bypass, throttling,
+  // server failure, or unclassified response still resets the quiet window.
+  const boundaryCounters = [
+    "challenges_402", "signed_requests", "signed_successes", "unsigned_successes",
+    "rate_limited", "server_errors", "other",
+  ] as const;
   const buyerRelevantPaidCohorts = Object.fromEntries(Object.entries(baseline.by_cohort || {})
-    .filter(([key]) => !healthChannels.has(key.split("|")[1] || "")));
-  const buyerRelevantDiscoveryCohorts = Object.fromEntries(Object.entries(baseline.by_discovery_cohort || {})
-    .filter(([key]) => !healthChannels.has(key.split("|")[1] || "")));
+    .filter(([key]) => !healthChannels.has(key.split("|")[1] || ""))
+    .map(([key, counters]) => [key, Object.fromEntries(
+      boundaryCounters.map((counter) => [counter, Number(counters[counter] || 0)]),
+    )])
+    .filter(([, counters]) => Object.values(counters).some((value) => value > 0)));
   return JSON.stringify({
     funnel_capture_started_at: baseline.funnel_capture_started_at,
     funnel_schema_version: baseline.funnel_schema_version,
     cohort_capture_started_at: baseline.cohort_capture_started_at,
     buyer_relevant_paid_cohorts: buyerRelevantPaidCohorts,
-    buyer_relevant_discovery_cohorts: buyerRelevantDiscoveryCohorts,
   });
 }

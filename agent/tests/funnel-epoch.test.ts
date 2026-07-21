@@ -74,7 +74,7 @@ test("loads legacy epoch-one baselines and rejects malformed records", () => {
   assert.equal(trustedFunnelBaseline({ ...baseline, schema_version: 2 }), null);
 });
 
-test("epoch stability ignores owner automation but changes on external counters", () => {
+test("epoch stability ignores owner and unsigned preflight noise but changes on conversion-capable events", () => {
   const original = createFunnelSnapshot("2026-07-20T20:00:00Z");
   const first = captureTrustedFunnelBaseline(original, "2026-07-20T21:00:00Z", "A sufficiently descriptive boundary reason for testing.", 2);
   const owner = classifyFunnelTailEvent(event(
@@ -101,6 +101,23 @@ test("epoch stability ignores owner automation but changes on external counters"
   // supplies a generic user agent. The joint cohort's channel remains authoritative.
   afterHealthPolls.by_client_class.unknown.requests += 1;
   assert.equal(trustedBoundaryFingerprint(afterHealthPolls), trustedBoundaryFingerprint(first));
+  const anonymousPreflight = classifyFunnelTailEvent(event(
+    "/api/verdict",
+    400,
+    "Mozilla/5.0 Firefox/128.0",
+  ));
+  const anonymousDiscovery = classifyDiscoveryTailEvent(event(
+    "/llms.txt",
+    200,
+    "curl/8.14.1",
+  ));
+  assert.ok(anonymousPreflight && anonymousDiscovery);
+  recordFunnelObservation(original, anonymousPreflight);
+  recordDiscoveryObservation(original, anonymousDiscovery);
+  const afterUnsignedNoise = captureTrustedFunnelBaseline(original, "2026-07-20T21:01:45Z", "A sufficiently descriptive boundary reason for testing.", 2);
+  assert.equal(afterUnsignedNoise.counters.external_discovery_requests, 2);
+  assert.equal(afterUnsignedNoise.external_by_product.single.preflight_rejections, 1);
+  assert.equal(trustedBoundaryFingerprint(afterUnsignedNoise), trustedBoundaryFingerprint(first));
   const external = classifyFunnelTailEvent(event(
     "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Facme%2Frepo%2Fissues%2F1",
     402,
@@ -110,6 +127,31 @@ test("epoch stability ignores owner automation but changes on external counters"
   recordFunnelObservation(original, external);
   const afterExternal = captureTrustedFunnelBaseline(original, "2026-07-20T21:02:00Z", "A sufficiently descriptive boundary reason for testing.", 2);
   assert.notEqual(trustedBoundaryFingerprint(afterExternal), trustedBoundaryFingerprint(first));
+});
+
+test("epoch stability resets on every non-challenge paid-route anomaly", () => {
+  const baseline = captureTrustedFunnelBaseline(
+    createFunnelSnapshot("2026-07-20T20:00:00Z"),
+    "2026-07-20T21:00:00Z",
+    "A sufficiently descriptive boundary reason for anomaly testing.",
+    2,
+  );
+  for (const counter of ["signed_requests", "signed_successes", "unsigned_successes", "rate_limited", "server_errors", "other"] as const) {
+    const changed = structuredClone(baseline);
+    changed.by_cohort[`single|direct_or_hidden|unknown|complete_expected|none|json`] = {
+      requests: 1,
+      challenges_402: 0,
+      signed_requests: 0,
+      signed_successes: 0,
+      unsigned_successes: 0,
+      preflight_rejections: 0,
+      rate_limited: 0,
+      server_errors: 0,
+      other: 0,
+      [counter]: 1,
+    };
+    assert.notEqual(trustedBoundaryFingerprint(changed), trustedBoundaryFingerprint(baseline), counter);
+  }
 });
 
 test("epoch rotation closes and opens at one boundary and repairs a partial baseline commit", async () => {
