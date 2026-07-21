@@ -1,5 +1,20 @@
 # BountyVerdict Journey
 
+## 2026-07-21 — Autonomous work gate rejects unsafe or non-settling demand
+
+- Customer revenue: **$0.00**
+- Genuine external purchases: **0 / 10**
+- Current recognized-USDC profit before historic gas conversion: **-$1.01**
+- Pending Taskmarket opportunity: **5 submissions / $10.788919 gross / $9.97975 net if awarded**
+
+Reconciled all seven live Taskmarket tasks against their public API and Base escrow receipts. The five existing submissions remain exactly one active submission each, pending and unrejected, with zero awards, zero settlement transfers, and zero recognized revenue. The $0.15 minia2a gas-price task was rejected after 79 competing submissions because its single-winner expected value no longer justified the required paid call.
+
+Rejected the $0.50 minia2a CAPTCHA task without spending money or publishing a token. Its requester cannot establish authority to automate Google's anti-bot control; Google's own automated reCAPTCHA v2 testing guidance uses designated test keys instead. The live service also disagrees with the task on HTTP method, JSON fields, and price, exposes duplicated Base payment choices plus multiple chains, duplicates a 7.6 KB challenge across two headers, and asks for a live bearer-like token through a public submission surface. This is an authorization and contract-integrity no-go, not a claim that the task is definitively illegal.
+
+Audited BountyBook after its public API exposed more than one hundred deterministic code jobs. The apparent inventory is not presently bankable: all 32 jobs reported as `verified` expose `payout_status=failed`, no payout transaction hash, and `contract_job_id=0`, while the platform's aggregate `totalPaidOut` counter cannot be reconciled to those job records. No job was claimed, no wallet was created or funded, and the platform remains excluded until a fresh audit proves successful canonical Base settlement to workers.
+
+Submitted one existing BountyVerdict GET contract to Tollbooth as a zero-cost compatibility probe. Tollbooth reached the exact representative URL, parsed the single x402 v2 Base-USDC requirement, validated the payee, and prepared its test payment, but its paid replay returned another 402 with no settlement header or transaction. The listing is therefore visibly unverified with zero calls and zero revenue; no protocol downgrade or unsafe product change will be made to satisfy it. Because Tollbooth's server-side probe used an unattributable client, trusted funnel measurement was immediately rotated into a 15-minute drain window so the owner-triggered request cannot become organic demand.
+
 ## 2026-07-21 — Cline and Kilo conversion attribution live
 
 - Customer revenue: **$0.00**
