@@ -14,7 +14,7 @@ import {
 import { PRODUCT_CATALOG, productForAtomicAmount, type ProductKey } from "../src/product-catalog.ts";
 import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
 import { evaluateEarnedPlacementExperiment } from "../src/acquisition.ts";
-import { loadFunnelSnapshot } from "../src/funnel-telemetry.ts";
+import { loadFunnelSnapshot, mcpBuyerCandidateTotals } from "../src/funnel-telemetry.ts";
 import {
   THE402_API,
   THE402_LISTINGS,
@@ -1535,6 +1535,7 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
     return {
       available: true,
       checked_at: checkedAt,
+      github_pr_monitoring: state.github_pr_monitoring || null,
       skills_sh: state.skills_sh || null,
       agenttool: state.agenttool || null,
       mcp_repository: state.mcp_repository || null,
@@ -1628,18 +1629,14 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       stage,
       monotonicDelta(count, state.mcp_by_source.owner_automation[stage as keyof typeof state.mcp_totals], `MCP ${stage}`),
     ]));
-    const buyerCandidateMcpTotals = Object.fromEntries(Object.entries(state.mcp_totals).map(([stage, count]) => [
-      stage,
-      monotonicDelta(
-        count,
-        Number(state.mcp_by_source.owner_automation[stage as keyof typeof state.mcp_totals] || 0) +
-          Number(state.mcp_by_client_class.registry_crawler[stage as keyof typeof state.mcp_totals] || 0),
-        `MCP buyer-candidate ${stage}`,
-      ),
-    ]));
+    const buyerCandidateMcpTotals = mcpBuyerCandidateTotals(state);
     const mcpPreviewCopyDelta = Object.fromEntries(Object.entries(MCP_PREVIEW_COPY_ROLLOUT.baseline).map(([stage, baseline]) => [
       stage,
-      monotonicDelta(buyerCandidateMcpTotals[stage], baseline, `MCP preview-copy rollout ${stage}`),
+      monotonicDelta(
+        buyerCandidateMcpTotals[stage as keyof typeof buyerCandidateMcpTotals],
+        baseline,
+        `MCP preview-copy rollout ${stage}`,
+      ),
     ]));
     const previewCallOpportunities = Number(mcpPreviewCopyDelta.validation_error || 0) + Number(mcpPreviewCopyDelta.payment_required || 0);
     const mcpPreviewCopyExperiment = {
@@ -1657,7 +1654,7 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
           ? Math.round(Number(mcpPreviewCopyDelta.payment_present || 0) / Number(mcpPreviewCopyDelta.payment_required) * 1_000) / 10
           : null,
       },
-      measurement: "aggregate_non_owner_non_registry_crawler_event_deltas_not_unique_users_or_purchases",
+      measurement: "aggregate_events_excluding_owner_registry_glama_and_x402_observer_channels_not_unique_users_or_purchases",
     };
     const externalMcpByProduct = Object.fromEntries(MCP_PRODUCTS.map((product) => {
       const sources = state.mcp_by_product_source[product];
@@ -1948,6 +1945,8 @@ function renderMonitorNote(report: Record<string, any>): string {
   const mcpRegistryCrawler = funnel.mcp_by_client_class?.registry_crawler || {};
   const mcpKiroPower = funnel.mcp_by_channel?.kiro_power || {};
   const mcpAgentSkillsMarketplace = funnel.mcp_by_channel?.agent_skills_marketplace || {};
+  const mcpGlama = funnel.mcp_by_channel?.glama || {};
+  const githubPrMonitoring = report.acquisition?.github_pr_monitoring || {};
   const mcpDownstreams = report.acquisition?.mcp_downstreams || {};
   const githubTraffic = report.acquisition?.github_traffic || {};
   const the402OutcomeTotals = report.marketplaces?.the402?.service_outcome_totals || {};
@@ -1987,7 +1986,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **CDP Bazaar activity deltas:** ${cdpMerchantQualityAvailable ? (cdpReconciliationProducts.length ? `${cdpReconciliationProducts.join(", ")} changed and require settlement reconciliation` : "no counter or call-recency advance from the owner-contaminated baseline") : "baseline pending the next audited marketplace observation"} (never revenue by itself)
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
 - **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external discovery hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
-- **MCP buyer-candidate funnel:** ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initializations; ${Number(mcpBuyerCandidate.tools_list || 0)} tool-list requests; ${Number(mcpBuyerCandidate.protocol_error || 0)} protocol errors; ${Number(mcpBuyerCandidate.capacity_rejected || 0)} capacity rejections; ${Number(mcpBuyerCandidate.payment_required || 0)} valid unpaid tool calls; ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations; ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner automation and identified directory crawlers excluded)
+- **MCP buyer-candidate funnel:** ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initializations; ${Number(mcpBuyerCandidate.tools_list || 0)} tool-list requests; ${Number(mcpBuyerCandidate.protocol_error || 0)} protocol errors; ${Number(mcpBuyerCandidate.capacity_rejected || 0)} capacity rejections; ${Number(mcpBuyerCandidate.payment_required || 0)} valid unpaid tool calls; ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations; ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner, registry, Glama release, and x402 observer channels excluded)
 - **MCP preview-copy rollout:** ${funnel.available ? `${mcpPreviewCopyExperiment.status || "unavailable"} since ${mcpPreviewCopyExperiment.started_at || "unknown"} at ${String(mcpPreviewCopyExperiment.release_commit || "unknown").slice(0, 7)}; delta ${Number(mcpPreviewCopyDelta.initialize || 0)} initialize / ${Number(mcpPreviewCopyDelta.tools_list || 0)} tools/list / ${Number(mcpPreviewCopyDelta.validation_error || 0)} invalid / ${Number(mcpPreviewCopyDelta.payment_required || 0)} valid unpaid / ${Number(mcpPreviewCopyDelta.payment_present || 0)} payment presented / ${Number(mcpPreviewCopyDelta.paid_success || 0)} paid success; list-to-valid ${ratio(mcpPreviewCopyRatios.valid_call_per_tools_list_percent)}, invalid share ${ratio(mcpPreviewCopyRatios.invalid_call_share_percent)}, valid-to-payment ${ratio(mcpPreviewCopyRatios.payment_present_per_valid_call_percent)}` : "unavailable"} (aggregate event deltas, not unique agents or purchase proof)
 - **MCP invalid-call learning:** ${funnel.available ? mcpValidationSummary : "unavailable"} (coarse categories only; no arguments, URLs, payloads, identities, or raw client names retained; pre-upgrade events remain legacy-unclassified)
 - **MCP directory-crawler activity:** ${funnel.available ? `${Number(mcpRegistryCrawler.initialize || 0)} initializations; ${Number(mcpRegistryCrawler.tools_list || 0)} tool-list requests; ${Number(mcpRegistryCrawler.payment_required || 0)} valid unpaid tool calls` : "unavailable"} (retained separately for distribution propagation, never treated as buyer intent)
@@ -1995,6 +1994,8 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **AgentSkills.in adapter:** ${report.acquisition?.agent_skills_in?.listed ? "1 / 1 exact skill listed" : report.acquisition?.agent_skills_in?.status || "awaiting audited catalog refresh"}; public adapter [repository](https://github.com/cristianmoroaica/bountyverdict-mcp-skill), indexing [submission #23](https://github.com/Karanjot786/agent-skills-cli/issues/23); ${funnel.available ? `${Number(mcpAgentSkillsMarketplace.initialize || 0)} source-marked initializations, ${Number(mcpAgentSkillsMarketplace.tools_list || 0)} tool-list requests, ${Number(mcpAgentSkillsMarketplace.validation_error || 0)} invalid calls, ${Number(mcpAgentSkillsMarketplace.payment_required || 0)} valid unpaid calls, ${Number(mcpAgentSkillsMarketplace.payment_present || 0)} payment presentations, ${Number(mcpAgentSkillsMarketplace.paid_success || 0)} paid successes` : "funnel unavailable"} (submission/listing and aggregate events are not installs, unique agents, purchases, or revenue)
 - **SkillsMD adapter:** ${report.acquisition?.skills_md?.listed ? `1 / 1 exact skill listed; ${Number(report.acquisition.skills_md.installs || 0)} public installs` : report.acquisition?.skills_md?.status || "awaiting audited catalog refresh"}; submission receipt ${report.acquisition?.skills_md?.submission?.id || "e68e968f-d03d-4808-b36b-5fd3b42b6489"}; shares the privacy-safe agent-skill source cohort above (submission, listing, and public install counts are not impressions, tool calls, purchases, or revenue)
 - **askill adapter:** ${report.acquisition?.askill?.listed ? `1 / 1 exact skill listed at ${report.acquisition.askill.listing_url}; buyer-language refresh ${report.acquisition.askill.buyer_language_revision_live ? "live" : "pending"}; ${Number(report.acquisition.askill.favorites || 0)} public favorites; unbranded retrieval ${Number(report.acquisition.askill.buyer_query_benchmark?.found_queries || 0)} / ${Number(report.acquisition.askill.buyer_query_benchmark?.query_count || ASKILL_BUYER_QUERIES.length)} queries found and ${Number(report.acquisition.askill.buyer_query_benchmark?.top_three_queries || 0)} top-three` : report.acquisition?.askill?.status || "awaiting audited catalog refresh"}; exact install source ${report.acquisition?.askill?.install_source || "gh:cristianmoroaica/bountyverdict-mcp-skill@route-github-agent-decisions"} (fixed owner-run retrieval, listing, and favorites are not search volume, impressions, installs, tool calls, purchases, or revenue; askill exposes no public install counter)
+- **Glama release path:** build-ready secret-free stdio bridge to the existing six-tool remote; ${funnel.available ? `${Number(mcpGlama.initialize || 0)} source-marked initializations, ${Number(mcpGlama.tools_list || 0)} tool-list requests, ${Number(mcpGlama.payment_required || 0)} valid unpaid calls, ${Number(mcpGlama.payment_present || 0)} payment presentations` : "funnel unavailable"}; dashboard release and quality score pending (source marker and build checks are distribution evidence only, never installs, purchases, or revenue)
+- **Authenticated GitHub PR telemetry:** ${githubPrMonitoring.healthy === true ? `${Number(githubPrMonitoring.checked || 0)} / ${Number(githubPrMonitoring.checked || 0)} checks healthy` : `${Number(githubPrMonitoring.failed || 0)} / ${Number(githubPrMonitoring.checked || 0)} checks failed`}; failures remain explicit and cannot silently become ordinary pending review
 - **Official MCP Registry:** ${report.acquisition?.mcp_registry?.listed ? `${report.acquisition.mcp_registry.name}@${report.acquisition.mcp_registry.version} listed at the exact production Streamable HTTP endpoint` : `unavailable (${report.acquisition?.mcp_registry?.error || "not checked"})`} (placement only, never a purchase)
 - **Agentic Resource Discovery catalog (last audited snapshot):** ${report.acquisition?.ard_catalog?.live ? `${report.acquisition.ard_catalog.representative_queries} neutral buyer queries and ${report.acquisition.ard_catalog.capabilities} MCP capabilities live` : report.acquisition?.ard_catalog?.status || "unavailable"} (${report.acquisition?.ard_catalog?.url || "origin catalog not checked"}; direct catalog availability is not registry indexing, an impression, a tool call, or a purchase)
 - **MCP paid-call handoff:** ${report.health?.mcp_metadata?.payment?.http_payment_handoff_extension === "io.github.cristianmoroaica/bountyverdict/http-payment-handoff" && report.health?.mcp_metadata?.payment?.direct_automatic_payment_requires === "@x402/mcp" ? "live — direct MCP payment requires @x402/mcp; standard hosts receive the exact versioned HTTP handoff for a separately authorized wallet" : "unavailable or drifted"}
@@ -2151,10 +2152,11 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Agentic Market automatic endpoints: ${report.marketplaces?.agentic_market?.endpoint_count ?? "unavailable"} / 7 (CDP Bazaar mirror; reported quality counters excluded from purchase and revenue accounting)
 - Edge funnel capture: ${funnel.available ? `${Number(funnel.trusted_external_402_challenges || 0)} trusted external challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}; ${Number(funnel.external_402_challenges || 0)} older/lifetime external-or-unattributed challenges retained but excluded from rates` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
 - Discovery-surface capture: ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external since the clean boundary; ${Number(funnel.external_discovery_requests || 0)} lifetime external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
-- MCP buyer-candidate capture: ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initialize, ${Number(mcpBuyerCandidate.tools_list || 0)} tools/list, ${Number(mcpBuyerCandidate.protocol_error || 0)} protocol errors, ${Number(mcpBuyerCandidate.tool_not_found || 0)} unknown-tool calls, ${Number(mcpBuyerCandidate.validation_error || 0)} invalid calls, ${Number(mcpBuyerCandidate.capacity_rejected || 0)} capacity rejections, ${Number(mcpBuyerCandidate.payment_required || 0)} unpaid valid calls, ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations, ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes, ${Number(mcpBuyerCandidate.paid_error || 0)} paid errors` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner probes and identified directory crawlers excluded)
+- MCP buyer-candidate capture: ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initialize, ${Number(mcpBuyerCandidate.tools_list || 0)} tools/list, ${Number(mcpBuyerCandidate.protocol_error || 0)} protocol errors, ${Number(mcpBuyerCandidate.tool_not_found || 0)} unknown-tool calls, ${Number(mcpBuyerCandidate.validation_error || 0)} invalid calls, ${Number(mcpBuyerCandidate.capacity_rejected || 0)} capacity rejections, ${Number(mcpBuyerCandidate.payment_required || 0)} unpaid valid calls, ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations, ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes, ${Number(mcpBuyerCandidate.paid_error || 0)} paid errors` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner, registry, Glama release, and x402 observer channels excluded)
 - MCP identified-directory capture: ${funnel.available ? `${Number(mcpRegistryCrawler.initialize || 0)} initialize, ${Number(mcpRegistryCrawler.tools_list || 0)} tools/list, ${Number(mcpRegistryCrawler.payment_required || 0)} unpaid valid calls, ${Number(mcpRegistryCrawler.payment_present || 0)} payment presentations` : "unavailable"} (distribution propagation retained separately from buyer-intent learning)
 - Kiro Power declared-source capture: ${funnel.available ? `${Number(mcpKiroPower.initialize || 0)} initialize, ${Number(mcpKiroPower.tools_list || 0)} tools/list, ${Number(mcpKiroPower.payment_required || 0)} unpaid valid calls, ${Number(mcpKiroPower.payment_present || 0)} payment presentations` : "unavailable"} (allowlisted query marker only; never identity or purchase proof)
 - AgentSkills.in adapter source capture: ${funnel.available ? `${Number(mcpAgentSkillsMarketplace.initialize || 0)} initialize, ${Number(mcpAgentSkillsMarketplace.tools_list || 0)} tools/list, ${Number(mcpAgentSkillsMarketplace.validation_error || 0)} invalid calls, ${Number(mcpAgentSkillsMarketplace.payment_required || 0)} unpaid valid calls, ${Number(mcpAgentSkillsMarketplace.payment_present || 0)} payment presentations, ${Number(mcpAgentSkillsMarketplace.paid_success || 0)} paid successes` : "unavailable"} (allowlisted aggregate marker only; not unique agents, purchases, or revenue)
+- Glama release source capture: ${funnel.available ? `${Number(mcpGlama.initialize || 0)} initialize, ${Number(mcpGlama.tools_list || 0)} tools/list, ${Number(mcpGlama.payment_required || 0)} unpaid valid calls, ${Number(mcpGlama.payment_present || 0)} payment presentations` : "unavailable"} (allowlisted aggregate marker only; not unique agents, purchases, or revenue)
 - MCP initialize client families: ${activeMcpClientFamilies.length ? activeMcpClientFamilies.map(([family, counters]: [string, any]) => `${family} (${Number(counters.initialize || 0)})`).join(", ") : "none identified yet"} (allowlisted aggregates only; raw names and versions discarded)
 - External discovery surfaces observed: ${externalDiscoverySurfaces.length ? externalDiscoverySurfaces.map(([surface, count]) => `${surface} (${Number(count)})`).join(", ") : "none yet"}
 - Enhanced learning dimensions active since: ${funnel.enhanced_capture_started_at || "unavailable"}

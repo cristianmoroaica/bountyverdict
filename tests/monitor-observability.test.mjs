@@ -228,6 +228,21 @@ test("directory monitoring tracks Cline review and exact in-agent install contra
   assert.match(distribution, /PR or catalog presence is never an impression, install, tool call, purchase, or revenue/);
 });
 
+test("directory PR monitoring uses authenticated GitHub reads instead of exhausted anonymous API quota", async () => {
+  const [directory, telemetry, distribution] = await Promise.all([
+    readFile(new URL("../agent/scripts/directory-monitor.ts", import.meta.url), "utf8"),
+    readFile(new URL("../agent/src/github-pr-telemetry.ts", import.meta.url), "utf8"),
+    readFile(new URL("../agent/scripts/distribution-monitor.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(directory, /readGitHubPrStatus\(owner, repo, pull, url, timeoutMs\)/);
+  assert.match(directory, /github_pr_monitoring: githubPrMonitoring/);
+  assert.match(directory, /\.\.\.githubPrFields\(review\)/);
+  assert.match(telemetry, /"gh", \[\.\.\.args\]/);
+  assert.match(telemetry, /number,url,state,mergedAt,isDraft,mergeable,mergeStateStatus,reviewDecision/);
+  assert.match(distribution, /Authenticated GitHub PR telemetry/);
+  assert.doesNotMatch(directory, /fetch\(`https:\/\/api\.github\.com\/repos\/\$\{owner\}\/\$\{repo\}\/pulls\/\$\{pull\}`/);
+});
+
 test("directory monitoring tracks Kilo review and exact secret-free remote contract without claiming demand", async () => {
   const [directory, distribution] = await Promise.all([
     readFile(directoryMonitorUrl, "utf8"),
@@ -336,16 +351,21 @@ test("Gemini CLI extension exposes only the hosted paid MCP without secrets", as
   assert.doesNotMatch(JSON.stringify(manifest), /secret|token|api[_-]?key|env/i);
 });
 
-test("MCP buyer-intent reporting excludes identified directory crawlers but retains them separately", async () => {
+test("MCP buyer-intent reporting excludes non-buyer distribution channels but retains them separately", async () => {
   const [distribution, telemetry] = await Promise.all([
     readFile(distributionUrl, "utf8"),
     readFile(new URL("../agent/src/funnel-telemetry.ts", import.meta.url), "utf8"),
   ]);
   assert.match(telemetry, /smitherybot\\\//i);
+  assert.match(telemetry, /MCP_NON_BUYER_CHANNELS/);
+  assert.match(telemetry, /"glama"/);
+  assert.match(telemetry, /"x402_observer"/);
+  assert.match(telemetry, /"registry_or_directory"/);
   assert.match(distribution, /buyerCandidateMcpTotals/);
-  assert.match(distribution, /state\.mcp_by_client_class\.registry_crawler/);
+  assert.match(distribution, /mcpBuyerCandidateTotals\(state\)/);
   assert.match(distribution, /MCP buyer-candidate funnel/);
   assert.match(distribution, /MCP directory-crawler activity/);
+  assert.match(distribution, /Glama release source capture/);
 });
 
 test("directory monitoring retains MCPRepository validation without calling it demand", async () => {

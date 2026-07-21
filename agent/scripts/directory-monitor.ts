@@ -37,6 +37,7 @@ import {
   parseTensorBlockProfile,
   parseTensorBlockSearch,
 } from "../src/mcp-downstreams.ts";
+import { githubPrFields, readGitHubPrStatus, type GitHubPrStatus } from "../src/github-pr-telemetry.ts";
 
 if (process.env.BOUNTYVERDICT_AUDITED_ROTATION_ACTIVE !== "directory") {
   throw new Error("Directory retrieval must run through run-audited-monitor.ts after establishing a draining funnel rotation.");
@@ -445,6 +446,7 @@ async function awesomeMcpServersStatus(
         url: awesomeMcpServersPrUrl,
         catalog_url: awesomeMcpServersReadmeUrl,
         pr_status: review.status || "unknown",
+        ...githubPrFields(review),
         catalog_http_status: catalogResponse.status,
         listed: false,
         contract_verified: false,
@@ -469,9 +471,7 @@ async function awesomeMcpServersStatus(
       url: awesomeMcpServersPrUrl,
       catalog_url: awesomeMcpServersReadmeUrl,
       pr_status: prStatus,
-      pr_merged_at: review.merged_at || null,
-      pr_draft: review.draft === true,
-      pr_mergeable: review.mergeable ?? null,
+      ...githubPrFields(review),
       catalog_http_status: catalogResponse.status,
       ...parsed,
       status,
@@ -576,8 +576,7 @@ async function tensorBlockMcpIndexStatus(
       issue_status: issue.state,
       issue_labels: issue.labels.map((label: Record<string, unknown>) => String(label.name || "")).filter(Boolean).sort(),
       pr_status: prStatus,
-      pr_draft: review.draft === true,
-      pr_merged_at: review.merged_at || null,
+      ...githubPrFields(review),
       indexed_servers: health.catalogEntries,
       catalog_loaded_at: health.loadedAt,
       catalog_build_sha: health.build.commitSha,
@@ -698,9 +697,7 @@ async function dockerMcpRegistryStatus(
       definition_url: dockerMcpRegistryDefinitionUrl,
       catalog_url: dockerMcpHubUrl,
       pr_status: prStatus,
-      pr_merged_at: review.merged_at || null,
-      pr_draft: review.draft === true,
-      pr_mergeable: review.mergeable ?? null,
+      ...githubPrFields(review),
       definition_http_status: definitionResponse.status,
       catalog_http_status: hubResponse.status,
       definition,
@@ -905,9 +902,7 @@ async function clineMarketplaceStatus(
       url: clineMarketplacePrUrl,
       catalog_url: clineMarketplaceCatalogUrl,
       pr_status: prStatus,
-      pr_merged_at: review.merged_at || null,
-      pr_draft: review.draft === true,
-      pr_mergeable: review.mergeable ?? null,
+      ...githubPrFields(review),
       catalog_http_status: catalogResponse.status,
       ...parsed,
       status,
@@ -971,9 +966,7 @@ async function kiloMarketplaceStatus(
       definition_url: kiloMarketplaceDefinitionUrl,
       catalog_url: kiloMarketplaceCatalogUrl,
       pr_status: prStatus,
-      pr_merged_at: review.merged_at || null,
-      pr_draft: review.draft === true,
-      pr_mergeable: review.mergeable ?? null,
+      ...githubPrFields(review),
       definition_http_status: definitionResponse.status,
       catalog_http_status: catalogResponse.status,
       definition,
@@ -1396,40 +1389,8 @@ async function githubPrStatus(
   repo: string,
   pull: number,
   url: string,
-): Promise<Record<string, unknown>> {
-  try {
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pull}`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "bountyverdict-directory-monitor",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) {
-      return { url, http_status: response.status, status: "unexpected_response" };
-    }
-    const payload = await response.json() as {
-      state?: string;
-      merged_at?: string | null;
-      draft?: boolean;
-      mergeable?: boolean | null;
-    };
-    return {
-      url,
-      http_status: response.status,
-      status: payload.merged_at ? "merged" : payload.state || "unknown",
-      merged_at: payload.merged_at || null,
-      draft: payload.draft === true,
-      mergeable: payload.mergeable,
-    };
-  } catch (error) {
-    return {
-      url,
-      status: "request_failed",
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+): Promise<GitHubPrStatus> {
+  return readGitHubPrStatus(owner, repo, pull, url, timeoutMs);
 }
 
 async function x402ScoutStatus(): Promise<Record<string, unknown>> {
@@ -2339,9 +2300,40 @@ const agentskill = {
         retry_after: new Date(previousAttempt + agentSkillRetryMs).toISOString(),
       },
 };
+const githubPrChecks = [
+  ["mcpub_crawler", mcpubCrawlerPr],
+  ["security_directory", securityDirectoryPr],
+  ["x402_directory", x402DirectoryPr],
+  ["agent_plugins", agentPluginsPr],
+  ["awesome_mcp_servers", awesomeMcpServers],
+  ["tensorblock_mcp_index", tensorBlockMcpIndex],
+  ["docker_mcp_registry", dockerMcpRegistry],
+  ["cline_marketplace", clineMarketplace],
+  ["kilo_marketplace", kiloMarketplace],
+] as const;
+const githubPrFailures = githubPrChecks.flatMap(([name, check]) => {
+  const normalized = check as Record<string, unknown>;
+  const status = String(normalized.pr_status || normalized.status || "unknown");
+  const error = typeof normalized.pr_error === "string"
+    ? normalized.pr_error
+    : typeof normalized.error === "string"
+      ? normalized.error
+      : null;
+  return status === "request_failed" || status === "unknown" || status === "pr_status_unknown"
+    ? [{ name, url: normalized.pr_url || normalized.url || null, status, error: error || "GitHub PR status unavailable." }]
+    : [];
+});
+const githubPrMonitoring = {
+  healthy: githubPrFailures.length === 0,
+  checked: githubPrChecks.length,
+  failed: githubPrFailures.length,
+  failures: githubPrFailures,
+  measurement: "authenticated_pr_state_only_not_catalog_exposure_impressions_installs_or_purchases",
+};
 const state = {
   checked_at: new Date().toISOString(),
   repository,
+  github_pr_monitoring: githubPrMonitoring,
   skills_sh: skills,
   agenttool,
   mcp_repository: mcpRepository,

@@ -7,6 +7,7 @@ import {
   createFunnelSnapshot,
   isFunnelSnapshot,
   loadFunnelSnapshot,
+  mcpBuyerCandidateTotals,
   MCP_VALIDATION_KINDS,
   recordDiscoveryObservation,
   recordFunnelObservation,
@@ -403,6 +404,12 @@ test("attributes only exact allowlisted MCP source markers without retaining que
   assert.equal(marketplace.length, 1);
   assert.equal(marketplace[0].channel, "agent_skills_marketplace");
 
+  const glama = event("/mcp?source=glama-release", 200, { "user-agent": "Glama/1.0" }, "POST");
+  Object.assign(glama, { logs: kiro.logs });
+  const glamaObservations = classifyMcpTailEvents(glama);
+  assert.equal(glamaObservations.length, 1);
+  assert.equal(glamaObservations[0].channel, "glama");
+
   const owner = event("/mcp?source=agent-skills-marketplace", 200, { "user-agent": "bountyverdict-owner-audit/1.0" }, "POST");
   Object.assign(owner, { logs: [{ message: [JSON.stringify({
     type: "bountyverdict_mcp_funnel",
@@ -428,6 +435,29 @@ test("attributes only exact allowlisted MCP source markers without retaining que
   assert.equal(unknownMarker.length, 1);
   assert.equal(unknownMarker[0].channel, "direct_or_hidden");
   assert.doesNotMatch(JSON.stringify([...exact, ...marketplace, ...ownerMarker, ...rejected, ...unknownMarker]), /private|discard|kiro-power|campaign/i);
+});
+
+test("Glama release probes remain distribution evidence and never enter the buyer-candidate funnel", () => {
+  const snapshot = createFunnelSnapshot();
+  const glama = event("/mcp?source=glama-release", 200, { "user-agent": "Glama/1.0" }, "POST");
+  Object.assign(glama, { logs: [{ message: [JSON.stringify({
+    type: "bountyverdict_mcp_funnel",
+    schema_version: 3,
+    stage: "tools_list",
+    product: null,
+    source: "external",
+    client_family: "not_applicable",
+    validation_kind: "not_applicable",
+  })] }] });
+  const direct = event("/mcp", 200, { "user-agent": "Codex/1.0" }, "POST");
+  Object.assign(direct, { logs: glama.logs });
+  for (const observation of [...classifyMcpTailEvents(glama), ...classifyMcpTailEvents(direct)]) {
+    recordMcpObservation(snapshot, observation);
+  }
+
+  assert.equal(snapshot.mcp_by_channel.glama.tools_list, 1);
+  assert.equal(snapshot.mcp_totals.tools_list, 2);
+  assert.equal(mcpBuyerCandidateTotals(snapshot).tools_list, 1);
 });
 
 test("ignores irrelevant discovery paths and non-GET probes", () => {

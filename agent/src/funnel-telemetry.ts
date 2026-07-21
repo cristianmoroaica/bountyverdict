@@ -34,6 +34,7 @@ export const FUNNEL_CHANNELS = Object.freeze([
   "agent_plugins",
   "kiro_power",
   "agent_skills_marketplace",
+  "glama",
   "github",
   "web_search",
   "agent402",
@@ -43,6 +44,12 @@ export const FUNNEL_CHANNELS = Object.freeze([
   "other_referrer",
   "legacy_unclassified",
 ] as const);
+export const MCP_NON_BUYER_CHANNELS = Object.freeze([
+  "owner_automation",
+  "glama",
+  "x402_observer",
+  "registry_or_directory",
+] as const satisfies readonly FunnelChannel[]);
 export const FUNNEL_INPUT_PROFILES = Object.freeze([
   "complete_expected",
   "missing_required",
@@ -312,6 +319,17 @@ function emptyMcpCounters(): McpFunnelCounters {
     paid_success: 0,
     paid_error: 0,
   };
+}
+
+export function mcpBuyerCandidateTotals(snapshot: FunnelSnapshot): McpFunnelCounters {
+  const excluded = new Set<FunnelChannel>(MCP_NON_BUYER_CHANNELS);
+  const totals = emptyMcpCounters();
+  const keys = ["events", ...MCP_FUNNEL_STAGES] as const;
+  for (const channel of FUNNEL_CHANNELS) {
+    if (excluded.has(channel)) continue;
+    for (const key of keys) totals[key] += snapshot.mcp_by_channel[channel][key];
+  }
+  return totals;
 }
 
 function mcpCountersRecord<K extends string>(keys: readonly K[]): Record<K, McpFunnelCounters> {
@@ -623,7 +641,9 @@ export function classifyMcpTailEvents(value: unknown): McpFunnelObservation[] {
     ? "kiro_power"
     : declaredSource === "agent-skills-marketplace"
       ? "agent_skills_marketplace"
-      : null;
+      : declaredSource === "glama-release"
+        ? "glama"
+        : null;
   const observations: McpFunnelObservation[] = [];
   for (const message of mcpLogMessages(tail.logs)) {
     let parsed: unknown;

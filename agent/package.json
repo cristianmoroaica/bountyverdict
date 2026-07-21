@@ -32,6 +32,7 @@
     "settlement:provision": "node --env-file-if-exists=.dev.vars --experimental-strip-types scripts/provision-settlement-buyer.ts",
     "settlement:canary": "node --env-file-if-exists=.dev.vars --experimental-strip-types scripts/settlement-canary.ts",
     "manifest:activate": "node --experimental-strip-types scripts/activate-manifest.ts",
+    "glama:verify": "node --experimental-strip-types scripts/verify-glama-release.ts",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

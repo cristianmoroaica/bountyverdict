@@ -43,6 +43,10 @@ jobs:
         working-directory: agent
         run: npm run deploy:dry
 
+      - name: Build and smoke-test Glama stdio release
+        working-directory: agent
+        run: npm run glama:verify
+
       - name: Audit production and development dependencies
         working-directory: agent
         run: npm audit --audit-level=low
