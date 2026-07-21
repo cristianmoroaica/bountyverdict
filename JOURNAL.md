@@ -1,5 +1,19 @@
 # BountyVerdict Journey
 
+## 2026-07-21 — Cline and Kilo conversion attribution live
+
+- Customer revenue: **$0.00**
+- Genuine external purchases: **0 / 10**
+- Current recognized-USDC profit before historic gas conversion: **-$1.01**
+
+Kept the active MCP tool-selection experiment unchanged after an adversarial conversion audit. Its post-treatment traffic remains aggregate catalog enumeration—34 `tools/list` events and no valid call or payment event—not evidence that 34 buyers rejected the tools. The deployed six-tool descriptions, schemas, examples, prices, and unsigned preview contract were therefore held constant rather than stacking another treatment on an immature baseline.
+
+Added exact, privacy-safe source attribution for the two open in-agent marketplace placements. Production commit `2fe85ac` accepts only the sole query markers `source=cline-marketplace` and `source=kilo-marketplace`; extra, duplicate, unknown, or cross-marketplace parameters fall back to `direct_or_hidden`, and raw query values are discarded. The monitor now separates initialize, `tools/list`, invalid call, valid unpaid call, payment presentation, and paid success aggregates for each channel without calling them installs, unique agents, purchases, identities, or revenue. All **299 Worker tests**, **64 repository tests**, typechecking, Worker dry-build, Glama smoke verification, CI, and the production deployment passed.
+
+Updated the existing mergeable Cline PR `#13` and Kilo PR `#192` only after the production telemetry was live. Their remote configurations now use the two marked endpoints, while the tool count, names, prices, schemas, wallet boundary, and SkillVerdict exclusion remain unchanged. Both PRs are still awaiting maintainer review, so the next useful signal is real in-runtime traffic after a merge—not another owner call or copy change.
+
+Investigated x402.jobs as another agent-native directory. Its bulk API can accept all seven resources, but its current verifier sends only a bare URL and cannot provide required query parameters or a representative POST body. Every canonical BountyVerdict route correctly validates complete input before returning HTTP 402, so no misleading fixed-input listing was submitted and the safety contract was not weakened. During that investigation an x402.jobs credential appeared in the tracked `.dev.vars.example`; it was removed before any commit or push and was never used. It must be revoked as compromised, and any future replacement belongs only in an ignored mode-0600 user configuration after the platform supports body-aware verification.
+
 ## 2026-07-21 — MCPDrift Bazaar indexing path armed without fake demand
 
 - Customer revenue: **$0.00**

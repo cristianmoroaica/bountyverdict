@@ -2012,6 +2012,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **STATUS:** ${status}
 - **Customer revenue:** ${money(revenueValue)} / $1,000.00
 - **Current profit (recognized-USDC basis):** ${money(profitValue)} (customer revenue minus ${money(costsValue)} tracked USD costs)
+- **Security action required:** revoke the x402.jobs API key that appeared in the tracked example file during local investigation; it was removed before commit or push and was never used. Store any future replacement only in an ignored mode-0600 user configuration after body-aware endpoint verification is supported.
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${totalPurchases} / 10 genuine external purchases
 - **Pending Taskmarket opportunity estimate (not revenue):** ${Number(taskmarketTracked.pending_submissions || 0)} submissions; $${String(taskmarketTracked.pending_gross_potential_usdc || "0")} gross / $${String(taskmarketTracked.pending_net_potential_usdc || "0")} net if awarded (pool-task net is explicitly operator-estimated from submitted record types; gross is scaled by that task's live reward/net contract, never the full escrow)
