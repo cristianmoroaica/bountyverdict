@@ -27,7 +27,7 @@ const directory402Api = "https://402directory.com/api";
 const directory402SubmissionIds = Object.freeze([50, 51, 52, 53, 54, 55, 56]);
 const index402Api = "https://402index.io/api/v1/services";
 const agentSkillSearchUrl = "https://agentskill.sh/api/agent/search?q=bountyverdict&limit=20";
-const githubSkillReleaseTag = "v1.0.2";
+const githubSkillReleaseTag = "v1.0.3";
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },

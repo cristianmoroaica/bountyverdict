@@ -26,7 +26,7 @@ const assertPortableWithoutMcpRuntime = (skill) => {
 test("agent manifest is honest and links inspectable products", async () => {
   const manifest = await readJson("../agent-manifest.json");
   assert.equal(manifest.release_version, "1.0.1");
-  assert.match(manifest.release_url, /\/releases\/tag\/v1\.0\.1$/);
+  assert.match(manifest.release_url, /\/releases\/tag\/v1\.0\.3$/);
   assert.ok(["awaiting_production", "active"].includes(manifest.status));
   if (manifest.status === "awaiting_production") assert.equal(manifest.production_api, null);
   if (manifest.status === "active") assert.match(manifest.production_api, /^https:\/\//);
@@ -206,8 +206,9 @@ test("agent landing page exposes all seven self-serve products", async () => {
   assert.match(page, /No account or API key/);
   assert.match(page, /route-github-agent-checks/);
   assert.match(page, /agent-manifest\.json/);
-  assert.match(page, /gh skill preview cristianmoroaica\/bountyverdict route-github-agent-checks@v1\.0\.1/);
-  assert.match(page, /gh skill install cristianmoroaica\/bountyverdict route-github-agent-checks --pin v1\.0\.1/);
+  assert.match(page, /gh skill preview cristianmoroaica\/bountyverdict route-github-agent-checks@v1\.0\.3/);
+  assert.match(page, /gh skill install cristianmoroaica\/bountyverdict route-github-agent-checks --pin v1\.0\.3/);
+  assert.match(page, /copilot plugin install cristianmoroaica\/bountyverdict/);
   assert.match(page, /npx awal@2\.12\.0 x402 details/);
   assert.match(page, /npx awal@2\.12\.0 x402 pay/);
   assert.match(page, /--max-amount/);

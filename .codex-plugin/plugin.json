@@ -1,0 +1,36 @@
+{
+  "name": "bountyverdict",
+  "version": "1.0.3",
+  "description": "Guard public GitHub bounty, agent-harness, CI, and MCP upgrade decisions with evidence-linked x402 checks.",
+  "author": {
+    "name": "Cristian Moroaica",
+    "url": "https://github.com/cristianmoroaica"
+  },
+  "homepage": "https://cristianmoroaica.github.io/bountyverdict/agents.html",
+  "repository": "https://github.com/cristianmoroaica/bountyverdict",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "ci",
+    "agent-safety",
+    "mcp",
+    "x402"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "BountyVerdict",
+    "shortDescription": "Evidence gates for GitHub coding agents.",
+    "longDescription": "Preflight public GitHub bounties and agent instructions, diagnose or classify failed Actions runs, audit third-party skills, and gate MCP tool-catalog upgrades with bounded evidence-linked checks.",
+    "developerName": "Cristian Moroaica",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive"
+    ],
+    "websiteURL": "https://cristianmoroaica.github.io/bountyverdict/agents.html",
+    "defaultPrompt": [
+      "Check whether this public GitHub bounty is worth pursuing.",
+      "Diagnose this failed public GitHub Actions run.",
+      "Gate this MCP tools/list change before upgrading."
+    ]
+  }
+}

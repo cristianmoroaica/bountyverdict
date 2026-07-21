@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "product": "BountyVerdict",
   "release_version": "1.0.1",
-  "release_url": "https://github.com/cristianmoroaica/bountyverdict/releases/tag/v1.0.1",
+  "release_url": "https://github.com/cristianmoroaica/bountyverdict/releases/tag/v1.0.3",
   "status": "active",
   "production_api": "https://bountyverdict-agent-production.mimirslab.workers.dev",
   "test_api": "https://bountyverdict-agent.mimirslab.workers.dev",

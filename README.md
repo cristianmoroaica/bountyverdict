@@ -10,12 +10,20 @@ Install the router that selects the narrowest check and applies its payment safe
 npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y
 ```
 
-Or inspect and install the immutable v1.0.1 router with GitHub's native skill workflow:
+Or inspect and install the immutable v1.0.3 router with GitHub's native skill workflow:
 
 ```bash
-gh skill preview cristianmoroaica/bountyverdict route-github-agent-checks@v1.0.1
-gh skill install cristianmoroaica/bountyverdict route-github-agent-checks --pin v1.0.1
+gh skill preview cristianmoroaica/bountyverdict route-github-agent-checks@v1.0.3
+gh skill install cristianmoroaica/bountyverdict route-github-agent-checks --pin v1.0.3
 ```
+
+GitHub Copilot CLI can install the repository as a plugin without a separate marketplace setup:
+
+```bash
+copilot plugin install cristianmoroaica/bountyverdict
+```
+
+That plugin exposes the five task-specific public GitHub, CI, and MCP workflow skills. SkillVerdict and the broad router remain separate least-privilege installs.
 
 Then ask, for example:
 
