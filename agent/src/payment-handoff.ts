@@ -166,7 +166,7 @@ export function exactRestRequestForProduct(
   let body: unknown;
   switch (product) {
     case "single":
-      url.searchParams.set("issue_url", requiredString(normalizedArgs, "issue_url"));
+      body = { issue_url: requiredString(normalizedArgs, "issue_url") };
       break;
     case "portfolio":
       body = { issue_urls: requiredStringArray(normalizedArgs, "issue_urls") };

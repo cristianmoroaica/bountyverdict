@@ -191,7 +191,7 @@ export const discoveryExtension = addHttpMethod(declareDiscoveryExtension({
     properties: {
       issue_url: {
         type: "string",
-        pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+(?:[?#].*)?$",
+        pattern: "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[1-9][0-9]*$",
         description: "Canonical URL of a public GitHub issue to preflight before an agent starts work.",
       },
     },
@@ -202,7 +202,8 @@ export const discoveryExtension = addHttpMethod(declareDiscoveryExtension({
     example: exampleVerdict,
     schema: outputSchema,
   },
-}), "GET");
+  bodyType: "json",
+}), "POST");
 
 const portfolioViableVerdict = {
   product: "BountyVerdict",
@@ -360,7 +361,7 @@ export const portfolioDiscoveryExtension = addHttpMethod(declareDiscoveryExtensi
         description: "Two to ten canonical public GitHub issue URLs to compare and rank.",
         items: {
           type: "string",
-          pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+(?:[?#].*)?$",
+          pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+([?#].*)?$",
         },
       },
     },

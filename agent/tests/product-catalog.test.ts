@@ -4,6 +4,7 @@ import {
   PRODUCT_CATALOG,
   PRODUCT_KEYS,
   productForAtomicAmount,
+  productForTransport,
 } from "../src/product-catalog.ts";
 
 test("product catalog has unique service, route, sample, and accounting price", () => {
@@ -11,6 +12,16 @@ test("product catalog has unique service, route, sample, and accounting price", 
     const values = PRODUCT_KEYS.map(product => PRODUCT_CATALOG[product][field]);
     assert.equal(new Set(values).size, values.length, `${field} must remain unique`);
   }
+});
+
+test("canonical POST and legacy GET transports remain one BountyVerdict product", () => {
+  assert.equal(PRODUCT_CATALOG.single.path, "/api/bounty-preflight");
+  assert.equal(PRODUCT_CATALOG.single.method, "POST");
+  assert.equal(productForTransport("/api/bounty-preflight", "POST"), "single");
+  assert.equal(productForTransport("/api/verdict", "GET"), "single");
+  assert.equal(productForTransport("/api/bounty-preflight", "GET"), null);
+  assert.equal(productForTransport("/api/verdict", "POST"), null);
+  assert.equal(productForTransport("/api/bounty-preflight", "PUT"), null);
 });
 
 test("product catalog preserves all public payment contracts", () => {

@@ -55,6 +55,37 @@ test("classifies an external directory challenge without retaining raw request d
   assert.doesNotMatch(serialized, /192\.0\.2\.10|must-never-persist|github\.com|Agent402/);
 });
 
+test("canonical POST and legacy GET aggregate as one BountyVerdict product", () => {
+  const canonical = classifyFunnelTailEvent(event(
+    "/api/bounty-preflight",
+    402,
+    { "user-agent": "undici" },
+    "POST",
+  ));
+  const legacy = classifyFunnelTailEvent(event(
+    "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Facme%2Frepo%2Fissues%2F1",
+    402,
+    { "user-agent": "undici" },
+  ));
+  assert.equal(canonical?.product, "single");
+  assert.equal(canonical?.input_profile, "body_unobservable");
+  assert.equal(legacy?.product, "single");
+  assert.equal(legacy?.input_profile, "complete_expected");
+  const snapshot = createFunnelSnapshot("2026-07-20T19:00:00.000Z");
+  recordFunnelObservation(snapshot, canonical!);
+  recordFunnelObservation(snapshot, legacy!);
+  assert.equal(snapshot.by_product.single.requests, 2);
+  assert.equal(snapshot.totals.requests, 2);
+
+  const owner = classifyFunnelTailEvent(event(
+    "/api/bounty-preflight",
+    402,
+    { "user-agent": "bountyverdict-owner-audit/1.0" },
+    "POST",
+  ));
+  assert.equal(owner?.source, "owner_automation");
+});
+
 test("learns MCP conversion stages without retaining tool arguments or request identity", () => {
   const value = event("/mcp?private=discard", 200, {
     "user-agent": "Codex/99 private-build",
@@ -214,6 +245,8 @@ test("ignores samples, internal routes, wrong methods, hosts, and scripts", () =
   assert.equal(readiness.source, "owner_automation");
   assert.equal(classifyFunnelTailEvent(event("/_internal/canary/single", 200)), null);
   assert.equal(classifyFunnelTailEvent(event("/api/portfolio", 402, {}, "GET")), null);
+  assert.equal(classifyFunnelTailEvent(event("/api/bounty-preflight", 402, {}, "GET")), null);
+  assert.equal(classifyFunnelTailEvent(event("/api/verdict", 402, {}, "POST")), null);
   assert.equal(classifyFunnelTailEvent({ ...event("/api/verdict", 402), scriptName: "other" }), null);
   const otherHost = event("/api/verdict", 402);
   otherHost.event.request.url = "https://example.com/api/verdict";

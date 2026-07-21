@@ -19,7 +19,7 @@ const MCP_TOOL_BY_PRODUCT = Object.freeze({
   flake: "classify_github_actions_flake",
   mcpdrift: "check_mcp_tool_drift",
 } as const satisfies Record<typeof DISTRIBUTED_PRODUCTS[number], string>);
-const AI_CATALOG_UPDATED_AT = "2026-07-21T09:20:00Z";
+const AI_CATALOG_UPDATED_AT = "2026-07-21T18:29:19Z";
 const AI_CATALOG_QUERIES = Object.freeze([
   "check whether a github bounty issue is still open claimed or worth coding",
   "compare github bounty issues and choose the best candidate",

@@ -21,12 +21,32 @@ const crawlerEnv = {
   FLAKE_RATE_LIMITER: { limit: async () => ({ success: true }) },
 };
 
-test("build-time method enrichment creates valid Bazaar metadata", () => {
+test("BountyVerdict canonical POST declaration passes Bazaar schema and protocol validation", () => {
   const extension = discoveryExtension.bazaar;
 
-  assert.equal(extension.info.input.method, "GET");
+  assert.equal(extension.info.input.method, "POST");
+  assert.equal(extension.info.input.bodyType, "json");
+  assert.deepEqual(extension.info.input.body, {
+    issue_url: "https://github.com/typeorm/typeorm/issues/3357",
+  });
   assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
   assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
+});
+
+test("canonical BountyVerdict POST example survives preflight and returns a payable challenge", async () => {
+  const input = discoveryExtension.bazaar.info.input;
+  const response = await app.request("/api/bounty-preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input.body),
+  }, crawlerEnv);
+  assert.equal(response.status, 402);
+  const encoded = response.headers.get("payment-required");
+  assert.ok(encoded);
+  const challenge = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+  assert.equal(challenge.resource.url, "http://localhost/api/bounty-preflight");
+  assert.equal(challenge.extensions.bazaar.info.input.method, "POST");
+  assert.equal(challenge.extensions.bazaar.info.input.bodyType, "json");
 });
 
 test("portfolio POST declaration passes Bazaar schema and protocol validation", () => {
@@ -86,7 +106,6 @@ test("FlakeVerdict GET declaration passes Bazaar schema and protocol validation"
 
 test("every advertised GET example survives preflight and returns a payable crawler challenge", async () => {
   const routes = [
-    ["/api/verdict", discoveryExtension],
     ["/api/harness", harnessDiscoveryExtension],
     ["/api/skill", skillDiscoveryExtension],
     ["/api/run", runDiscoveryExtension],
@@ -101,4 +120,18 @@ test("every advertised GET example survives preflight and returns a payable craw
     assert.equal(response.status, 402, `${path} must challenge the exact advertised Bazaar input`);
     assert.ok(response.headers.get("payment-required"));
   }
+});
+
+test("legacy BountyVerdict GET remains payable without advertising a second Bazaar contract", async () => {
+  const response = await app.request(
+    "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Ftypeorm%2Ftypeorm%2Fissues%2F3357",
+    {},
+    crawlerEnv,
+  );
+  assert.equal(response.status, 402);
+  const encoded = response.headers.get("payment-required");
+  assert.ok(encoded);
+  const challenge = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+  assert.equal(challenge.resource.url.includes("/api/verdict?issue_url="), true);
+  assert.equal(challenge.extensions?.bazaar, undefined);
 });

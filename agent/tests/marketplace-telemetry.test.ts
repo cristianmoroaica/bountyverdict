@@ -94,6 +94,7 @@ test("turns CDP merchant activity changes into reconciliation signals, never rev
     merchantResource.resource,
     "2026-07-21T00:02:00.000Z",
     {
+      resource: merchantResource.resource,
       reported_calls_30d: 1,
       reported_unique_payers_30d: 1,
       last_called_at: "2026-07-20T10:44:05.648Z",
@@ -106,6 +107,25 @@ test("turns CDP merchant activity changes into reconciliation signals, never rev
   assert.equal(snapshot.quality_available, true);
   assert.equal(snapshot.baseline_owner_contaminated, true);
   assert.equal("revenue" in snapshot, false);
+});
+
+test("resets CDP quality deltas when a product migrates to a new canonical resource URL", () => {
+  const migrated = { ...merchantResource, resource: "https://example.test/api/bounty-preflight" };
+  const snapshot = normalizeCdpMerchantQuality(
+    migrated,
+    migrated.resource,
+    "2026-07-21T00:02:00.000Z",
+    {
+      resource: merchantResource.resource,
+      reported_calls_30d: 99,
+      reported_unique_payers_30d: 12,
+      last_called_at: "2026-07-21T00:01:00.000Z",
+    },
+  );
+  assert.equal(snapshot.delta_calls_30d, null);
+  assert.equal(snapshot.delta_unique_payers_30d, null);
+  assert.equal(snapshot.call_recency_advanced, false);
+  assert.equal(snapshot.requires_settlement_reconciliation, false);
 });
 
 test("accepts newly indexed CDP resources while quality counters are pending", () => {

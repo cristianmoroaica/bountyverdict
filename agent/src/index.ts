@@ -35,7 +35,7 @@ import {
   mcpDriftExample,
   mcpDriftExampleInput,
 } from "./mcp-drift-discovery.ts";
-import { PRODUCT_CATALOG } from "./product-catalog.ts";
+import { LEGACY_SINGLE_PATH, PRODUCT_CATALOG } from "./product-catalog.ts";
 import { buildPaymentHandoff } from "./payment-handoff.ts";
 import { createX402ServiceManifest } from "./x402-service-manifest.ts";
 import {
@@ -127,12 +127,14 @@ const ICON_URL = `${PRODUCT_URL}favicon.svg`;
 const MANIFEST_URL = `${PRODUCT_URL}agent-manifest.json`;
 const SKILLS_URL = `${PRODUCT_URL}skills/`;
 const SKILL_URL = `${SKILLS_URL}route-github-agent-checks/SKILL.md`;
+const SINGLE_MAX_BODY_BYTES = 4 * 1024;
 const PORTFOLIO_MAX_BODY_BYTES = 16 * 1024;
+const CANONICAL_ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\/[1-9][0-9]*$/;
 
 const INPUT_GUIDANCE = Object.freeze({
   single: {
     product: "BountyVerdict",
-    method: "GET",
+    method: "POST",
     required: ["issue_url"],
     example: { issue_url: "https://github.com/owner/repository/issues/123" },
   },
@@ -175,6 +177,19 @@ const INPUT_GUIDANCE = Object.freeze({
   },
 } as const);
 
+const LEGACY_SINGLE_INPUT_GUIDANCE = Object.freeze({
+  product: "BountyVerdict",
+  method: "GET",
+  required: ["issue_url"],
+  example: { issue_url: "https://github.com/owner/repository/issues/123" },
+  deprecated: true,
+  canonical_transport: {
+    method: "POST",
+    path: PRODUCT_CATALOG.single.path,
+    body: { issue_url: "https://github.com/owner/repository/issues/123" },
+  },
+});
+
 type PreflightProduct = keyof typeof INPUT_GUIDANCE;
 
 function preflightFailure(
@@ -184,9 +199,10 @@ function preflightFailure(
   message: string,
   status: 400 | 413 | 422 | 429 | 503 = 400,
   details: Record<string, unknown> = {},
+  guidanceOverride?: Record<string, unknown>,
 ) {
   const origin = new URL(c.req.url).origin;
-  const guidance = INPUT_GUIDANCE[product];
+  const guidance = guidanceOverride || INPUT_GUIDANCE[product];
   return c.json({
     error: code,
     message,
@@ -215,6 +231,7 @@ type UnpaidDecisionPreview = {
   samplePath: string;
   skillName: string;
   method: "GET" | "POST";
+  legacyTransport?: boolean;
 };
 
 async function unpaidDecisionBody(preview: UnpaidDecisionPreview, context: HTTPRequestContext) {
@@ -226,7 +243,9 @@ async function unpaidDecisionBody(preview: UnpaidDecisionPreview, context: HTTPR
     throw new Error(`Validated POST body is unavailable for ${preview.product}; refusing to construct a payment challenge.`);
   }
   const catalog = PRODUCT_CATALOG[preview.productKey];
-  if (catalog.method !== preview.method) {
+  const canonical = catalog.method === preview.method && !preview.legacyTransport;
+  const legacySingle = preview.productKey === "single" && preview.method === "GET" && preview.legacyTransport === true;
+  if (!canonical && !legacySingle) {
     throw new Error(`Payment handoff method drifted for ${preview.product}.`);
   }
   const payment = await buildPaymentHandoff({
@@ -283,7 +302,7 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       whyPay: "Checks withdrawn rewards, maintainer rejection, competing pull requests, failed-attempt saturation, and repository AI-contribution policy in one bounded pass.",
       samplePath: "/api/sample",
       skillName: "preflight-github-bounties",
-      method: "GET",
+      method: "POST",
     }, context),
   };
   const portfolioRouteConfig: RouteConfig = {
@@ -309,6 +328,22 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
       samplePath: "/api/portfolio/sample",
       skillName: "preflight-github-bounties",
       method: "POST",
+    }, context),
+  };
+  const legacySingleRouteConfig: RouteConfig = {
+    ...routeConfig,
+    unpaidResponseBody: (context) => unpaidDecisionBody({
+      productKey: "single",
+      product: "BountyVerdict",
+      description: "Pay once to receive a fresh evidence-linked bounty risk verdict.",
+      useWhen: "Before coding one public GitHub bounty issue.",
+      notFor: "Private repositories or payout guarantees.",
+      decisionReturned: ["AVOID", "CAUTION", "VIABLE"],
+      whyPay: "Checks withdrawn rewards, maintainer rejection, competing pull requests, failed-attempt saturation, and repository AI-contribution policy in one bounded pass.",
+      samplePath: "/api/sample",
+      skillName: "preflight-github-bounties",
+      method: "GET",
+      legacyTransport: true,
     }, context),
   };
   const harnessRouteConfig: RouteConfig = {
@@ -438,7 +473,8 @@ function buildPaymentMiddleware(env: Env): MiddlewareHandler {
   };
   const middleware = paymentMiddleware(
     {
-      [`GET ${SINGLE_ENDPOINT}`]: routeConfig,
+      [`POST ${SINGLE_ENDPOINT}`]: routeConfig,
+      [`GET ${LEGACY_SINGLE_PATH}`]: legacySingleRouteConfig,
       [`POST ${PORTFOLIO_ENDPOINT}`]: portfolioRouteConfig,
       [`GET ${HARNESS_ENDPOINT}`]: harnessRouteConfig,
       [`GET ${SKILL_ENDPOINT}`]: skillRouteConfig,
@@ -477,7 +513,9 @@ app.get("/", (c) =>
         name: "BountyVerdict",
         price: SINGLE_PRICE_USD,
         endpoint: SINGLE_ENDPOINT,
-        method: "GET",
+        method: "POST",
+        legacy_endpoint: LEGACY_SINGLE_PATH,
+        legacy_method: "GET",
         use_when: "Decide whether one public GitHub bounty issue is worth pursuing before coding.",
         skill: `${SKILLS_URL}preflight-github-bounties/SKILL.md`,
         input: { issue_url: "https://github.com/owner/repository/issues/123" },
@@ -783,6 +821,43 @@ const paymentGate: MiddlewareHandler<AppBindings> = async (c, next) => {
 };
 
 const singlePreflight: MiddlewareHandler<AppBindings> = async (c, next) => {
+  if (c.req.method !== "POST") return await next();
+  const contentType = c.req.header("Content-Type") || "";
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    return preflightFailure(c, "single", "INVALID_CONTENT_TYPE", "Content-Type must be application/json.");
+  }
+  const declaredLength = c.req.header("Content-Length");
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > SINGLE_MAX_BODY_BYTES) {
+    return preflightFailure(c, "single", "INPUT_TOO_LARGE", "Request body exceeds 4,096 bytes.", 413);
+  }
+  try {
+    const raw = await c.req.raw.clone().text();
+    if (new TextEncoder().encode(raw).byteLength > SINGLE_MAX_BODY_BYTES) {
+      return preflightFailure(c, "single", "INPUT_TOO_LARGE", "Request body exceeds 4,096 bytes.", 413);
+    }
+    const input = JSON.parse(raw) as Record<string, unknown>;
+    if (!input || typeof input !== "object" || Array.isArray(input) ||
+      Object.keys(input).length !== 1 || typeof input.issue_url !== "string") {
+      return preflightFailure(c, "single", "INVALID_INPUT", "Request body must contain exactly one string field: issue_url.");
+    }
+    if (!CANONICAL_ISSUE_URL_PATTERN.test(input.issue_url)) {
+      return preflightFailure(c, "single", "INVALID_ISSUE_URL", "issue_url must be an exact canonical public GitHub issue URL without a query string, fragment, or trailing slash.");
+    }
+    const parsed = parseIssueUrl(input.issue_url);
+    c.set("singleIssueUrl", `https://github.com/${parsed.owner}/${parsed.repo}/issues/${parsed.number}`);
+    return await next();
+  } catch (error) {
+    return preflightFailure(
+      c,
+      "single",
+      error instanceof SyntaxError ? "INVALID_JSON" : "INVALID_ISSUE_URL",
+      error instanceof SyntaxError ? "Request body must be valid JSON." :
+        error instanceof Error ? error.message : "issue_url must be a canonical public GitHub issue URL.",
+    );
+  }
+};
+
+const legacySinglePreflight: MiddlewareHandler<AppBindings> = async (c, next) => {
   if (c.req.method !== "GET") return await next();
   try {
     const parsed = parseIssueUrl(c.req.query("issue_url") || "");
@@ -794,6 +869,9 @@ const singlePreflight: MiddlewareHandler<AppBindings> = async (c, next) => {
       "single",
       "INVALID_ISSUE_URL",
       error instanceof Error ? error.message : "issue_url must be a canonical public GitHub issue URL.",
+      400,
+      {},
+      LEGACY_SINGLE_INPUT_GUIDANCE,
     );
   }
 };
@@ -888,12 +966,14 @@ const flakePreflight: MiddlewareHandler<AppBindings> = async (c, next) => {
 };
 
 app.use(SINGLE_ENDPOINT, singlePreflight);
+app.use(LEGACY_SINGLE_PATH, legacySinglePreflight);
 app.use(PORTFOLIO_ENDPOINT, portfolioPreflight);
 app.use(HARNESS_ENDPOINT, harnessPreflight);
 app.use(SKILL_ENDPOINT, skillPreflight);
 app.use(RUN_ENDPOINT, runPreflight);
 app.use(FLAKE_ENDPOINT, flakePreflight);
 app.use(SINGLE_ENDPOINT, paymentGate);
+app.use(LEGACY_SINGLE_PATH, paymentGate);
 app.use(PORTFOLIO_ENDPOINT, paymentGate);
 app.use(HARNESS_ENDPOINT, paymentGate);
 app.use(SKILL_ENDPOINT, paymentGate);
@@ -929,7 +1009,7 @@ const mcpDriftPreflight: MiddlewareHandler<AppBindings> = async (c, next) => {
 app.use(MCP_DRIFT_ENDPOINT, mcpDriftPreflight);
 app.use(MCP_DRIFT_ENDPOINT, paymentGate);
 
-app.get(SINGLE_ENDPOINT, async (c) => {
+const singleHandler = async (c: Context<AppBindings>) => {
   const issueUrl = c.get("singleIssueUrl");
   try {
     const verdict = await checkGithubIssue(issueUrl, {
@@ -946,7 +1026,10 @@ app.get(SINGLE_ENDPOINT, async (c) => {
       500,
     );
   }
-});
+};
+
+app.post(SINGLE_ENDPOINT, singleHandler);
+app.get(LEGACY_SINGLE_PATH, singleHandler);
 
 app.post(PORTFOLIO_ENDPOINT, async (c) => {
   try {

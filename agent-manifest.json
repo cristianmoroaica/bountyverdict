@@ -46,8 +46,16 @@
   "products": [
     {
       "name": "BountyVerdict",
-      "method": "GET",
-      "path": "/api/verdict",
+      "method": "POST",
+      "path": "/api/bounty-preflight",
+      "body": {
+        "issue_url": "required exact canonical public GitHub issue URL"
+      },
+      "legacy_transport": {
+        "method": "GET",
+        "path": "/api/verdict",
+        "deprecated": true
+      },
       "price_usdc": "0.05",
       "reusable": true,
       "use_when": "Decide whether one public GitHub bounty issue is worth pursuing before coding.",

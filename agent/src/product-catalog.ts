@@ -1,9 +1,9 @@
 export const PRODUCT_CATALOG = Object.freeze({
   single: Object.freeze({
     service: "BountyVerdict",
-    path: "/api/verdict",
+    path: "/api/bounty-preflight",
     samplePath: "/api/sample",
-    method: "GET" as const,
+    method: "POST" as const,
     priceUsd: "$0.05",
     amountAtomic: 50_000n,
   }),
@@ -58,9 +58,20 @@ export const PRODUCT_CATALOG = Object.freeze({
 });
 
 export type ProductKey = keyof typeof PRODUCT_CATALOG;
+export const LEGACY_SINGLE_PATH = "/api/verdict";
 export const PRODUCT_KEYS = Object.freeze(
   Object.keys(PRODUCT_CATALOG) as ProductKey[],
 );
+
+export function productForTransport(path: string, method: string): ProductKey | null {
+  const normalizedMethod = method.toUpperCase();
+  for (const product of PRODUCT_KEYS) {
+    const catalog = PRODUCT_CATALOG[product];
+    if (catalog.path === path && catalog.method === normalizedMethod) return product;
+  }
+  if (path === LEGACY_SINGLE_PATH && normalizedMethod === "GET") return "single";
+  return null;
+}
 
 export function productForAtomicAmount(amount: bigint): ProductKey | null {
   for (const product of PRODUCT_KEYS) {

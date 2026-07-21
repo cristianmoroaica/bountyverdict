@@ -20,7 +20,8 @@
 - Umbrella routing skill: https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md
 - Install router: npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y
 - Install all operating skills: npx skills add cristianmoroaica/bountyverdict --skill '*' -y
-- Paid check: GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/verdict?issue_url=<PUBLIC_GITHUB_ISSUE_URL>
+- Paid check: POST https://bountyverdict-agent-production.mimirslab.workers.dev/api/bounty-preflight with {"issue_url":"<EXACT_PUBLIC_GITHUB_ISSUE_URL>"}
+- Deprecated compatibility transport: GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/verdict?issue_url=<PUBLIC_GITHUB_ISSUE_URL>
 - Price: $0.05 USDC per successful result through x402 v2
 - Free portfolio sample: https://bountyverdict-agent-production.mimirslab.workers.dev/api/portfolio/sample
 - Paid portfolio: POST https://bountyverdict-agent-production.mimirslab.workers.dev/api/portfolio with {"issue_urls":[...]} for $0.40 USDC

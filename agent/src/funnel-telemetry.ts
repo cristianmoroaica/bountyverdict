@@ -1,4 +1,4 @@
-import { PRODUCT_CATALOG, PRODUCT_KEYS, type ProductKey } from "./product-catalog.ts";
+import { PRODUCT_CATALOG, PRODUCT_KEYS, productForTransport, type ProductKey } from "./product-catalog.ts";
 
 export const FUNNEL_SCHEMA_VERSION = 2 as const;
 const FUNNEL_PRIVACY = "Aggregate REST, discovery, and MCP funnel counts only; raw URLs, query values, tool arguments, bodies, declared client names and versions, headers, payment payloads, payer addresses, IP addresses, geolocation, visitor IDs, and full user-agent strings are discarded. MCP initialize client names are reduced to an allowlisted family before logging.";
@@ -263,9 +263,6 @@ type TailEvent = {
 
 const MCP_PRODUCTS = PRODUCT_KEYS.filter((product): product is Exclude<ProductKey, "skill"> => product !== "skill");
 
-const PRODUCT_BY_PATH = new Map<string, ProductKey>(
-  PRODUCT_KEYS.map((product) => [PRODUCT_CATALOG[product].path, product] as const),
-);
 const PRODUCTION_HOST = "bountyverdict-agent-production.mimirslab.workers.dev";
 const DISCOVERY_SURFACE_BY_PATH = new Map<string, FunnelDiscoverySurface>([
   ["/", "homepage"],
@@ -451,8 +448,8 @@ function canonicalGithubUrl(value: string, kind: "repo" | "issue" | "run"): bool
   }
 }
 
-function inputProfile(product: ProductKey, url: URL): FunnelInputProfile {
-  if (PRODUCT_CATALOG[product].method === "POST") return "body_unobservable";
+function inputProfile(product: ProductKey, url: URL, method: string): FunnelInputProfile {
+  if (method === "POST") return "body_unobservable";
   const required = product === "single" ? ["issue_url"] : product === "skill" ? ["repo_url", "skill_path"] :
     product === "harness" ? ["repo_url"] : ["run_url"];
   if (required.some((key) => !(url.searchParams.get(key) || "").trim())) return "missing_required";
@@ -512,8 +509,9 @@ export function classifyFunnelTailEvent(value: unknown): FunnelObservation | nul
     return null;
   }
   if (url.protocol !== "https:" || url.host !== PRODUCTION_HOST) return null;
-  const product = PRODUCT_BY_PATH.get(url.pathname);
-  if (!product || method.toUpperCase() !== PRODUCT_CATALOG[product].method) return null;
+  const normalizedMethod = method.toUpperCase();
+  const product = productForTransport(url.pathname, normalizedMethod);
+  if (!product) return null;
   const headers = headersRecord(request?.headers);
   const payment = paymentCarrier(headers);
   const signed = payment !== "none";
@@ -527,7 +525,7 @@ export function classifyFunnelTailEvent(value: unknown): FunnelObservation | nul
     source: sourceCategory(client),
     client_class: client,
     channel: channelCategory(headers, client),
-    input_profile: inputProfile(product, url),
+    input_profile: inputProfile(product, url, normalizedMethod),
     payment_carrier: payment,
     response_preference: responsePreference(headers.accept || ""),
     outcome: outcomeFor(status as number, signed),

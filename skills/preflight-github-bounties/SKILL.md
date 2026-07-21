@@ -43,8 +43,13 @@ Bind the payment client to the expected network, asset, recipient, and atomic ca
 For one issue, call:
 
 ```text
-GET <production_api>/api/verdict?issue_url=<URL_ENCODED_GITHUB_ISSUE_URL>
+POST <production_api>/api/bounty-preflight
+Content-Type: application/json
+
+{"issue_url":"https://github.com/owner/repository/issues/123"}
 ```
+
+`GET <production_api>/api/verdict?issue_url=<URL_ENCODED_GITHUB_ISSUE_URL>` remains a deprecated compatibility transport. New agents should use the POST contract above; only it is advertised for Bazaar discovery.
 
 For a portfolio, call:
 
@@ -55,7 +60,7 @@ Content-Type: application/json
 {"issue_urls":["https://github.com/owner/repository/issues/123","https://github.com/owner/repository/issues/456"]}
 ```
 
-Use an x402-compatible client to retry the same request with payment after validating the challenge. Do not retry a settled request blindly after a transport timeout; first reconcile the settlement transaction or wallet activity.
+Use an x402-compatible client to retry the same method, URL, and byte-identical validated request body with payment after validating the challenge. Standard x402 authorizes the resource URL, not the POST body; verify the advisory body hash and preserve the exact body yourself. Do not retry a settled request blindly after a transport timeout; first reconcile the settlement transaction or wallet activity.
 
 ## Act on the result
 

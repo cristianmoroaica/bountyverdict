@@ -11,7 +11,7 @@ import {
   summarizeRevenue,
   type SettlementTransfer,
 } from "../src/revenue.ts";
-import { PRODUCT_CATALOG, productForAtomicAmount, type ProductKey } from "../src/product-catalog.ts";
+import { LEGACY_SINGLE_PATH, PRODUCT_CATALOG, productForAtomicAmount, productForTransport, type ProductKey } from "../src/product-catalog.ts";
 import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
 import { evaluateEarnedPlacementExperiment } from "../src/acquisition.ts";
 import { loadFunnelSnapshot, mcpBuyerCandidateTotals } from "../src/funnel-telemetry.ts";
@@ -169,15 +169,10 @@ const MARKETPLACE_SEARCH_INTENTS: ReadonlyArray<{
   { product: "flake", query: "classify CI failure transient flaky retryable vs deterministic" },
 ];
 function expectedDiscoveryResources(): Record<ProductKey, string> {
-  return {
-    single: `${api}/api/verdict`,
-    portfolio: `${api}/api/portfolio`,
-    harness: `${api}/api/harness`,
-    skill: `${api}/api/skill`,
-    run: `${api}/api/run`,
-    flake: `${api}/api/flake`,
-    mcpdrift: `${api}/api/mcp-drift`,
-  };
+  return Object.fromEntries(Object.entries(PRODUCT_CATALOG).map(([product, contract]) => [
+    product,
+    `${api}${contract.path}`,
+  ])) as Record<ProductKey, string>;
 }
 if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
   throw new Error("REVENUE_WALLET must be a public 20-byte EVM address.");
@@ -419,7 +414,7 @@ async function inspectChallenge(
   product: ProductKey,
 ): Promise<Record<string, unknown>> {
   const url = product === "single"
-    ? `${api}/api/verdict?issue_url=${encodeURIComponent("https://github.com/typeorm/typeorm/issues/3357")}`
+    ? `${api}${PRODUCT_CATALOG.single.path}`
     : product === "harness"
       ? `${api}/api/harness?repo_url=${encodeURIComponent("https://github.com/openai/codex")}`
       : product === "skill"
@@ -431,7 +426,13 @@ async function inspectChallenge(
             : product === "mcpdrift"
               ? `${api}/api/mcp-drift`
               : `${api}/api/portfolio`;
-  const response = await monitoredFetch(url, product === "portfolio"
+  const response = await monitoredFetch(url, product === "single"
+    ? {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ issue_url: "https://github.com/typeorm/typeorm/issues/3357" }),
+      }
+    : product === "portfolio"
     ? {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -629,41 +630,62 @@ async function agenticMarketStatus(): Promise<Record<string, unknown>> {
     service.domain !== new URL(api).hostname ||
     !Array.isArray(service.endpoints) ||
     service.endpoints.length === 0 ||
-    service.endpoints.length > EXPECTED_PRODUCTS.length
+    service.endpoints.length > EXPECTED_PRODUCTS.length + 1
   ) {
     throw new Error("automatic service group identity or endpoint count is invalid.");
   }
 
-  const expectedByUrl = new Map(EXPECTED_PRODUCTS.map((product) => [
-    `${api}${PRODUCT_CATALOG[product].path}`,
-    product,
-  ]));
   const indexedProducts = Object.fromEntries(EXPECTED_PRODUCTS.map((product) => [product, false]));
   const quality: Record<string, ReturnType<typeof normalizeAgenticMarketQuality>> = {};
-  const seen = new Set<ProductKey>();
+  const seenCanonical = new Set<ProductKey>();
+  const seenTransports = new Set<string>();
+  let legacySingleIndexed = false;
   for (const endpoint of service.endpoints as Array<Record<string, any>>) {
-    const product = expectedByUrl.get(String(endpoint.url));
-    if (!product || seen.has(product)) throw new Error("automatic directory contains an unknown or duplicate endpoint.");
+    let endpointUrl: URL;
+    try {
+      endpointUrl = new URL(String(endpoint.url));
+    } catch {
+      throw new Error("automatic directory contains an invalid endpoint URL.");
+    }
+    if (endpointUrl.origin !== api || endpointUrl.search || endpointUrl.hash) {
+      throw new Error("automatic directory contains an endpoint outside the exact production origin.");
+    }
+    const method = String(endpoint.method).toUpperCase();
+    const product = productForTransport(endpointUrl.pathname, method);
+    const transportKey = `${method} ${endpointUrl.href}`;
+    if (!product || seenTransports.has(transportKey)) throw new Error("automatic directory contains an unknown or duplicate endpoint.");
     const expected = PRODUCT_CATALOG[product];
     const amount = Number(endpoint.pricing?.amount);
     const endpointQuality = normalizeAgenticMarketQuality(endpoint.quality);
     if (
-      endpoint.serviceName !== expected.service || endpoint.method !== expected.method ||
+      endpoint.serviceName !== expected.service ||
       !Number.isFinite(amount) || Math.round(amount * 1_000_000) !== Number(expected.amountAtomic) ||
       String(endpoint.pricing?.currency).toUpperCase() !== "USDC" ||
       endpoint.pricing?.network !== NETWORK || endpoint.pricing?.scheme !== "exact"
     ) {
       throw new Error(`automatic directory contract drifted for ${expected.service}.`);
     }
-    seen.add(product);
-    indexedProducts[product] = true;
-    quality[product] = endpointQuality;
+    seenTransports.add(transportKey);
+    const canonical = endpointUrl.pathname === expected.path && method === expected.method;
+    if (canonical) {
+      if (seenCanonical.has(product)) throw new Error("automatic directory duplicated a canonical product endpoint.");
+      seenCanonical.add(product);
+      indexedProducts[product] = true;
+      quality[product] = endpointQuality;
+    } else if (product === "single" && endpointUrl.pathname === LEGACY_SINGLE_PATH && method === "GET") {
+      legacySingleIndexed = true;
+      quality.single_legacy_get = endpointQuality;
+    } else {
+      throw new Error("automatic directory contains an unrecognized compatibility transport.");
+    }
   }
-  const missingProducts = EXPECTED_PRODUCTS.filter((product) => !seen.has(product));
+  const missingProducts = EXPECTED_PRODUCTS.filter((product) => !seenCanonical.has(product));
   return {
     listed: true,
     service_id: service.id,
-    endpoint_count: seen.size,
+    endpoint_count: seenTransports.size,
+    canonical_endpoint_count: seenCanonical.size,
+    legacy_single_get_indexed: legacySingleIndexed,
     exact_contracts_verified: true,
     indexed_products: indexedProducts,
     missing_products: missingProducts,

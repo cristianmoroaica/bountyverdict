@@ -60,7 +60,7 @@ export function createOpenApi(
     openapi: "3.1.0",
     info: {
       title: "BountyVerdict Agent Decision APIs",
-      version: "1.0.1",
+      version: "1.0.2",
       description: "Seven bounded decision APIs for coding agents: evidence-linked GitHub due diligence and diagnostics plus deterministic MCP tool-catalog compatibility and security gates. Payment uses x402 v2 and Base USDC.",
       "x-guidance": "Choose the narrowest operation for the decision at hand, inspect its free sample and unpaid x402 challenge, then pay only when the challenge matches the documented price, Base USDC asset, and operation. Reuse a successful result only according to its service_reuse field.",
       license: { name: "MIT", identifier: "MIT" },
@@ -92,11 +92,65 @@ export function createOpenApi(
           },
         },
       },
-      "/api/verdict": {
-        get: {
+      "/api/bounty-preflight": {
+        post: {
           summary: "Check GitHub bounty eligibility and claimability",
           description: BOUNTY_DISCOVERY_DESCRIPTION,
           operationId: "checkBountyVerdict",
+          ...agentMetadata(origin, {
+            tags: ["bounty-due-diligence"],
+            samplePath: "/api/sample",
+            skill: "preflight-github-bounties",
+            useWhen: "Decide whether one public GitHub bounty is still available and worth pursuing before coding.",
+            reuse: SERVICE_REUSE.single,
+          }),
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    issue_url: {
+                      type: "string",
+                      pattern: "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[1-9][0-9]*$",
+                      description: "Exact canonical public GitHub issue URL without a query string, fragment, or trailing slash.",
+                    },
+                  },
+                  required: ["issue_url"],
+                  additionalProperties: false,
+                },
+                example: { issue_url: "https://github.com/typeorm/typeorm/issues/3357" },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Fresh evidence-linked verdict after x402 settlement",
+              content: { "application/json": { schema: { type: "object", ...outputSchema } } },
+            },
+            "402": { description: "Payment required; inspect the PAYMENT-REQUIRED header. Standard x402 authorizes this resource URL, not the POST body; resend the exact validated body." },
+            "400": { description: "Invalid JSON or GitHub issue URL; no payment challenge is issued" },
+            "413": { description: "Request body exceeds 4,096 bytes; no payment challenge is issued" },
+            "502": { description: "GitHub upstream failure; verified payment is not settled" },
+            "503": { description: "Temporary capacity or service configuration failure" },
+          },
+          "x-x402": {
+            version: 2,
+            scheme: "exact",
+            network,
+            price: prices.single,
+            currency: "USDC",
+          },
+          "x-payment-info": paymentInfo(prices.single),
+        },
+      },
+      "/api/verdict": {
+        get: {
+          summary: "Check GitHub bounty eligibility and claimability (legacy GET transport)",
+          description: `Deprecated compatibility transport. New agents should call POST /api/bounty-preflight. ${BOUNTY_DISCOVERY_DESCRIPTION}`,
+          operationId: "checkBountyVerdictLegacyGet",
+          deprecated: true,
           ...agentMetadata(origin, {
             tags: ["bounty-due-diligence"],
             samplePath: "/api/sample",
@@ -111,7 +165,7 @@ export function createOpenApi(
             description: "Canonical public GitHub issue URL",
             schema: {
               type: "string",
-              pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+(?:[?#].*)?$",
+              pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+([?#].*)?$",
             },
             example: "https://github.com/typeorm/typeorm/issues/3357",
           }],
@@ -173,7 +227,7 @@ export function createOpenApi(
                       uniqueItems: true,
                       items: {
                         type: "string",
-                        pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+(?:[?#].*)?$",
+                        pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+([?#].*)?$",
                       },
                     },
                   },
@@ -239,7 +293,7 @@ export function createOpenApi(
             description: "Canonical public GitHub repository URL",
             schema: {
               type: "string",
-              pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:\\.git)?$",
+              pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$",
             },
             example: "https://github.com/openai/codex",
           }],
@@ -294,7 +348,7 @@ export function createOpenApi(
               in: "query",
               required: true,
               description: "Canonical public GitHub repository URL",
-              schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:\\.git)?$" },
+              schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$" },
               example: "https://github.com/coinbase/agentic-wallet-skills",
             },
             {
@@ -525,7 +579,8 @@ export function createLlmsText(origin: string): string {
 - Umbrella routing skill: https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md
 - Install router: npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y
 - Install all operating skills: npx skills add cristianmoroaica/bountyverdict --skill '*' -y
-- Paid check: GET ${origin}/api/verdict?issue_url=<PUBLIC_GITHUB_ISSUE_URL>
+- Paid check: POST ${origin}/api/bounty-preflight with {"issue_url":"<EXACT_PUBLIC_GITHUB_ISSUE_URL>"}
+- Deprecated compatibility transport: GET ${origin}/api/verdict?issue_url=<PUBLIC_GITHUB_ISSUE_URL>
 - Price: $0.05 USDC per successful result through x402 v2
 - Free portfolio sample: ${origin}/api/portfolio/sample
 - Paid portfolio: POST ${origin}/api/portfolio with {"issue_urls":[...]} for $0.40 USDC

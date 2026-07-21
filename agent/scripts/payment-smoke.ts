@@ -29,7 +29,6 @@ const issueUrls = process.env.ISSUE_URLS
 const contract = PRODUCT_CATALOG[product];
 const ownerProbeUserAgent = "bountyverdict-payment-smoke/1.0";
 const url = new URL(contract.path, baseUrl);
-if (product === "single") url.searchParams.set("issue_url", issueUrl);
 if (product === "harness") url.searchParams.set("repo_url", process.env.REPO_URL || defaultRepo);
 if (product === "skill") {
   url.searchParams.set("repo_url", process.env.SKILL_REPO_URL || "https://github.com/coinbase/agentic-wallet-skills");
@@ -46,7 +45,14 @@ if (product === "flake") {
     url.searchParams.set("attempt", attempt);
   }
 }
-const requestInit: RequestInit = product === "portfolio"
+const requestInit: RequestInit = product === "single"
+  ? {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": ownerProbeUserAgent },
+      body: JSON.stringify({ issue_url: issueUrl }),
+      redirect: "error",
+    }
+  : product === "portfolio"
   ? {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": ownerProbeUserAgent },
@@ -78,14 +84,18 @@ const expectedMethod = contract.method;
 if (challenge.resource?.url !== url.href) throw new Error("The payment challenge resource URL does not match the requested operation.");
 if (challenge.resource?.serviceName !== expectedService) throw new Error(`The payment challenge service is not ${expectedService}.`);
 if (challenge.extensions?.bazaar?.info?.input?.method !== expectedMethod) throw new Error(`The payment challenge method is not ${expectedMethod}.`);
-if (product === "mcpdrift" && challenge.extensions?.bazaar?.info?.input?.bodyType !== "json") {
-  throw new Error("The MCPDriftVerdict payment challenge bodyType is not json.");
+if (contract.method === "POST" && challenge.extensions?.bazaar?.info?.input?.bodyType !== "json") {
+  throw new Error(`${contract.service} payment challenge bodyType is not json.`);
 }
 if (challenge.accepts?.[0]?.scheme !== "exact") throw new Error("The payment challenge scheme is not exact.");
 const expectedAtomic = contract.amountAtomic.toString();
 const defaultMaximumAtomic = expectedAtomic;
 const maximumAtomic = BigInt(process.env.MAX_PAYMENT_ATOMIC || defaultMaximumAtomic);
 const executePayment = process.env.EXECUTE_PAYMENT === "YES";
+const expectedPayer = process.env.EXPECTED_PAYER;
+if (expectedPayer && !/^0x[a-fA-F0-9]{40}$/.test(expectedPayer)) {
+  throw new Error("EXPECTED_PAYER must be a public 20-byte EVM address.");
+}
 const requirement = validatePaymentChallenge(challenge, {
   maximumAtomic,
   executePayment,
@@ -155,6 +165,9 @@ if (hasCdpWallet) {
     .registerPolicy((_version, requirements) =>
       requirements.filter((candidate) => BigInt(candidate.amount) <= maximumAtomic),
     );
+}
+if (expectedPayer && payer.toLowerCase() !== expectedPayer.toLowerCase()) {
+  throw new Error("The active payment signer does not match EXPECTED_PAYER.");
 }
 const httpClient = new x402HTTPClient(client);
 const paymentPayload = await httpClient.createPaymentPayload(challenge as PaymentRequired);

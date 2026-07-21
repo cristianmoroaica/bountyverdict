@@ -94,13 +94,17 @@ function nullableTimestamp(value: unknown, label: string): string | null {
 }
 
 function previousMerchantQuality(value: unknown): Pick<CdpMerchantQualitySnapshot,
-  "reported_calls_30d" | "reported_unique_payers_30d" | "last_called_at"> | null {
+  "resource" | "reported_calls_30d" | "reported_unique_payers_30d" | "last_called_at"> | null {
   if (value === undefined || value === null) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("previous CDP merchant quality is malformed.");
   }
   const previous = value as Record<string, unknown>;
+  if (typeof previous.resource !== "string" || !/^https:\/\//.test(previous.resource)) {
+    throw new Error("previous CDP merchant resource identity is invalid.");
+  }
   return {
+    resource: previous.resource,
     reported_calls_30d: count(previous.reported_calls_30d, "previous CDP calls"),
     reported_unique_payers_30d: count(previous.reported_unique_payers_30d, "previous CDP unique payers"),
     last_called_at: nullableTimestamp(previous.last_called_at, "previous CDP lastCalledAt"),
@@ -130,11 +134,12 @@ export function normalizeCdpMerchantQuality(
     ? nullableTimestamp(resource.quality.lastCalledAt, "merchant lastCalledAt")
     : null;
   const previous = previousMerchantQuality(previousValue);
-  const deltaCalls = previous ? calls - previous.reported_calls_30d : null;
-  const deltaPayers = previous ? payers - previous.reported_unique_payers_30d : null;
-  const callRecencyAdvanced = Boolean(previous && lastCalledAt &&
-    (!previous.last_called_at || Date.parse(lastCalledAt) > Date.parse(previous.last_called_at)));
-  const requiresReconciliation = Boolean(previous &&
+  const comparablePrevious = previous?.resource === expectedResource ? previous : null;
+  const deltaCalls = comparablePrevious ? calls - comparablePrevious.reported_calls_30d : null;
+  const deltaPayers = comparablePrevious ? payers - comparablePrevious.reported_unique_payers_30d : null;
+  const callRecencyAdvanced = Boolean(comparablePrevious && lastCalledAt &&
+    (!comparablePrevious.last_called_at || Date.parse(lastCalledAt) > Date.parse(comparablePrevious.last_called_at)));
+  const requiresReconciliation = Boolean(comparablePrevious &&
     (deltaCalls !== 0 || deltaPayers !== 0 || callRecencyAdvanced));
   return {
     resource: expectedResource,
@@ -172,7 +177,7 @@ export function appendCdpMerchantQualityHistory(
     }
     const rows = existing as CdpMerchantQualitySnapshot[];
     const last = rows.at(-1);
-    const changed = !last || last.quality_available !== snapshot.quality_available ||
+    const changed = !last || last.resource !== snapshot.resource || last.quality_available !== snapshot.quality_available ||
       last.reported_calls_30d !== snapshot.reported_calls_30d ||
       last.reported_unique_payers_30d !== snapshot.reported_unique_payers_30d ||
       last.last_called_at !== snapshot.last_called_at || last.last_updated_at !== snapshot.last_updated_at;

@@ -98,7 +98,7 @@ jobs:
               let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
                 const value = JSON.parse(body);
                 const expected = [
-                  ["BountyVerdict", "$0.05", "/api/verdict", "GET"],
+                  ["BountyVerdict", "$0.05", "/api/bounty-preflight", "POST"],
                   ["BountyVerdict Portfolio", "$0.40", "/api/portfolio", "POST"],
                   ["HarnessVerdict", "$0.03", "/api/harness", "GET"],
                   ["SkillVerdict", "$0.06", "/api/skill", "GET"],
@@ -147,7 +147,7 @@ jobs:
           owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/.well-known/x402" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const value = JSON.parse(body);
-              const expected = ["/api/verdict", "/api/portfolio", "/api/harness", "/api/skill", "/api/run", "/api/flake", "/api/mcp-drift"]
+              const expected = ["/api/bounty-preflight", "/api/portfolio", "/api/harness", "/api/skill", "/api/run", "/api/flake", "/api/mcp-drift"]
                 .map((path) => `${process.env.PRODUCTION_API_URL}${path}`);
               if (value.spec !== "agent402-service-manifest/1" || value.version !== 1) process.exit(1);
               if (JSON.stringify(value.resources) !== JSON.stringify(expected)) process.exit(1);
@@ -188,7 +188,7 @@ jobs:
           owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/.well-known/api-catalog" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const value = JSON.parse(body);
-              const expected = ["/api/verdict", "/api/portfolio", "/api/harness", "/api/run", "/api/flake", "/api/mcp-drift", "/mcp"]
+              const expected = ["/api/bounty-preflight", "/api/portfolio", "/api/harness", "/api/run", "/api/flake", "/api/mcp-drift", "/mcp"]
                 .map((path) => `${process.env.PRODUCTION_API_URL}${path}`);
               if (JSON.stringify(value.linkset?.[0]?.item?.map(({ href }) => href)) !== JSON.stringify(expected)) process.exit(1);
               if (JSON.stringify(value).includes(`${process.env.PRODUCTION_API_URL}/api/skill`)) process.exit(1);
@@ -277,7 +277,7 @@ jobs:
           const compatibilityListed = await compatibilityRpc(21, "tools/list");
           if (JSON.stringify(compatibilityListed.result?.tools?.map(({ name }) => name)) !== JSON.stringify(expectedNames)) process.exit(1);
           const calls = [
-            ["check_github_bounty", { issue_url: "https://github.com/owner/repo/issues/1" }, "50000", "/api/verdict", "GET"],
+            ["check_github_bounty", { issue_url: "https://github.com/owner/repo/issues/1" }, "50000", "/api/bounty-preflight", "POST"],
             ["rank_github_bounties", { issue_urls: ["https://github.com/owner/repo/issues/1", "https://github.com/owner/repo/issues/2"] }, "400000", "/api/portfolio", "POST"],
             ["audit_agent_harness", { repo_url: "https://github.com/owner/repo" }, "30000", "/api/harness", "GET"],
             ["diagnose_github_actions_run", { run_url: "https://github.com/owner/repo/actions/runs/1" }, "40000", "/api/run", "GET"],

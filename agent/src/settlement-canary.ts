@@ -1,6 +1,7 @@
 import { FLAKE_SERVICE_REUSE } from "./flake.ts";
 import { MCP_DRIFT_RULESET_VERSION, MCP_DRIFT_SERVICE_REUSE } from "./mcp-drift.ts";
 import { mcpDriftExampleInput } from "./mcp-drift-discovery.ts";
+import { PRODUCT_CATALOG } from "./product-catalog.ts";
 
 export const SETTLEMENT_CANARY_ORIGIN =
   "https://bountyverdict-agent-production.mimirslab.workers.dev";
@@ -105,11 +106,11 @@ const FIXTURES: Readonly<Record<SettlementCanaryProduct, SettlementCanaryFixture
       product: "single",
       service: "BountyVerdict",
       amountAtomic: "50000",
-      method: "GET",
-      url: fixtureUrl("/api/verdict", [[
-        "issue_url",
-        "https://github.com/typeorm/typeorm/issues/3357",
-      ]]),
+      method: "POST",
+      url: fixtureUrl(PRODUCT_CATALOG.single.path),
+      body: JSON.stringify({
+        issue_url: "https://github.com/typeorm/typeorm/issues/3357",
+      }),
     }),
     portfolio: Object.freeze({
       product: "portfolio",

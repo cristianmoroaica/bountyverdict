@@ -100,8 +100,14 @@ test("settlement fixtures are exact production-only resources", () => {
     assert.equal(url.username, "");
     assert.equal(url.password, "");
     assert.equal(url.hash, "");
-    assert.match(url.pathname, /^\/api\/(?:verdict|portfolio|harness|skill|run|flake|mcp-drift)$/);
+    assert.match(url.pathname, /^\/api\/(?:bounty-preflight|portfolio|harness|skill|run|flake|mcp-drift)$/);
   }
+  const single = getSettlementCanaryFixture("single");
+  assert.equal(single.method, "POST");
+  assert.equal(single.url, `${SETTLEMENT_CANARY_ORIGIN}/api/bounty-preflight`);
+  assert.deepEqual(JSON.parse(single.body || "null"), {
+    issue_url: "https://github.com/typeorm/typeorm/issues/3357",
+  });
   assert.throws(
     () => selectSettlementCanaryProduct("https://attacker.invalid", new Date()),
     /INVALID_PRODUCT_SELECTION/,
@@ -155,7 +161,7 @@ test("challenge validation pins every economic and resource field", () => {
     ["NETWORK_CHANGED", value => { value.accepts[0].network = "eip155:84532"; }],
     ["ASSET_CHANGED", value => { value.accepts[0].asset = "0x0000000000000000000000000000000000000001"; }],
     ["PAYEE_CHANGED", value => { value.accepts[0].payTo = "0x0000000000000000000000000000000000000001"; }],
-    ["METHOD_CHANGED", value => { value.extensions.bazaar.info.input.method = "POST"; }],
+    ["METHOD_CHANGED", value => { value.extensions.bazaar.info.input.method = "GET"; }],
   ];
   for (const [code, mutate] of mutations) {
     const challenge = paymentRequired("single");
@@ -301,7 +307,10 @@ test("orchestration authorizes once, sends once, forbids redirects, and validate
   assert.equal(encodingCalls, 1);
   assert.deepEqual(checkpoints, ["PAYMENT_AUTHORIZED_AWAITING_RESULT"]);
   assert.equal(calls.length, 2);
-  assert.ok(calls.every(call => call.input === getSettlementCanaryFixture("single").url));
+  const singleFixture = getSettlementCanaryFixture("single");
+  assert.ok(calls.every(call => call.input === singleFixture.url));
+  assert.ok(calls.every(call => call.init.method === "POST"));
+  assert.ok(calls.every(call => call.init.body === singleFixture.body));
   assert.ok(calls.every(call => call.init.redirect === "error"));
   assert.ok(calls.every(call =>
     new Headers(call.init.headers).get("user-agent") === SETTLEMENT_CANARY_USER_AGENT

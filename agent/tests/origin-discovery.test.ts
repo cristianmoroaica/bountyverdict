@@ -23,6 +23,8 @@ test("origin manifest publishes six exact products without changing SkillVerdict
   assert.equal(manifest.products.length, 6);
   assert.equal(manifest.products.some(({ id }) => id === "skill"), false);
   assert.deepEqual(manifest.products.map(({ id }) => id), ["single", "portfolio", "harness", "run", "flake", "mcpdrift"]);
+  assert.equal(manifest.products[0].method, "POST");
+  assert.equal(manifest.products[0].url, `${origin}/api/bounty-preflight`);
   for (const product of manifest.products) {
     const expected = PRODUCT_CATALOG[product.id];
     assert.equal(product.name, expected.service);
@@ -145,7 +147,7 @@ test("standard discovery documents expose only the six distributed products and 
   const apiCatalog = createApiCatalog(origin);
   assert.equal(apiCatalog.linkset[0].anchor, `${origin}/.well-known/api-catalog`);
   assert.deepEqual(apiCatalog.linkset[0].item.map(({ href }) => href), [
-    `${origin}/api/verdict`,
+    `${origin}/api/bounty-preflight`,
     `${origin}/api/portfolio`,
     `${origin}/api/harness`,
     `${origin}/api/run`,

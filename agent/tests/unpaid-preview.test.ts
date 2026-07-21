@@ -14,8 +14,9 @@ const env = {
 const cases = [
   {
     product: "BountyVerdict",
-    url: "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo%2Fissues%2F1",
-    method: "GET",
+    url: "/api/bounty-preflight",
+    method: "POST",
+    body: { issue_url: "https://github.com/owner/repo/issues/1" },
     decisions: ["AVOID", "CAUTION", "VIABLE"],
     skill: "preflight-github-bounties",
   },
@@ -107,8 +108,12 @@ for (const preview of cases) {
 
 test("BountyVerdict challenge leads with exact eligibility and claimability intent", async () => {
   const response = await app.request(
-    "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo%2Fissues%2F1",
-    {},
+    "/api/bounty-preflight",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ issue_url: "https://github.com/owner/repo/issues/1" }),
+    },
     env,
   );
   assert.equal(response.status, 402);
@@ -125,6 +130,20 @@ test("BountyVerdict challenge leads with exact eligibility and claimability inte
     "assignment-status",
     "due-diligence",
   ]);
+});
+
+test("legacy BountyVerdict GET remains a payable compatibility transport", async () => {
+  const response = await app.request(
+    "/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo%2Fissues%2F1",
+    {},
+    env,
+  );
+  assert.equal(response.status, 402);
+  const body = await response.json() as any;
+  assert.equal(body.product, "BountyVerdict");
+  assert.equal(body.payment.exact_request.method, "GET");
+  assert.match(body.payment.exact_request.url, /\/api\/verdict\?issue_url=/);
+  assert.equal(body.payment.authorization_scope, "resource_url");
 });
 
 test("invalid GET inputs are rejected before any payable challenge", async () => {
@@ -179,9 +198,35 @@ test("Portfolio rejects malformed and bodyless calls before payment", async () =
   assert.equal(discoveryBody.payment_challenge_issued, false);
 });
 
+test("canonical BountyVerdict POST rejects malformed bodies before payment", async () => {
+  const invalidCases: Array<RequestInit> = [
+    { method: "POST" },
+    { method: "POST", headers: { "Content-Type": "text/plain" }, body: "{}" },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "[]" },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ issue_url: 1 }) },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ issue_url: "https://github.com/owner/repo/issues/1", extra: true }) },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ issue_url: "https://github.com/owner/repo/issues/1/" }) },
+    { method: "POST", headers: { "Content-Type": "application/json", "Content-Length": "4097" }, body: "{}" },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ issue_url: `https://github.com/owner/repo/issues/1${"x".repeat(4096)}` }) },
+  ];
+  for (const init of invalidCases) {
+    const response = await app.request("/api/bounty-preflight", init, env);
+    assert.ok(response.status === 400 || response.status === 413);
+    assert.equal(response.headers.has("payment-required"), false);
+    const body = await response.json() as any;
+    assert.equal(body.payment_challenge_issued, false);
+    assert.equal(body.payment_verified, false);
+    assert.equal(body.payment_settled, false);
+  }
+});
+
 test("invalid signed input and exhausted Flake capacity cannot reach payment verification", async () => {
-  const invalidSigned = await app.request("/api/verdict", {
-    headers: { "Payment-Signature": "invalid-but-present" },
+  const invalidSigned = await app.request("/api/bounty-preflight", {
+    method: "POST",
+    headers: { "Payment-Signature": "invalid-but-present", "Content-Type": "application/json" },
+    body: JSON.stringify({ issue_url: "not-a-github-url" }),
   }, env);
   assert.equal(invalidSigned.status, 400);
   assert.equal(invalidSigned.headers.has("payment-required"), false);

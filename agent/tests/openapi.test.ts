@@ -13,19 +13,23 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
     mcpdrift: "$0.02",
   });
   assert.match(spec.info.title, /Agent Decision APIs/);
-  assert.equal(spec.info.version, "1.0.1");
+  assert.equal(spec.info.version, "1.0.2");
   assert.match(spec.info.description, /Seven bounded/);
   assert.match(spec.info["x-guidance"], /service_reuse/);
   assert.equal(spec.tags.length, 7);
   assert.equal(new Set(spec.tags.map((tag) => tag.name)).size, 7);
-  const operation = spec.paths["/api/verdict"].get;
+  const operation = spec.paths["/api/bounty-preflight"].post;
   assert.match(operation.summary, /GitHub bounty eligibility and claimability/i);
   assert.match(operation.description, /already assigned or claimed/i);
   assert.equal(operation["x-x402"].price, "$0.05");
   assert.equal(operation["x-x402"].network, "eip155:8453");
-  assert.ok(operation.parameters.some((parameter) => parameter.name === "issue_url"));
+  assert.equal(operation.requestBody.content["application/json"].schema.additionalProperties, false);
+  assert.deepEqual(operation.requestBody.content["application/json"].schema.required, ["issue_url"]);
+  assert.equal(spec.paths["/api/verdict"].get.deprecated, true);
+  assert.equal(spec.paths["/api/verdict"].get.operationId, "checkBountyVerdictLegacyGet");
+  assert.ok(spec.paths["/api/verdict"].get.parameters.some((parameter) => parameter.name === "issue_url"));
   const paidOperations = [
-    spec.paths["/api/verdict"].get,
+    spec.paths["/api/bounty-preflight"].post,
     spec.paths["/api/portfolio"].post,
     spec.paths["/api/harness"].get,
     spec.paths["/api/skill"].get,

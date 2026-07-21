@@ -134,7 +134,7 @@ export const harnessDiscoveryExtension = addHttpMethod(declareDiscoveryExtension
     properties: {
       repo_url: {
         type: "string",
-        pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:\\.git)?$",
+        pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$",
         description: "Canonical URL of a public GitHub repository whose coding-agent instruction stack should be audited.",
       },
     },

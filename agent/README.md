@@ -4,7 +4,7 @@ A paid, deterministic decision suite for autonomous coding agents. It checks pub
 
 ## Product contracts
 
-- Single check: `GET /api/verdict?issue_url=<public GitHub issue URL>` for **$0.05 USDC**
+- Single check: `POST /api/bounty-preflight` with `{"issue_url":"<exact public GitHub issue URL>"}` for **$0.05 USDC** (`GET /api/verdict?...` remains deprecated compatibility)
 - Portfolio ranking: `POST /api/portfolio` with `{"issue_urls":[...]}` for **$0.40 USDC**
 - Harness audit: `GET /api/harness?repo_url=<public GitHub repository URL>` for **$0.03 USDC**
 - Skill security audit: `GET /api/skill?repo_url=<public GitHub repository URL>&skill_path=<skill directory>` for **$0.06 USDC**
@@ -44,7 +44,9 @@ npm run dev -- --var PAY_TO_ADDRESS:0x0000000000000000000000000000000000000001
 An unpaid request should return HTTP 402 with `PAYMENT-REQUIRED`, including the $0.05 price and `extensions.bazaar` metadata:
 
 ```bash
-curl -i 'http://127.0.0.1:8787/api/verdict?issue_url=https%3A%2F%2Fgithub.com%2Ftypeorm%2Ftypeorm%2Fissues%2F3357'
+curl -i -X POST 'http://127.0.0.1:8787/api/bounty-preflight' \
+  -H 'Content-Type: application/json' \
+  --data '{"issue_url":"https://github.com/typeorm/typeorm/issues/3357"}'
 ```
 
 Inspect the portfolio challenge and its POST body schema:
@@ -82,8 +84,9 @@ To execute a Base Sepolia payment, the preferred buyer is Coinbase Agentic Walle
 ```bash
 npx awal@2.12.0 status
 npx awal@2.12.0 balance --chain base-sepolia --json
-npx awal@2.12.0 x402 pay https://your-test-worker.workers.dev/api/verdict \
-  --query '{"issue_url":"https://github.com/typeorm/typeorm/issues/3357"}' \
+npx awal@2.12.0 x402 pay https://your-test-worker.workers.dev/api/bounty-preflight \
+  --method POST \
+  --data '{"issue_url":"https://github.com/typeorm/typeorm/issues/3357"}' \
   --max-amount 50000 --json
 ```
 

@@ -134,7 +134,7 @@ export const skillDiscoveryExtension = addHttpMethod(declareDiscoveryExtension({
     properties: {
       repo_url: {
         type: "string",
-        pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:\\.git)?$",
+        pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$",
         description: "Canonical URL of the public GitHub repository containing the skill.",
       },
       skill_path: {
