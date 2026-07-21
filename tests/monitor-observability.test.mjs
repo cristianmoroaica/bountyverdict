@@ -128,6 +128,19 @@ test("marketplace retrieval uses a blind-agent task holdout instead of seller-sh
   assert.match(distribution, /not observed marketplace query volume/);
 });
 
+test("Smithery monitoring measures fixed agent tasks without inventing demand", async () => {
+  const [distribution, smithery] = await Promise.all([
+    readFile(distributionUrl, "utf8"),
+    readFile(new URL("../agent/src/smithery.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(distribution, /smithery: await smitheryStatus\(checkedAt\)/);
+  assert.match(distribution, /previousReport\.acquisition\?\.smithery/);
+  assert.match(distribution, /public use counter are placement\/use telemetry, not search volume, impressions, purchases, or revenue/);
+  assert.match(distribution, /Fixed unbranded task descriptions supplied by context-isolated agents/);
+  assert.match(distribution, /bounded to Smithery's first 20 results/);
+  assert.match(smithery, /SMITHERY_TOOL_NAMES/);
+});
+
 test("the monitor turns privacy-safe hits into bounded actionable cohort summaries", async () => {
   const distribution = await readFile(distributionUrl, "utf8");
   assert.match(distribution, /trusted_by_discovery_cohort/);

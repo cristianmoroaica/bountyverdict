@@ -29,6 +29,7 @@ import { PAYAN_API, PAYAN_OFFERS, PAYAN_PROVIDER_ID } from "../src/payan.ts";
 import { parseGitHubTraffic } from "../src/github-traffic.ts";
 import {
   appendCdpMerchantQualityHistory,
+  normalizeAgenticMarketQuality,
   normalizeCdpMerchantQuality,
   normalizeThe402ServiceOutcome,
 } from "../src/marketplace-telemetry.ts";
@@ -38,6 +39,12 @@ import { TASKMARKET_OWNER_IDENTITIES, TASKMARKET_WORKER_ADDRESS } from "../src/t
 import { CLAWLANCER_CANARY, parseClawlancerWorkState } from "../src/clawlancer-work.ts";
 import { verifyClawlancerFunding, verifyClawlancerRelease } from "../src/clawlancer-chain.ts";
 import { ASKILL_BUYER_QUERIES } from "../src/askill.ts";
+import {
+  normalizeSmitheryServer,
+  smitherySearchObservation,
+  SMITHERY_BUYER_QUERIES,
+  SMITHERY_QUALIFIED_NAME,
+} from "../src/smithery.ts";
 
 const CDP_DISCOVERY = "https://api.cdp.coinbase.com/platform/v2/x402/discovery";
 const AGENTIC_MARKET_SERVICE =
@@ -56,6 +63,7 @@ const GLAMA_MCP_CONNECTOR = `https://glama.ai/mcp/connectors/${MCP_REGISTRY_NAME
 const MCPUB_MCP = "https://mcpub.dev/mcp";
 const MCP_INTENT_PAGE = "https://cristianmoroaica.github.io/bountyverdict/mcp-github-actions-diagnosis.html";
 const MCP_DOWNSTREAM_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const SMITHERY_API = "https://api.smithery.ai";
 const MCP_PREVIEW_COPY_ROLLOUT = Object.freeze({
   id: "mcp-tools-list-preview-copy-v1",
   started_at: "2026-07-21T09:35:19.486Z",
@@ -625,31 +633,25 @@ async function agenticMarketStatus(): Promise<Record<string, unknown>> {
     product,
   ]));
   const indexedProducts = Object.fromEntries(EXPECTED_PRODUCTS.map((product) => [product, false]));
-  const quality: Record<string, { reported_calls_30d: number; reported_unique_payers_30d: number }> = {};
+  const quality: Record<string, ReturnType<typeof normalizeAgenticMarketQuality>> = {};
   const seen = new Set<ProductKey>();
   for (const endpoint of service.endpoints as Array<Record<string, any>>) {
     const product = expectedByUrl.get(String(endpoint.url));
     if (!product || seen.has(product)) throw new Error("automatic directory contains an unknown or duplicate endpoint.");
     const expected = PRODUCT_CATALOG[product];
     const amount = Number(endpoint.pricing?.amount);
-    const reportedCalls = Number(endpoint.quality?.l30DaysTotalCalls);
-    const reportedPayers = Number(endpoint.quality?.l30DaysUniquePayers);
+    const endpointQuality = normalizeAgenticMarketQuality(endpoint.quality);
     if (
       endpoint.serviceName !== expected.service || endpoint.method !== expected.method ||
       !Number.isFinite(amount) || Math.round(amount * 1_000_000) !== Number(expected.amountAtomic) ||
       String(endpoint.pricing?.currency).toUpperCase() !== "USDC" ||
-      endpoint.pricing?.network !== NETWORK || endpoint.pricing?.scheme !== "exact" ||
-      !Number.isSafeInteger(reportedCalls) || reportedCalls < 0 ||
-      !Number.isSafeInteger(reportedPayers) || reportedPayers < 0 || reportedPayers > reportedCalls
+      endpoint.pricing?.network !== NETWORK || endpoint.pricing?.scheme !== "exact"
     ) {
       throw new Error(`automatic directory contract drifted for ${expected.service}.`);
     }
     seen.add(product);
     indexedProducts[product] = true;
-    quality[product] = {
-      reported_calls_30d: reportedCalls,
-      reported_unique_payers_30d: reportedPayers,
-    };
+    quality[product] = endpointQuality;
   }
   const missingProducts = EXPECTED_PRODUCTS.filter((product) => !seen.has(product));
   return {
@@ -1574,6 +1576,58 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
   }
 }
 
+async function smitheryStatus(checkedAt: string): Promise<Record<string, unknown>> {
+  const readJson = async (url: URL | string): Promise<Record<string, any>> => {
+    const response = await monitoredFetch(String(url));
+    if (!response.ok) throw new Error(`Smithery returned HTTP ${response.status} for ${new URL(String(url)).pathname}.`);
+    const body = await response.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new Error("Smithery returned a malformed JSON body.");
+    }
+    return body as Record<string, any>;
+  };
+  const search = async (query: string): Promise<Record<string, unknown>> => {
+    const url = new URL("/servers", SMITHERY_API);
+    url.searchParams.set("q", query);
+    url.searchParams.set("pageSize", "20");
+    return smitherySearchObservation(await readJson(url), query);
+  };
+
+  const serverUrl = new URL(`/servers/${SMITHERY_QUALIFIED_NAME}`, SMITHERY_API);
+  const [serverBody, branded, ...queries] = await Promise.all([
+    readJson(serverUrl),
+    search("bountyverdict"),
+    ...SMITHERY_BUYER_QUERIES.map((query) => search(query)),
+  ]);
+  const server = normalizeSmitheryServer(serverBody);
+  if (branded.found !== true || !Number.isSafeInteger(branded.use_count) || Number(branded.use_count) < 0) {
+    throw new Error("Smithery's branded lookup did not expose the exact listing and use counter.");
+  }
+  const observedUseCounts = queries
+    .filter((query) => query.found === true)
+    .map((query) => query.use_count);
+  if (observedUseCounts.some((useCount) => useCount !== branded.use_count)) {
+    throw new Error("Smithery returned inconsistent use counters across its search results.");
+  }
+  const found = queries.filter((query) => query.found === true);
+  return {
+    ...server,
+    checked_at: checkedAt,
+    listing_url: `https://smithery.ai/servers/${SMITHERY_QUALIFIED_NAME}`,
+    use_count: branded.use_count,
+    branded_rank: branded.rank,
+    buyer_query_benchmark: {
+      query_count: queries.length,
+      found_queries: found.length,
+      top_ten_queries: found.filter((query) => Number(query.rank) <= 10).length,
+      top_three_queries: found.filter((query) => Number(query.rank) <= 3).length,
+      queries,
+      methodology: "Fixed unbranded task descriptions supplied by context-isolated agents; bounded to Smithery's first 20 results.",
+      accounting: "Owner-run retrieval is placement evidence, not search volume, impressions, use, purchases, or revenue.",
+    },
+  };
+}
+
 async function funnelStatus(): Promise<Record<string, unknown>> {
   try {
     const monotonicDelta = (current: unknown, baseline: unknown, label: string): number => {
@@ -1967,6 +2021,11 @@ function renderMonitorNote(report: Record<string, any>): string {
     ? `${Number(githubPrMonitoring.sources_readable ?? githubPrMonitoring.checked ?? 0)} / ${Number(githubPrMonitoring.checked || 0)} PR sources readable. Workflow runs: ${Number(githubWorkflowRuns.succeeded || 0)} success, ${Number(githubWorkflowRuns.neutral_or_skipped || 0)} neutral/skipped, ${Number(githubWorkflowRuns.failed || 0)} failed, ${Number(githubWorkflowRuns.cancelled_or_stale || 0)} cancelled/stale, ${Number(githubWorkflowRuns.action_required || 0)} action-required, ${Number(githubWorkflowRuns.pending || 0)} pending of ${Number(githubWorkflowRuns.total || 0)}. PR check rollup: ${Number(githubCheckRuns.succeeded || 0)} success, ${Number(githubCheckRuns.neutral_or_skipped || 0)} neutral/skipped, ${Number(githubCheckRuns.failed || 0)} failed, ${Number(githubCheckRuns.cancelled_or_stale || 0)} cancelled/stale, ${Number(githubCheckRuns.action_required || 0)} action-required, ${Number(githubCheckRuns.pending || 0)} pending of ${Number(githubCheckRuns.total || 0)}. Maintainer approval gates: ${githubPrActionSummary}; failure detail: ${githubPrFailureSummary}. Approval-required is actionable but is not a failed workflow or buyer demand.`
     : `${Number(githubPrMonitoring.sources_readable ?? githubPrMonitoring.checked ?? 0)} / ${Number(githubPrMonitoring.checked || 0)} legacy PR sources readable; workflow outcomes are unavailable until the next audited directory refresh and zero is not asserted.`;
   const mcpDownstreams = report.acquisition?.mcp_downstreams || {};
+  const smithery = report.acquisition?.smithery || {};
+  const smitheryBenchmark = smithery.buyer_query_benchmark || {};
+  const smitherySummary = smithery.listed
+    ? `${Number(smithery.tool_count || 0)} tools live; ${Number(smithery.use_count || 0)} public uses; unbranded retrieval ${Number(smitheryBenchmark.found_queries || 0)} / ${Number(smitheryBenchmark.query_count || SMITHERY_BUYER_QUERIES.length)} queries found, ${Number(smitheryBenchmark.top_ten_queries || 0)} top-ten, and ${Number(smitheryBenchmark.top_three_queries || 0)} top-three`
+    : `unavailable (${smithery.error || smithery.status || "not checked"})`;
   const githubTraffic = report.acquisition?.github_traffic || {};
   const the402OutcomeTotals = report.marketplaces?.the402?.service_outcome_totals || {};
   const cdpMerchantQuality = report.discovery?.cdp_merchant_quality || {};
@@ -2027,7 +2086,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Pending Taskmarket opportunity estimate (not revenue):** ${Number(taskmarketTracked.pending_submissions || 0)} submissions; $${String(taskmarketTracked.pending_gross_potential_usdc || "0")} gross / $${String(taskmarketTracked.pending_net_potential_usdc || "0")} net if awarded (pool-task net is explicitly operator-estimated from submitted record types; gross is scaled by that task's live reward/net contract, never the full escrow)
 - **Autonomous work safety gate (2026-07-21 snapshot):** minia2a gas task rejected after 79 competing submissions; minia2a CAPTCHA rejected for insufficient authorization, live request/price drift, duplicate payment choices, and unsafe public token delivery; BountyBook excluded because all 32 API-verified jobs reported payout failure, no payout transaction hash, and contract job ID 0. No payment or claim was made.
 - **Tollbooth compatibility probe:** submitted_unverified; its verifier parsed the exact $0.05 x402 v2 Base-USDC challenge and payee but the paid replay stayed at HTTP 402 with no settlement proof. The listing has zero calls and zero revenue; do not retry or weaken the production protocol until Tollbooth demonstrates compatible v2 payment replay.
-- **Smithery marketplace:** [cristianmoroaica/bountyverdict](https://smithery.ai/servers/cristianmoroaica/bountyverdict) is published; release \`a1aac186-7f70-48db-a0bc-572180349832\` was accepted and the live scan identified BountyVerdict \`1.1.1\` with exactly six tools. Publication and scanning are distribution evidence only—not impressions, installs, selections, purchases, or revenue.
+- **Smithery marketplace:** ${smitherySummary} at [cristianmoroaica/bountyverdict](https://smithery.ai/servers/cristianmoroaica/bountyverdict) (fixed owner-run retrieval and the public use counter are placement/use telemetry, not search volume, impressions, purchases, or revenue)
 - **ToolHive in-agent catalog:** ${report.acquisition?.toolhive?.status || "pr_open_pending_directory_refresh"}; issue [#1384](https://github.com/stacklok/toolhive-catalog/issues/1384) and PR [#1385](${report.acquisition?.toolhive?.url || "https://github.com/stacklok/toolhive-catalog/pull/1385"}); PR ${report.acquisition?.toolhive?.pr_status || "open"}, review ${report.acquisition?.toolhive?.pr_review_decision || "REVIEW_REQUIRED"}, merge state ${report.acquisition?.toolhive?.pr_merge_state_status || "BLOCKED"}; exact secret-free six-tool catalog contract ${report.acquisition?.toolhive?.contract_verified ? "verified live" : "pending merge"}. Full catalog validation and Go tests passed before submission. Placement and review state are not impressions, installs, purchases, or revenue.
 - **Clawlancer funded-work canary:** ${clawlancer.available ? `${String(clawlancer.status || "unknown").toUpperCase()}; ${clawlancer.transaction?.fundingTxHash ? "funding transaction reported" : "no funding transaction"}; ${clawlancer.onchain_evidence?.verified ? "release verified on Base and recognized" : "no onchain-verified release, not revenue"}; next action ${clawlancer.action || "unknown"}` : `unavailable (${clawlancer.error || "state not captured"})`} (the pinned deliverable auto-submits only after FUNDED)
 - **Neutral buyer-query retrieval:** ${buyerBenchmarkSummary}
@@ -2047,7 +2106,6 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Glama release path:** build-ready secret-free stdio bridge to the existing six-tool remote; ${funnel.available ? `${Number(mcpGlama.initialize || 0)} source-marked initializations, ${Number(mcpGlama.tools_list || 0)} tool-list requests, ${Number(mcpGlama.payment_required || 0)} valid unpaid calls, ${Number(mcpGlama.payment_present || 0)} payment presentations` : "funnel unavailable"}; dashboard release and quality score pending (source marker and build checks are distribution evidence only, never installs, purchases, or revenue)
 - **Authenticated GitHub PR telemetry:** ${githubPrTelemetrySummary}
 - **Official MCP Registry:** ${report.acquisition?.mcp_registry?.listed ? `${report.acquisition.mcp_registry.name}@${report.acquisition.mcp_registry.version} listed at the exact production Streamable HTTP endpoint` : `unavailable (${report.acquisition?.mcp_registry?.error || "not checked"})`} (placement only, never a purchase)
-- **Smithery marketplace:** published as [cristianmoroaica/bountyverdict](https://smithery.ai/servers/cristianmoroaica/bountyverdict); live scan verified version 1.1.1 and exactly six tools (placement and scan traffic only, never an impression, install, selection, purchase, or revenue)
 - **Agentic Resource Discovery catalog (last audited snapshot):** ${report.acquisition?.ard_catalog?.live ? `${report.acquisition.ard_catalog.representative_queries} neutral buyer queries and ${report.acquisition.ard_catalog.capabilities} MCP capabilities live` : report.acquisition?.ard_catalog?.status || "unavailable"} (${report.acquisition?.ard_catalog?.url || "origin catalog not checked"}; direct catalog availability is not registry indexing, an impression, a tool call, or a purchase)
 - **MCP paid-call handoff:** ${report.health?.mcp_metadata?.payment?.http_payment_handoff_extension === "io.github.cristianmoroaica/bountyverdict/http-payment-handoff" && report.health?.mcp_metadata?.payment?.direct_automatic_payment_requires === "@x402/mcp" ? "live — direct MCP payment requires @x402/mcp; standard hosts receive the exact versioned HTTP handoff for a separately authorized wallet" : "unavailable or drifted"}
 - **GitHub Actions MCP intent page:** ${report.acquisition?.mcp_intent_page?.live && report.acquisition?.mcp_intent_page?.copy_ready_prompt ? "live with direct adapter install and a copy-ready schema-valid $0.04 call prompt" : `unavailable or drifted (${report.acquisition?.mcp_intent_page?.error || "required call prompt not verified"})`} (owner-checked availability, never an impression or purchase)
@@ -2362,6 +2420,28 @@ try {
 }
 
 acquisition = await acquisitionStatus();
+
+if (reportOnly) {
+  acquisition = {
+    ...acquisition,
+    smithery: previousReport.acquisition?.smithery || {
+      listed: false,
+      checked_at: null,
+      status: "awaiting_full_audited_retrieval",
+    },
+  };
+} else {
+  try {
+    acquisition = {
+      ...acquisition,
+      smithery: await smitheryStatus(checkedAt),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    acquisition = { ...acquisition, smithery: { listed: false, checked_at: checkedAt, error: message } };
+    errors.push(`Smithery: ${message}`);
+  }
+}
 
 try {
   acquisition = {

@@ -6,6 +6,14 @@ import { harnessDiscoveryExtension } from "../src/harness-discovery.ts";
 import { skillDiscoveryExtension } from "../src/skill-discovery.ts";
 import { runDiscoveryExtension } from "../src/run-discovery.ts";
 import { flakeDiscoveryExtension } from "../src/flake-discovery.ts";
+import app from "../src/index.ts";
+
+const crawlerEnv = {
+  PAY_TO_ADDRESS: "0x1111111111111111111111111111111111111111",
+  X402_NETWORK: "eip155:84532",
+  X402_FACILITATOR_URL: "https://facilitator.invalid",
+  FLAKE_RATE_LIMITER: { limit: async () => ({ success: true }) },
+};
 
 test("build-time method enrichment creates valid Bazaar metadata", () => {
   const extension = discoveryExtension.bazaar;
@@ -49,4 +57,23 @@ test("FlakeVerdict GET declaration passes Bazaar schema and protocol validation"
   assert.equal(extension.info.input.method, "GET");
   assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
   assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
+});
+
+test("every advertised GET example survives preflight and returns a payable crawler challenge", async () => {
+  const routes = [
+    ["/api/verdict", discoveryExtension],
+    ["/api/harness", harnessDiscoveryExtension],
+    ["/api/skill", skillDiscoveryExtension],
+    ["/api/run", runDiscoveryExtension],
+    ["/api/flake", flakeDiscoveryExtension],
+  ] as const;
+  for (const [path, declaration] of routes) {
+    const input = declaration.bazaar.info.input;
+    assert.equal(input.method, "GET");
+    assert.ok(input.queryParams && Object.keys(input.queryParams).length > 0);
+    const query = new URLSearchParams(Object.entries(input.queryParams).map(([key, value]) => [key, String(value)]));
+    const response = await app.request(`${path}?${query}`, {}, crawlerEnv);
+    assert.equal(response.status, 402, `${path} must challenge the exact advertised Bazaar input`);
+    assert.ok(response.headers.get("payment-required"));
+  }
 });

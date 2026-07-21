@@ -31,6 +31,12 @@ export type CdpMerchantQualitySnapshot = {
   baseline_owner_contaminated: true;
 };
 
+export type AgenticMarketQualitySnapshot = {
+  quality_available: boolean;
+  reported_calls_30d: number;
+  reported_unique_payers_30d: number;
+};
+
 function boundedNumber(value: unknown, label: string, maximum: number): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > maximum) {
     throw new Error(`the402 ${label} is invalid.`);
@@ -41,6 +47,38 @@ function boundedNumber(value: unknown, label: string, maximum: number): number {
 function count(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) throw new Error(`the402 ${label} is invalid.`);
   return Number(value);
+}
+
+function agenticMarketCount(value: unknown, label: string): number {
+  if (!((typeof value === "number" && Number.isSafeInteger(value) && value >= 0) ||
+    (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)))) {
+    throw new Error(`Agentic Market ${label} is invalid.`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`Agentic Market ${label} is invalid.`);
+  return parsed;
+}
+
+export function normalizeAgenticMarketQuality(value: unknown): AgenticMarketQualitySnapshot {
+  if (value === null || value === undefined) {
+    return {
+      quality_available: false,
+      reported_calls_30d: 0,
+      reported_unique_payers_30d: 0,
+    };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Agentic Market quality is malformed.");
+  }
+  const quality = value as Record<string, unknown>;
+  const calls = agenticMarketCount(quality.l30DaysTotalCalls, "calls");
+  const payers = agenticMarketCount(quality.l30DaysUniquePayers, "unique payers");
+  if (payers > calls) throw new Error("Agentic Market quality counters are inconsistent.");
+  return {
+    quality_available: true,
+    reported_calls_30d: calls,
+    reported_unique_payers_30d: payers,
+  };
 }
 
 function timestamp(value: unknown, label: string): string {

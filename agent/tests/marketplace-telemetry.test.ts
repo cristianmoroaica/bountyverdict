@@ -2,9 +2,38 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendCdpMerchantQualityHistory,
+  normalizeAgenticMarketQuality,
   normalizeCdpMerchantQuality,
   normalizeThe402ServiceOutcome,
 } from "../src/marketplace-telemetry.ts";
+
+test("accepts pending and string-valued Agentic Market quality counters", () => {
+  assert.deepEqual(normalizeAgenticMarketQuality(null), {
+    quality_available: false,
+    reported_calls_30d: 0,
+    reported_unique_payers_30d: 0,
+  });
+  assert.deepEqual(normalizeAgenticMarketQuality({
+    l30DaysTotalCalls: "3",
+    l30DaysUniquePayers: "2",
+  }), {
+    quality_available: true,
+    reported_calls_30d: 3,
+    reported_unique_payers_30d: 2,
+  });
+});
+
+test("rejects malformed or inconsistent Agentic Market quality counters", () => {
+  assert.throws(() => normalizeAgenticMarketQuality({}), /calls/);
+  assert.throws(() => normalizeAgenticMarketQuality({
+    l30DaysTotalCalls: "1",
+    l30DaysUniquePayers: "2",
+  }), /inconsistent/);
+  assert.throws(() => normalizeAgenticMarketQuality({
+    l30DaysTotalCalls: "01",
+    l30DaysUniquePayers: "0",
+  }), /calls/);
+});
 
 const detail = {
   id: "svc_expected",
