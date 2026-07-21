@@ -15,7 +15,7 @@ Added ToolHive to the authenticated recurring directory monitor instead of leavi
 
 Extended the same authenticated monitor across every tracked distribution PR to collect bounded GitHub Actions check-run and legacy status-context outcomes. The top-level monitor now distinguishes unreadable PR sources, successful checks, genuinely failed checks, pending checks, and first-contributor review/approval gates, exposing bounded failed-check names without mistaking workflow activity for buyer demand or revenue.
 
-Smithery remains publish-ready but unauthenticated: the CLI still reports no API key after the browser login was opened. Publication therefore remains behind the one-time publisher approval and namespace step; no credential was placed in Git.
+Published the existing public MCP endpoint to Smithery as [`cristianmoroaica/bountyverdict`](https://smithery.ai/servers/cristianmoroaica/bountyverdict) after completing the one-time publisher authorization outside Git. Release `a1aac186-7f70-48db-a0bc-572180349832` was accepted, Smithery's live scan identified BountyVerdict `1.1.1`, and the public listing exposes exactly the intended six paid tools through its generated remote connection. The scan and catalog listing are distribution placement only—not an impression, install, tool selection, purchase, or revenue event.
 
 ## 2026-07-21 — Clean conversion measurement restored
 
