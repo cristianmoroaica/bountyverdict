@@ -158,3 +158,27 @@ export function parseAgentToolsCloudMcpListing(
     measurement: "organic_mcp_catalog_health_and_tool_presence_not_impressions_calls_purchases_or_revenue",
   };
 }
+
+export function parseAgentToolsCloudMcpBuyerQuery(
+  payload: Record<string, any>,
+  acceptedSlugs: readonly string[],
+): Record<string, unknown> {
+  if (!Number.isSafeInteger(payload.count) || payload.count < 0 || payload.count > 100 ||
+    !Number.isSafeInteger(payload.total_matched) || payload.total_matched < payload.count ||
+    !Array.isArray(payload.servers) || payload.count !== payload.servers.length ||
+    payload.servers.some((server: unknown) => !server || typeof server !== "object" || Array.isArray(server) ||
+      typeof (server as Record<string, unknown>).slug !== "string")) {
+    contractDrift("Agent Tools Cloud MCP buyer-query telemetry is malformed.");
+  }
+  const slugs = payload.servers.map((server: Record<string, unknown>) => String(server.slug));
+  if (new Set(slugs).size !== slugs.length) contractDrift("Agent Tools Cloud MCP buyer-query results contain duplicate slugs.");
+  const ranks = acceptedSlugs
+    .map((slug) => slugs.indexOf(slug))
+    .filter((index) => index >= 0)
+    .map((index) => index + 1);
+  return {
+    found: ranks.length > 0,
+    rank: ranks.length ? Math.min(...ranks) : null,
+    returned_results: payload.count,
+  };
+}

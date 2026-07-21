@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AgentToolsCloudContractDrift,
+  parseAgentToolsCloudMcpBuyerQuery,
   parseAgentToolsCloudListing,
   parseAgentToolsCloudMcpListing,
 } from "../src/agent-tools-cloud.ts";
@@ -141,4 +142,28 @@ test("Agent Tools Cloud MCP parser rejects identity, tool, and payment-support d
   assert.throws(() => parseAgentToolsCloudMcpListing(mcpSearch, mcpPayload({ endpoint_url: "https://attacker.example/mcp" }), mcpOptions), AgentToolsCloudContractDrift);
   assert.throws(() => parseAgentToolsCloudMcpListing(mcpSearch, mcpPayload({ tools: [], tool_count: 0 }), mcpOptions), AgentToolsCloudContractDrift);
   assert.throws(() => parseAgentToolsCloudMcpListing(mcpSearch, mcpPayload({ x402_supported: 0 }), mcpOptions), AgentToolsCloudContractDrift);
+});
+
+test("Agent Tools Cloud retains only bounded owner-run MCP retrieval ranks", () => {
+  const payload = {
+    count: 3,
+    total_matched: 7,
+    servers: [{ slug: "other" }, { slug: "bountyverdict-agent-decision-apis-x402" }, { slug: mcpSlug }],
+  };
+  assert.deepEqual(parseAgentToolsCloudMcpBuyerQuery(payload, [mcpSlug, "bountyverdict-agent-decision-apis-x402"]), {
+    found: true,
+    rank: 2,
+    returned_results: 3,
+  });
+  assert.deepEqual(parseAgentToolsCloudMcpBuyerQuery({ count: 1, total_matched: 1, servers: [{ slug: "other" }] }, [mcpSlug]), {
+    found: false,
+    rank: null,
+    returned_results: 1,
+  });
+});
+
+test("Agent Tools Cloud buyer-query parser rejects malformed and duplicate results", () => {
+  assert.throws(() => parseAgentToolsCloudMcpBuyerQuery({ count: 2, total_matched: 2, servers: [{ slug: "same" }, { slug: "same" }] }, [mcpSlug]), AgentToolsCloudContractDrift);
+  assert.throws(() => parseAgentToolsCloudMcpBuyerQuery({ count: 101, total_matched: 101, servers: [] }, [mcpSlug]), AgentToolsCloudContractDrift);
+  assert.throws(() => parseAgentToolsCloudMcpBuyerQuery({ count: 1, total_matched: 0, servers: [{ slug: mcpSlug }] }, [mcpSlug]), AgentToolsCloudContractDrift);
 });

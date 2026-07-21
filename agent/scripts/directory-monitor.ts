@@ -10,6 +10,7 @@ import {
 } from "../src/acquisition.ts";
 import {
   AgentToolsCloudContractDrift,
+  parseAgentToolsCloudMcpBuyerQuery,
   parseAgentToolsCloudListing,
   parseAgentToolsCloudMcpListing,
 } from "../src/agent-tools-cloud.ts";
@@ -62,6 +63,7 @@ const x402gleHostUrl = "https://x402gle.com/servers/bountyverdict-agent-producti
 const agentToolsCloudApi = "https://agent-tools.cloud/api/v1";
 const agentToolsCloudSlug = "bountyverdict-agent-production-mimirslab-workers-dev-bazaar";
 const agentToolsCloudMcpSlug = "bountyverdict-agent-decision-tools-bountyverdict-agent-production-mimirslab-work";
+const agentToolsCloudMcpX402Slug = "bountyverdict-agent-decision-apis-x402";
 const agentToolsCloudMcpTools = Object.freeze([
   "check_github_bounty",
   "rank_github_bounties",
@@ -69,6 +71,14 @@ const agentToolsCloudMcpTools = Object.freeze([
   "diagnose_github_actions_run",
   "classify_github_actions_flake",
   "check_mcp_tool_drift",
+]);
+const agentToolsCloudBuyerQueries = Object.freeze([
+  "why did this GitHub Actions run fail",
+  "should I rerun this failed workflow or fix the code",
+  "check AGENTS.md and CLAUDE.md before editing this repository",
+  "is this GitHub bounty still open and unclaimed",
+  "which GitHub bounty issue should I work on",
+  "will this MCP tools list update break existing agents",
 ]);
 const revenueWallet = "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
 const monetizeYourAgentApi = "https://monetizeyouragent.fun/api/v1";
@@ -1812,8 +1822,11 @@ async function agentToolsCloudStatus(): Promise<Record<string, unknown>> {
   const detailUrl = `${agentToolsCloudApi}/services/${agentToolsCloudSlug}`;
   const mcpSearchUrl = `${agentToolsCloudApi}/mcp/search?q=BountyVerdict&limit=20`;
   const mcpDetailUrl = `${agentToolsCloudApi}/mcp/servers/${agentToolsCloudMcpSlug}`;
+  const buyerQueryUrls = agentToolsCloudBuyerQueries.map((query) =>
+    `${agentToolsCloudApi}/mcp/search?q=${encodeURIComponent(query)}&limit=100`
+  );
   try {
-    const [searchResponse, detailResponse, mcpSearchResponse, mcpDetailResponse] = await Promise.all([
+    const responses = await Promise.all([
       fetch(searchUrl, {
         headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
         signal: AbortSignal.timeout(timeoutMs),
@@ -1830,8 +1843,15 @@ async function agentToolsCloudStatus(): Promise<Record<string, unknown>> {
         headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
         signal: AbortSignal.timeout(timeoutMs),
       }),
+      ...buyerQueryUrls.map((url) => fetch(url, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      })),
     ]);
-    if (!searchResponse.ok || !detailResponse.ok || !mcpSearchResponse.ok || !mcpDetailResponse.ok) {
+    const [searchResponse, detailResponse, mcpSearchResponse, mcpDetailResponse] = responses;
+    const buyerQueryResponses = responses.slice(4);
+    if (!searchResponse.ok || !detailResponse.ok || !mcpSearchResponse.ok || !mcpDetailResponse.ok ||
+      buyerQueryResponses.some((response) => !response.ok)) {
       return {
         url: "https://agent-tools.cloud/",
         search_url: searchUrl,
@@ -1844,12 +1864,23 @@ async function agentToolsCloudStatus(): Promise<Record<string, unknown>> {
         detail_http_status: detailResponse.status,
         mcp_search_http_status: mcpSearchResponse.status,
         mcp_detail_http_status: mcpDetailResponse.status,
+        buyer_query_http_statuses: buyerQueryResponses.map((response) => response.status),
       };
     }
     const search = await searchResponse.json() as Record<string, any>;
     const detail = await detailResponse.json() as Record<string, any>;
     const mcpSearch = await mcpSearchResponse.json() as Record<string, any>;
     const mcpDetail = await mcpDetailResponse.json() as Record<string, any>;
+    const buyerQueryPayloads = await Promise.all(buyerQueryResponses.map(async (response) =>
+      await response.json() as Record<string, any>
+    ));
+    const buyerQueries = agentToolsCloudBuyerQueries.map((query, index) => {
+      const parsed = parseAgentToolsCloudMcpBuyerQuery(
+        buyerQueryPayloads[index],
+        [agentToolsCloudMcpSlug, agentToolsCloudMcpX402Slug],
+      ) as { found: boolean; rank: number | null; returned_results: number };
+      return { query, ...parsed };
+    });
     return {
       url: "https://agent-tools.cloud/",
       search_url: searchUrl,
@@ -1867,6 +1898,14 @@ async function agentToolsCloudStatus(): Promise<Record<string, unknown>> {
         slug: agentToolsCloudMcpSlug,
         expectedTools: agentToolsCloudMcpTools,
       }),
+      buyer_query_benchmark: {
+        queries: buyerQueries,
+        query_count: buyerQueries.length,
+        found_queries: buyerQueries.filter(({ found }) => found).length,
+        top_three_queries: buyerQueries.filter(({ rank }) => typeof rank === "number" && rank <= 3).length,
+        first_place_queries: buyerQueries.filter(({ rank }) => rank === 1).length,
+        measurement: "fixed_owner_run_unbranded_catalog_queries_not_search_volume_impressions_calls_purchases_or_revenue",
+      },
     };
   } catch (error) {
     return {
