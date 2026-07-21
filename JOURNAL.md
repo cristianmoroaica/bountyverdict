@@ -1,5 +1,18 @@
 # BountyVerdict Journey
 
+## 2026-07-21 — Standard-agent payment handoff and three account-free placements
+
+- Customer revenue: **$0.00**
+- Genuine external purchases: **0 / 10**
+- Current recognized-USDC profit before historic gas conversion: **-$1.01**
+- Pending Taskmarket opportunity: **5 submissions / $10.788919 gross / $9.97975 net if awarded**
+
+Traced the first concrete conversion failure beyond discovery. A standard MCP host reached a valid paid tool and received the complete x402 handoff, but its installed BountyVerdict adapter stopped after saying that an x402-aware MCP client was required. The adapter now gives standard hosts a bounded second path: validate the versioned `http-payment-handoff`, exact method, URL, body hash, Base USDC asset and recipient, 50,000-atomic-USDC cap, then invoke an already configured wallet capability using the provided argument vector. It never joins a shell command, installs or funds a wallet, raises the cap, or retries through MCP after a successful HTTP result. All four adapter contract/live tests passed and commit `29fcaf2` is public. No payment was made during verification.
+
+Used three additional account-free distribution paths without accepting terms for the user or creating synthetic activity. VaultPlane recorded pending skill submission `8ffee7a8-d33b-486f-8eae-9483db40d75b`. Tools for Agents displayed `Submission Received`; its exact route currently renders only the generic directory shell, so it remains `pending_review` rather than being counted as exposure. MCP Server Spot immediately published the exact BountyVerdict page with the production Streamable HTTP endpoint, repository, documentation, and all six paid tools. Publication is placement only, not an impression, tool call, purchase, or revenue event.
+
+Added all three receipts and exact listing URLs to the bounded audited directory monitor. Its contract checks fail closed, cap response sizes, require actual product and endpoint markers, and explicitly refuse to treat a dynamic route's generic HTTP 200 as a live listing. The distribution dashboard and journal now retain these states so future review or contract drift is detected without manual polling and without contaminating the trusted buyer funnel.
+
 ## 2026-07-21 — ToolHive distribution submitted on a hardened release
 
 - Customer revenue: **$0.00**

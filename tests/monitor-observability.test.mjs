@@ -258,6 +258,25 @@ test("directory monitoring tracks the recorded MCP.Directory submission without 
   assert.match(distribution, /exact listing checks only, never search impressions, tool calls, purchases, or revenue/);
 });
 
+test("directory monitoring records the three account-free submissions without inflating route shells into exposure", async () => {
+  const [directory, distribution] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+  ]);
+  assert.match(directory, /const vaultPlaneSubmissionId = "8ffee7a8-d33b-486f-8eae-9483db40d75b"/);
+  assert.match(directory, /async function vaultPlaneStatus/);
+  assert.match(directory, /async function toolsForAgentsStatus/);
+  assert.match(directory, /a generic shell or route-state echo cannot become false exposure/);
+  assert.match(directory, /async function mcpServerSpotStatus/);
+  assert.match(directory, /mcp_server_spot: mcpServerSpot/);
+  assert.match(directory, /tools_for_agents: toolsForAgents/);
+  assert.match(directory, /vaultplane: vaultPlane/);
+  assert.match(distribution, /VaultPlane skill directory/);
+  assert.match(distribution, /a generic route HTTP 200 is not counted as exposure/);
+  assert.match(distribution, /MCP Server Spot/);
+  assert.match(distribution, /listing presence is not an impression, tool call, purchase, or revenue/);
+});
+
 test("directory monitoring tracks Cline review and exact in-agent install contract without claiming demand", async () => {
   const [directory, distribution] = await Promise.all([
     readFile(directoryMonitorUrl, "utf8"),

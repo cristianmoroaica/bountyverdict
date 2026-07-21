@@ -112,6 +112,13 @@ const mcpServersOrgReceiptUrl = `https://mcpservers.org/submit-success?submissio
 const mcpServersOrgListingUrl = "https://mcpservers.org/servers/cristianmoroaica/bountyverdict";
 const mcpDirectorySubmittedAt = "2026-07-21T05:48:37Z";
 const mcpDirectoryListingUrl = "https://mcp.directory/servers/bountyverdict";
+const vaultPlaneSubmissionId = "8ffee7a8-d33b-486f-8eae-9483db40d75b";
+const vaultPlaneSubmittedAt = "2026-07-21T15:32:23.786Z";
+const vaultPlaneListingUrl = "https://www.vaultplane.com/skills/bountyverdict-agent-decision-router";
+const toolsForAgentsSubmittedAt = "2026-07-21T15:34:00Z";
+const toolsForAgentsListingUrl = "https://www.toolsforagents.dev/tools/cristianmoroaica/bountyverdict";
+const mcpServerSpotSubmittedAt = "2026-07-21T15:36:00Z";
+const mcpServerSpotListingUrl = "https://www.mcpserverspot.com/servers/bountyverdict-agent-decision-tools";
 const clineMarketplacePrNumber = 13;
 const clineMarketplacePrUrl = `https://github.com/cline/marketplace/pull/${clineMarketplacePrNumber}`;
 const clineMarketplaceCatalogUrl = "https://cline.github.io/marketplace/catalog.json";
@@ -873,6 +880,162 @@ async function mcpDirectoryStatus(
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
       measurement: "recorded_submission_http_200_and_exact_listing_presence_not_search_impressions_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function vaultPlaneStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(vaultPlaneListingUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (![200, 404].includes(response.status)) {
+      throw new Error(`VaultPlane returned HTTP ${response.status}.`);
+    }
+    const body = await response.text();
+    if (body.length > 1_000_000) throw new Error("VaultPlane listing response is unbounded.");
+    const listed = response.status === 200 &&
+      body.includes("BountyVerdict Agent Decision Router") &&
+      body.includes("cristianmoroaica/bountyverdict") &&
+      body.includes("route-github-agent-decisions");
+    return {
+      submission_id: vaultPlaneSubmissionId,
+      submitted_at: vaultPlaneSubmittedAt,
+      submission_status: "pending",
+      verification_status: "unverified",
+      payment_status: "not_required",
+      listing_url: vaultPlaneListingUrl,
+      listing_http_status: response.status,
+      listed,
+      contract_verified: listed,
+      status: listed ? "catalog_contract_verified" : "pending_review",
+      first_listed_at: listed ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "exact_submission_receipt_and_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      submission_id: vaultPlaneSubmissionId,
+      submitted_at: vaultPlaneSubmittedAt,
+      submission_status: "pending",
+      verification_status: "unverified",
+      payment_status: "not_required",
+      listing_url: vaultPlaneListingUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "exact_submission_receipt_and_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function toolsForAgentsStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(toolsForAgentsListingUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (![200, 404].includes(response.status)) {
+      throw new Error(`Tools for Agents returned HTTP ${response.status}.`);
+    }
+    const body = await response.text();
+    if (body.length > 1_000_000) throw new Error("Tools for Agents listing response is unbounded.");
+    // The dynamic route itself returns HTTP 200 before review. Require product copy and
+    // the endpoint so a generic shell or route-state echo cannot become false exposure.
+    const listed = response.status === 200 &&
+      body.includes("BountyVerdict") &&
+      body.includes("GitHub bounty") &&
+      body.includes("bountyverdict-agent-production.mimirslab.workers.dev/mcp");
+    return {
+      submitted_at: toolsForAgentsSubmittedAt,
+      submission_recorded: true,
+      submission_response_message: "Submission Received",
+      payment_status: "not_required",
+      listing_url: toolsForAgentsListingUrl,
+      listing_http_status: response.status,
+      listed,
+      contract_verified: listed,
+      status: listed ? "catalog_contract_verified" : "pending_review",
+      first_listed_at: listed ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "recorded_submission_and_exact_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      submitted_at: toolsForAgentsSubmittedAt,
+      submission_recorded: true,
+      submission_response_message: "Submission Received",
+      payment_status: "not_required",
+      listing_url: toolsForAgentsListingUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "recorded_submission_and_exact_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function mcpServerSpotStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(mcpServerSpotListingUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (![200, 404].includes(response.status)) {
+      throw new Error(`MCP Server Spot returned HTTP ${response.status}.`);
+    }
+    const body = await response.text();
+    if (body.length > 2_000_000) throw new Error("MCP Server Spot listing response is unbounded.");
+    const requiredMarkers = [
+      "BountyVerdict Agent Decision Tools",
+      "cristianmoroaica/bountyverdict",
+      "bountyverdict-agent-production.mimirslab.workers.dev/mcp",
+      "check_github_bounty",
+      "rank_github_bounties",
+      "audit_agent_harness",
+      "diagnose_github_actions_run",
+      "classify_github_actions_flake",
+      "check_mcp_tool_drift",
+    ];
+    const listed = response.status === 200 && requiredMarkers.every((marker) => body.includes(marker));
+    return {
+      submitted_at: mcpServerSpotSubmittedAt,
+      submission_recorded: true,
+      submission_response_message: "Your server has been added to the directory.",
+      payment_status: "not_required",
+      listing_url: mcpServerSpotListingUrl,
+      listing_http_status: response.status,
+      listed,
+      contract_verified: listed,
+      status: listed ? "catalog_contract_verified" : response.status === 404 ? "pending_publication" : "catalog_contract_drift",
+      first_listed_at: listed ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "recorded_submission_and_exact_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      submitted_at: mcpServerSpotSubmittedAt,
+      submission_recorded: true,
+      submission_response_message: "Your server has been added to the directory.",
+      payment_status: "not_required",
+      listing_url: mcpServerSpotListingUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "recorded_submission_and_exact_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
     };
   }
 }
@@ -2273,6 +2436,9 @@ const [
   dockerMcpRegistry,
   mcpServersOrg,
   mcpDirectory,
+  vaultPlane,
+  toolsForAgents,
+  mcpServerSpot,
   clineMarketplace,
   kiloMarketplace,
   toolHive,
@@ -2310,6 +2476,9 @@ const [
   dockerMcpRegistryStatus(previous.docker_mcp_registry || {}, new Date().toISOString()),
   mcpServersOrgStatus(previous.mcp_servers_org || {}, new Date().toISOString()),
   mcpDirectoryStatus(previous.mcp_directory || {}, new Date().toISOString()),
+  vaultPlaneStatus(previous.vaultplane || {}, new Date().toISOString()),
+  toolsForAgentsStatus(previous.tools_for_agents || {}, new Date().toISOString()),
+  mcpServerSpotStatus(previous.mcp_server_spot || {}, new Date().toISOString()),
   clineMarketplaceStatus(previous.cline_marketplace || {}, new Date().toISOString()),
   kiloMarketplaceStatus(previous.kilo_marketplace || {}, new Date().toISOString()),
   toolHiveStatus(previous.toolhive || {}, new Date().toISOString()),
@@ -2538,6 +2707,9 @@ const state = {
   docker_mcp_registry: dockerMcpRegistry,
   mcp_servers_org: mcpServersOrg,
   mcp_directory: mcpDirectory,
+  vaultplane: vaultPlane,
+  tools_for_agents: toolsForAgents,
+  mcp_server_spot: mcpServerSpot,
   cline_marketplace: clineMarketplace,
   kilo_marketplace: kiloMarketplace,
   toolhive: toolHive,
