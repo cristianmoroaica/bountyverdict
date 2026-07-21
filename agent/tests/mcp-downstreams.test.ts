@@ -1,10 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { glamaConnectorStatus, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
+import { canReuseMcpDownstreamStatus, glamaConnectorStatus, parseOneMcpRegistryShow, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
 
 const name = "io.github.cristianmoroaica/bountyverdict";
 const version = "1.1.0";
 const endpoint = "https://bountyverdict-agent-production.mimirslab.workers.dev/mcp";
+
+test("reuses downstream checks only for the exact registry release coordinates", () => {
+  const now = Date.parse("2026-07-21T03:05:00Z");
+  const previous = {
+    checked_at: "2026-07-21T03:00:00Z",
+    registry_name: name,
+    registry_version: version,
+    registry_endpoint: endpoint,
+  };
+  assert.equal(canReuseMcpDownstreamStatus(previous, name, version, endpoint, now, 6 * 60 * 60 * 1000), true);
+  assert.equal(canReuseMcpDownstreamStatus({ ...previous, registry_version: "1.0.1" }, name, version, endpoint, now, 6 * 60 * 60 * 1000), false);
+  assert.equal(canReuseMcpDownstreamStatus({ ...previous, registry_endpoint: "https://wrong.example/mcp" }, name, version, endpoint, now, 6 * 60 * 60 * 1000), false);
+  assert.equal(canReuseMcpDownstreamStatus(previous, name, version, endpoint, Date.parse("2026-07-21T10:00:00Z"), 6 * 60 * 60 * 1000), false);
+  assert.equal(canReuseMcpDownstreamStatus({ checked_at: "bad" }, name, version, endpoint, now, 6 * 60 * 60 * 1000), false);
+});
+
+test("parses 1MCP JSON output even when its CLI emits a leading info line", () => {
+  assert.deepEqual(parseOneMcpRegistryShow('2026-07-21T03:02:59Z [INFO] fetching\n{"name":"example","version":"1.0.0"}\n'), {
+    name: "example",
+    version: "1.0.0",
+  });
+  assert.throws(() => parseOneMcpRegistryShow("no json"));
+  assert.throws(() => parseOneMcpRegistryShow("[]"));
+});
 
 test("recognizes exact active remote propagation into the Qt Creator mirror", () => {
   const result = parseQtMcpRegistry({

@@ -33,7 +33,7 @@ import {
   normalizeThe402ServiceOutcome,
 } from "../src/marketplace-telemetry.ts";
 import { loadDistributionMonitorConfiguration } from "../src/monitor-configuration.ts";
-import { glamaConnectorStatus, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
+import { canReuseMcpDownstreamStatus, glamaConnectorStatus, parseOneMcpRegistryShow, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
 
 const CDP_DISCOVERY = "https://api.cdp.coinbase.com/platform/v2/x402/discovery";
 const AGENTIC_MARKET_SERVICE =
@@ -45,6 +45,7 @@ const execFileAsync = promisify(execFile);
 const GITHUB_REPOSITORY = "cristianmoroaica/bountyverdict";
 const MCP_REGISTRY_NAME = "io.github.cristianmoroaica/bountyverdict";
 const MCP_REGISTRY_VERSION = "1.1.0";
+const ONE_MCP_PACKAGE = "@1mcp/agent@0.34.3";
 const QT_MCP_REGISTRY = "https://qtccache.qt.io/mcp/registry.json";
 const GLAMA_MCP_CONNECTOR = `https://glama.ai/mcp/connectors/${MCP_REGISTRY_NAME}`;
 const MCP_DOWNSTREAM_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -246,24 +247,40 @@ async function mcpRegistryStatus(): Promise<Record<string, unknown>> {
 
 async function mcpDownstreamStatus(previous: Record<string, any> = {}): Promise<Record<string, unknown>> {
   const now = new Date();
-  const previousCheck = typeof previous.checked_at === "string" ? Date.parse(previous.checked_at) : Number.NaN;
-  if (Number.isFinite(previousCheck) && now.getTime() >= previousCheck && now.getTime() - previousCheck < MCP_DOWNSTREAM_CHECK_INTERVAL_MS) {
+  const endpoint = `${api}/mcp`;
+  if (canReuseMcpDownstreamStatus(previous, MCP_REGISTRY_NAME, MCP_REGISTRY_VERSION, endpoint, now.getTime(), MCP_DOWNSTREAM_CHECK_INTERVAL_MS)) {
     return { ...previous, reused_at: now.toISOString() };
   }
-  const [qtResponse, glamaResponse] = await Promise.all([
+  const [qtResponse, glamaResponse, oneMcp] = await Promise.all([
     monitoredFetch(QT_MCP_REGISTRY),
     monitoredFetch(GLAMA_MCP_CONNECTOR, { redirect: "manual" }),
+    execFileAsync("npx", ["-y", ONE_MCP_PACKAGE, "registry", "show", MCP_REGISTRY_NAME, "--format", "json"], {
+      timeout: TIMEOUT_MS,
+      maxBuffer: 1_000_000,
+      encoding: "utf8",
+    }),
   ]);
   if (!qtResponse.ok) throw new Error(`Qt Creator MCP mirror returned HTTP ${qtResponse.status}.`);
-  const qt = parseQtMcpRegistry(await qtResponse.json(), MCP_REGISTRY_NAME, MCP_REGISTRY_VERSION, `${api}/mcp`);
+  const oneMcpEntry = parseOneMcpRegistryShow(oneMcp.stdout);
+  if (oneMcpEntry.name !== MCP_REGISTRY_NAME || oneMcpEntry.version !== MCP_REGISTRY_VERSION ||
+    !Array.isArray(oneMcpEntry.remotes) || !oneMcpEntry.remotes.some((remote) => remote && typeof remote === "object" &&
+      !Array.isArray(remote) && (remote as { type?: unknown }).type === "streamable-http" && (remote as { url?: unknown }).url === endpoint)) {
+    throw new Error("1MCP did not resolve the exact active MCP release.");
+  }
+  const qt = parseQtMcpRegistry(await qtResponse.json(), MCP_REGISTRY_NAME, MCP_REGISTRY_VERSION, endpoint);
   const glama = glamaConnectorStatus(glamaResponse.status, GLAMA_MCP_CONNECTOR);
   return {
     checked_at: now.toISOString(),
     check_interval_hours: MCP_DOWNSTREAM_CHECK_INTERVAL_MS / 3_600_000,
+    registry_name: MCP_REGISTRY_NAME,
+    registry_version: MCP_REGISTRY_VERSION,
+    registry_endpoint: endpoint,
     one_mcp: {
       status: "confirmed_direct_official_registry_consumer",
       verified_version: MCP_REGISTRY_VERSION,
-      verified_at: "2026-07-21T02:31:08.804Z",
+      verified_endpoint: endpoint,
+      verified_at: now.toISOString(),
+      client_package: ONE_MCP_PACKAGE,
       accounting_note: "One owner-run CLI retrieval proved availability; it is not an impression or purchase.",
     },
     mcp_proxy: {

@@ -8,6 +8,33 @@ export type QtMcpRegistryStatus = {
   server_count: number;
 };
 
+export function canReuseMcpDownstreamStatus(
+  value: unknown,
+  expectedName: string,
+  expectedVersion: string,
+  expectedEndpoint: string,
+  nowMs: number,
+  intervalMs: number,
+): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const status = value as Record<string, unknown>;
+  const checkedAt = typeof status.checked_at === "string" ? Date.parse(status.checked_at) : Number.NaN;
+  return Number.isFinite(checkedAt) && Number.isFinite(nowMs) && Number.isFinite(intervalMs) && intervalMs > 0 &&
+    nowMs >= checkedAt && nowMs - checkedAt < intervalMs &&
+    status.registry_name === expectedName &&
+    status.registry_version === expectedVersion &&
+    status.registry_endpoint === expectedEndpoint;
+}
+
+export function parseOneMcpRegistryShow(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string" || value.length > 1_000_000) throw new Error("1MCP registry output is invalid or unbounded.");
+  const start = value.indexOf("{");
+  if (start < 0) throw new Error("1MCP registry output contains no JSON object.");
+  const parsed = JSON.parse(value.slice(start)) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("1MCP registry output is not an object.");
+  return parsed as Record<string, unknown>;
+}
+
 export function parseQtMcpRegistry(
   value: unknown,
   expectedName: string,
