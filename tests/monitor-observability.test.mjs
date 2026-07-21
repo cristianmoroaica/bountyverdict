@@ -231,6 +231,15 @@ test("Kiro Power source attribution remains aggregate and separate from purchase
   assert.match(distribution, /source marker is aggregate attribution, not proof of install, identity, or purchase/);
 });
 
+test("production reporting keeps the executable MCP payment handoff visible", async () => {
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(distribution, /requireStatus\("\/\.well-known\/mcp\.json"\)/);
+  assert.match(distribution, /mcp_metadata: mcpMetadata/);
+  assert.match(distribution, /MCP paid-call handoff/);
+  assert.match(distribution, /direct MCP payment requires @x402\/mcp/);
+  assert.match(distribution, /standard hosts receive the exact versioned HTTP handoff/);
+});
+
 test("Gemini CLI extension exposes only the hosted paid MCP without secrets", async () => {
   const manifest = JSON.parse(await readFile(geminiExtensionUrl, "utf8"));
   assert.deepEqual(manifest, {
