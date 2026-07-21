@@ -56,6 +56,18 @@ test("distribution monitoring treats Payan demand state as a funnel and receipts
   assert.match(distribution, /Payan exact-fit demand capture/);
 });
 
+test("distribution monitoring measures the MCP preview-copy rollout from an immutable buyer-event baseline", async () => {
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(distribution, /mcp-tools-list-preview-copy-v1/);
+  assert.match(distribution, /release_commit: "bc1cdb38af7d51e06b61037161f18ecbee56efc6"/);
+  assert.match(distribution, /valid_call_per_tools_list_percent/);
+  assert.match(distribution, /invalid_call_share_percent/);
+  assert.match(distribution, /payment_present_per_valid_call_percent/);
+  assert.match(distribution, /aggregate event deltas, not unique agents or purchase proof/);
+  assert.match(distribution, /monitoredFetchWithNetworkRetry/);
+  assert.match(distribution, /AbortSignal\.timeout\(timeoutMs\)/);
+});
+
 test("directory monitoring separates Awesome Copilot review and catalog presence from demand", async () => {
   const directory = await readFile(directoryMonitorUrl, "utf8");
   const distribution = await readFile(distributionUrl, "utf8");

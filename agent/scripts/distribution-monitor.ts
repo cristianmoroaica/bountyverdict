@@ -54,6 +54,20 @@ const GLAMA_MCP_CONNECTOR = `https://glama.ai/mcp/connectors/${MCP_REGISTRY_NAME
 const MCPUB_MCP = "https://mcpub.dev/mcp";
 const MCP_INTENT_PAGE = "https://cristianmoroaica.github.io/bountyverdict/mcp-github-actions-diagnosis.html";
 const MCP_DOWNSTREAM_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const MCP_PREVIEW_COPY_ROLLOUT = Object.freeze({
+  id: "mcp-tools-list-preview-copy-v1",
+  started_at: "2026-07-21T09:35:19.486Z",
+  release_commit: "bc1cdb38af7d51e06b61037161f18ecbee56efc6",
+  baseline: Object.freeze({
+    initialize: 100,
+    tools_list: 57,
+    validation_error: 6,
+    capacity_rejected: 0,
+    payment_required: 0,
+    payment_present: 0,
+    paid_success: 0,
+  }),
+});
 
 const configuration = loadDistributionMonitorConfiguration(process.env);
 const api = configuration.productionApi;
@@ -189,10 +203,10 @@ async function atomicWrite(path: string, contents: string): Promise<void> {
   await rename(temporary, path);
 }
 
-async function monitoredFetch(input: string, init?: RequestInit): Promise<Response> {
+async function monitoredFetch(input: string, init?: RequestInit, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (!headers.has("User-Agent")) headers.set("User-Agent", "bountyverdict-distribution-monitor/1.0");
-  return fetch(input, { ...init, headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  return fetch(input, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) });
 }
 
 async function monitoredFetchWithServerRetry(input: string, init?: RequestInit): Promise<Response> {
@@ -202,6 +216,22 @@ async function monitoredFetchWithServerRetry(input: string, init?: RequestInit):
     response = await monitoredFetch(input, init);
   }
   return response;
+}
+
+async function monitoredFetchWithNetworkRetry(input: string, init?: RequestInit): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await monitoredFetch(input, init, 10_000);
+      if (response.status < 500 || attempt === 2) return response;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+  }
+  throw lastError instanceof Error ? lastError : new Error("Bounded network retry exhausted.");
 }
 
 async function githubTrafficStatus(): Promise<Record<string, unknown>> {
@@ -245,7 +275,7 @@ async function requireJsonObject(path: string): Promise<Record<string, any>> {
 
 async function mcpRegistryStatus(): Promise<Record<string, unknown>> {
   const endpoint = `${api}/mcp`;
-  const response = await monitoredFetch(`https://registry.modelcontextprotocol.io/v0.1/servers?search=${encodeURIComponent(MCP_REGISTRY_NAME)}`);
+  const response = await monitoredFetchWithNetworkRetry(`https://registry.modelcontextprotocol.io/v0.1/servers?search=${encodeURIComponent(MCP_REGISTRY_NAME)}`);
   if (!response.ok) throw new Error(`MCP Registry returned HTTP ${response.status}.`);
   const body = await response.json() as { servers?: Array<{ server?: { name?: unknown; version?: unknown; remotes?: unknown } }> };
   if (!Array.isArray(body.servers) || body.servers.length > 100) throw new Error("MCP Registry response is malformed or unbounded.");
@@ -1600,6 +1630,28 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
         `MCP buyer-candidate ${stage}`,
       ),
     ]));
+    const mcpPreviewCopyDelta = Object.fromEntries(Object.entries(MCP_PREVIEW_COPY_ROLLOUT.baseline).map(([stage, baseline]) => [
+      stage,
+      monotonicDelta(buyerCandidateMcpTotals[stage], baseline, `MCP preview-copy rollout ${stage}`),
+    ]));
+    const previewCallOpportunities = Number(mcpPreviewCopyDelta.validation_error || 0) + Number(mcpPreviewCopyDelta.payment_required || 0);
+    const mcpPreviewCopyExperiment = {
+      ...MCP_PREVIEW_COPY_ROLLOUT,
+      status: "running",
+      delta: mcpPreviewCopyDelta,
+      event_ratios: {
+        valid_call_per_tools_list_percent: Number(mcpPreviewCopyDelta.tools_list || 0) > 0
+          ? Math.round(Number(mcpPreviewCopyDelta.payment_required || 0) / Number(mcpPreviewCopyDelta.tools_list) * 1_000) / 10
+          : null,
+        invalid_call_share_percent: previewCallOpportunities > 0
+          ? Math.round(Number(mcpPreviewCopyDelta.validation_error || 0) / previewCallOpportunities * 1_000) / 10
+          : null,
+        payment_present_per_valid_call_percent: Number(mcpPreviewCopyDelta.payment_required || 0) > 0
+          ? Math.round(Number(mcpPreviewCopyDelta.payment_present || 0) / Number(mcpPreviewCopyDelta.payment_required) * 1_000) / 10
+          : null,
+      },
+      measurement: "aggregate_non_owner_non_registry_crawler_event_deltas_not_unique_users_or_purchases",
+    };
     const externalMcpByProduct = Object.fromEntries(MCP_PRODUCTS.map((product) => {
       const sources = state.mcp_by_product_source[product];
       return [product, Object.fromEntries(Object.keys(state.mcp_totals).map((stage) => [
@@ -1788,6 +1840,7 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       mcp_external: externalMcpTotals,
       mcp_external_by_product: externalMcpByProduct,
       mcp_buyer_candidate: buyerCandidateMcpTotals,
+      mcp_preview_copy_experiment: mcpPreviewCopyExperiment,
       mcp_learning_stage: mcpLearningStage,
       mcp_by_source: state.mcp_by_source,
       mcp_by_client_class: state.mcp_by_client_class,
@@ -1874,6 +1927,12 @@ function renderMonitorNote(report: Record<string, any>): string {
     : "unavailable";
   const funnel = report.funnel || {};
   const mcpBuyerCandidate = funnel.mcp_buyer_candidate || {};
+  const mcpPreviewCopyExperiment = funnel.mcp_preview_copy_experiment || {};
+  const mcpPreviewCopyDelta = mcpPreviewCopyExperiment.delta || {};
+  const mcpPreviewCopyRatios = mcpPreviewCopyExperiment.event_ratios || {};
+  const ratio = (value: unknown) => value !== null && value !== undefined && Number.isFinite(Number(value))
+    ? `${Number(value)}%`
+    : "not yet measurable";
   const mcpValidationKinds = funnel.mcp_validation_kinds || {};
   const mcpValidationSummary = Object.entries(mcpValidationKinds)
     .filter(([, count]) => Number(count || 0) > 0)
@@ -1921,11 +1980,12 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
 - **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external discovery hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
 - **MCP buyer-candidate funnel:** ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initializations; ${Number(mcpBuyerCandidate.tools_list || 0)} tool-list requests; ${Number(mcpBuyerCandidate.protocol_error || 0)} protocol errors; ${Number(mcpBuyerCandidate.capacity_rejected || 0)} capacity rejections; ${Number(mcpBuyerCandidate.payment_required || 0)} valid unpaid tool calls; ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations; ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner automation and identified directory crawlers excluded)
+- **MCP preview-copy rollout:** ${funnel.available ? `${mcpPreviewCopyExperiment.status || "unavailable"} since ${mcpPreviewCopyExperiment.started_at || "unknown"} at ${String(mcpPreviewCopyExperiment.release_commit || "unknown").slice(0, 7)}; delta ${Number(mcpPreviewCopyDelta.initialize || 0)} initialize / ${Number(mcpPreviewCopyDelta.tools_list || 0)} tools/list / ${Number(mcpPreviewCopyDelta.validation_error || 0)} invalid / ${Number(mcpPreviewCopyDelta.payment_required || 0)} valid unpaid / ${Number(mcpPreviewCopyDelta.payment_present || 0)} payment presented / ${Number(mcpPreviewCopyDelta.paid_success || 0)} paid success; list-to-valid ${ratio(mcpPreviewCopyRatios.valid_call_per_tools_list_percent)}, invalid share ${ratio(mcpPreviewCopyRatios.invalid_call_share_percent)}, valid-to-payment ${ratio(mcpPreviewCopyRatios.payment_present_per_valid_call_percent)}` : "unavailable"} (aggregate event deltas, not unique agents or purchase proof)
 - **MCP invalid-call learning:** ${funnel.available ? mcpValidationSummary : "unavailable"} (coarse categories only; no arguments, URLs, payloads, identities, or raw client names retained; pre-upgrade events remain legacy-unclassified)
 - **MCP directory-crawler activity:** ${funnel.available ? `${Number(mcpRegistryCrawler.initialize || 0)} initializations; ${Number(mcpRegistryCrawler.tools_list || 0)} tool-list requests; ${Number(mcpRegistryCrawler.payment_required || 0)} valid unpaid tool calls` : "unavailable"} (retained separately for distribution propagation, never treated as buyer intent)
 - **Kiro Power package:** repository contract published; registry submission not made because publisher terms require explicit acceptance; ${funnel.available ? `${Number(mcpKiroPower.initialize || 0)} declared-source initializations, ${Number(mcpKiroPower.tools_list || 0)} tool-list requests, ${Number(mcpKiroPower.payment_required || 0)} valid unpaid calls, ${Number(mcpKiroPower.payment_present || 0)} payment presentations` : "funnel unavailable"} (source marker is aggregate attribution, not proof of install, identity, or purchase)
 - **Official MCP Registry:** ${report.acquisition?.mcp_registry?.listed ? `${report.acquisition.mcp_registry.name}@${report.acquisition.mcp_registry.version} listed at the exact production Streamable HTTP endpoint` : `unavailable (${report.acquisition?.mcp_registry?.error || "not checked"})`} (placement only, never a purchase)
-- **Agentic Resource Discovery catalog:** ${report.acquisition?.ard_catalog?.live ? `${report.acquisition.ard_catalog.representative_queries} neutral buyer queries and ${report.acquisition.ard_catalog.capabilities} MCP capabilities live` : report.acquisition?.ard_catalog?.status || "unavailable"} (${report.acquisition?.ard_catalog?.url || "origin catalog not checked"}; direct catalog availability is not registry indexing, an impression, a tool call, or a purchase)
+- **Agentic Resource Discovery catalog (last audited snapshot):** ${report.acquisition?.ard_catalog?.live ? `${report.acquisition.ard_catalog.representative_queries} neutral buyer queries and ${report.acquisition.ard_catalog.capabilities} MCP capabilities live` : report.acquisition?.ard_catalog?.status || "unavailable"} (${report.acquisition?.ard_catalog?.url || "origin catalog not checked"}; direct catalog availability is not registry indexing, an impression, a tool call, or a purchase)
 - **MCP paid-call handoff:** ${report.health?.mcp_metadata?.payment?.http_payment_handoff_extension === "io.github.cristianmoroaica/bountyverdict/http-payment-handoff" && report.health?.mcp_metadata?.payment?.direct_automatic_payment_requires === "@x402/mcp" ? "live — direct MCP payment requires @x402/mcp; standard hosts receive the exact versioned HTTP handoff for a separately authorized wallet" : "unavailable or drifted"}
 - **GitHub Actions MCP intent page:** ${report.acquisition?.mcp_intent_page?.live ? "live with root-cause and flaky-retry routing" : `unavailable (${report.acquisition?.mcp_intent_page?.error || "not checked"})`} (owner-checked availability, never an impression or purchase)
 - **MCP downstream propagation:** 1MCP ${mcpDownstreams.one_mcp?.status === "confirmed_direct_official_registry_consumer" ? "confirmed" : "unavailable"}; MCPProxy ${mcpDownstreams.mcp_proxy?.status === "direct_official_registry_consumer" ? "available through direct official lookup" : "unavailable"}; mcpub ${mcpDownstreams.mcpub?.live_verified ? "live verified" : mcpDownstreams.mcpub?.listed ? "archive registered" : "pending registration"}; Qt Creator ${mcpDownstreams.qt_creator?.listed ? "listed" : "pending scheduled mirror"}; Glama ${mcpDownstreams.glama?.listed ? "listed" : "pending registry ingestion"} (bounded owner-run checks, never impressions or purchases)
