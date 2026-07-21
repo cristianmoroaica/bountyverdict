@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canReuseMcpDownstreamStatus, glamaConnectorStatus, parseMcpObservatoryDetail, parseMcpubGetResponse, parseOneMcpRegistryShow, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
+import { canReuseMcpDownstreamStatus, glamaConnectorStatus, parseMcpObservatoryDetail, parseMcpubGetResponse, parseMcpubSearchLiveResponse, parseOneMcpRegistryShow, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
 
 const name = "io.github.cristianmoroaica/bountyverdict";
 const version = "1.1.0";
@@ -90,6 +90,41 @@ test("parses only exact bounded mcpub registrations", () => {
   });
   assert.throws(() => parseMcpubGetResponse(response({ status: "not_found", url: "https://wrong.example/mcp" }), endpoint));
   assert.throws(() => parseMcpubGetResponse({ jsonrpc: "2.0", result: { content: [] } }, endpoint));
+});
+
+test("distinguishes MCPub archive registration from exact live verification", () => {
+  const response = (results: Array<Record<string, unknown>>, total = results.length) => ({
+    jsonrpc: "2.0",
+    id: 1,
+    result: { content: [{ type: "text", text: JSON.stringify({
+      total,
+      offset: 0,
+      limit: 50,
+      results,
+      source: "live (scan_cache.csv - verified alive)",
+    }) }] },
+  });
+  assert.deepEqual(parseMcpubSearchLiveResponse(response([]), endpoint), {
+    listed: false,
+    status: "not_live_verified",
+    endpoint,
+    live_catalog_size: 0,
+    returned_results: 0,
+    description: null,
+  });
+  assert.deepEqual(parseMcpubSearchLiveResponse(response([{ url: endpoint, description: "GitHub Actions failure diagnosis" }], 12), endpoint), {
+    listed: true,
+    status: "verified_alive",
+    endpoint,
+    live_catalog_size: 12,
+    returned_results: 1,
+    description: "GitHub Actions failure diagnosis",
+  });
+  assert.throws(() => parseMcpubSearchLiveResponse(response([
+    { url: endpoint, description: "one" },
+    { url: endpoint, description: "two" },
+  ]), endpoint));
+  assert.throws(() => parseMcpubSearchLiveResponse({ jsonrpc: "2.0", result: { content: [] } }, endpoint));
 });
 
 test("parses 1MCP JSON output even when its CLI emits a leading info line", () => {

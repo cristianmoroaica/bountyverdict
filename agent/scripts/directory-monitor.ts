@@ -41,6 +41,7 @@ const agentSkillSearchUrl = "https://agentskill.sh/api/agent/search?q=bountyverd
 const githubSkillReleaseTag = "v1.0.3";
 const mcpRepositoryUrl = "https://mcprepository.com/cristianmoroaica/bountyverdict";
 const mcpRepositorySubmittedAt = "2026-07-21T03:31:45Z";
+const mcpubCrawlerPrUrl = "https://github.com/roverbird/mcpub/pull/4";
 const agentNdxIndexUrl = "https://agentndx.ai/api/servers.json";
 const agentNdxSubmittedAt = "2026-07-21T03:33:34Z";
 const mcpObservatoryServerId = "github:cristianmoroaica/bountyverdict";
@@ -1024,6 +1025,7 @@ const [
   mcpRepository,
   agentNdx,
   mcpObservatory,
+  mcpubCrawlerPr,
   securityDirectoryPr,
   x402DirectoryPr,
   agentPluginsPr,
@@ -1044,6 +1046,7 @@ const [
   mcpRepositoryStatus(),
   agentNdxStatus(),
   mcpObservatoryStatus(),
+  githubPrStatus("roverbird", "mcpub", 4, mcpubCrawlerPrUrl),
   githubPrStatus("LLMSecurity", "awesome-agent-skills-security", 38, securityDirectoryPrUrl),
   githubPrStatus("xpaysh", "awesome-x402", 934, x402DirectoryPrUrl),
   githubPrStatus("dmgrok", "agent-plugins", 97, agentPluginsPrUrl),
@@ -1108,6 +1111,7 @@ const state = {
   mcp_repository: mcpRepository,
   agentndx: agentNdx,
   mcp_observatory: mcpObservatory,
+  mcpub_crawler_pr: mcpubCrawlerPr,
   agentskill,
   github_skill: githubSkill,
   security_directory_pr: securityDirectoryPr,

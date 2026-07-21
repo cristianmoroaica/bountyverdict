@@ -142,6 +142,38 @@ export function parseMcpubGetResponse(value: unknown, expectedEndpoint: string):
   };
 }
 
+export function parseMcpubSearchLiveResponse(value: unknown, expectedEndpoint: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("mcpub live response is not an object.");
+  const response = value as Record<string, any>;
+  const content = response.result?.content;
+  if (response.jsonrpc !== "2.0" || !Array.isArray(content) || content.length !== 1 ||
+    content[0]?.type !== "text" || typeof content[0]?.text !== "string" || content[0].text.length > 1_000_000) {
+    throw new Error("mcpub live response has an invalid MCP result envelope.");
+  }
+  const parsed = JSON.parse(content[0].text) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("mcpub live result is not an object.");
+  const result = parsed as Record<string, any>;
+  if (!Number.isSafeInteger(result.total) || result.total < 0 || result.total > 1_000_000 ||
+    result.offset !== 0 || !Number.isSafeInteger(result.limit) || result.limit < 1 || result.limit > 50 ||
+    result.source !== "live (scan_cache.csv - verified alive)" || !Array.isArray(result.results) ||
+    result.results.length > result.limit || result.results.length > result.total ||
+    result.results.some((entry: unknown) => !entry || typeof entry !== "object" || Array.isArray(entry) ||
+      typeof (entry as Record<string, unknown>).url !== "string" || String((entry as Record<string, unknown>).url).length > 2_048 ||
+      typeof (entry as Record<string, unknown>).description !== "string" || String((entry as Record<string, unknown>).description).length > 10_000)) {
+    throw new Error("mcpub live search result is malformed or unbounded.");
+  }
+  const matching = result.results.filter((entry: Record<string, unknown>) => entry.url === expectedEndpoint);
+  if (matching.length > 1) throw new Error("mcpub live search duplicated the exact endpoint.");
+  return {
+    listed: matching.length === 1,
+    status: matching.length === 1 ? "verified_alive" : "not_live_verified",
+    endpoint: expectedEndpoint,
+    live_catalog_size: result.total,
+    returned_results: result.results.length,
+    description: matching.length === 1 ? matching[0].description : null,
+  };
+}
+
 export function parseQtMcpRegistry(
   value: unknown,
   expectedName: string,
