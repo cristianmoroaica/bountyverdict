@@ -58,6 +58,14 @@ test("the402 bidder selects only exact existing-product briefs with explicit int
   assert.equal(selectThe402Bid({ ...posting, expires_at: "2026-07-20T17:30:00Z" }, new Date("2026-07-20T18:00:00Z")), null);
 });
 
+test("the402 bidder treats a null minimum as no minimum while preserving budget validation", () => {
+  const decision = selectThe402Bid({ ...posting, budget_min_usd: null }, new Date("2026-07-20T18:00:00Z"));
+  assert.equal(decision?.product, "run");
+  assert.equal(decision?.price_usd, 0.04);
+  assert.throws(() => selectThe402Bid({ ...posting, budget_min_usd: "0" }), /contract/);
+  assert.throws(() => selectThe402Bid({ ...posting, budget_min_usd: null, budget_max_usd: null }), /contract/);
+});
+
 test("the402 bidder disambiguates RunVerdict from FlakeVerdict and excludes SkillVerdict", () => {
   const flake = selectThe402Bid({
     ...posting,

@@ -47,19 +47,25 @@ function finiteBudget(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+function minimumBudget(value: unknown): number | null {
+  if (value === null) return 0;
+  return finiteBudget(value) ? value : null;
+}
+
 function parsePosting(value: unknown, expectedId: string): Posting {
   if (!isObject(value) || value.posting_id !== expectedId || !postingIdPattern.test(expectedId)) {
     throw new Error("the402 posting identity is invalid.");
   }
+  const budgetMinUsd = minimumBudget(value.budget_min_usd);
   if (
     typeof value.title !== "string" || !value.title || value.title.length > 500 ||
     !isObject(value.brief) || typeof value.status !== "string" ||
-    typeof value.expires_at !== "string" || !finiteBudget(value.budget_min_usd) ||
-    !finiteBudget(value.budget_max_usd) || value.budget_min_usd > value.budget_max_usd
+    typeof value.expires_at !== "string" || budgetMinUsd === null ||
+    !finiteBudget(value.budget_max_usd) || budgetMinUsd > value.budget_max_usd
   ) {
     throw new Error("the402 posting contract is invalid.");
   }
-  return value as unknown as Posting;
+  return { ...value, budget_min_usd: budgetMinUsd } as unknown as Posting;
 }
 
 export function parseThe402RequestCreated(rawBody: string): The402RequestCreated | null {
