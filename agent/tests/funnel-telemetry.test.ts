@@ -544,6 +544,7 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   delete snapshot.by_hour;
   delete snapshot.discovery_by_hour;
   delete snapshot.cohort_capture_started_at;
+  delete snapshot.collector_heartbeat_at;
   delete snapshot.by_cohort;
   delete snapshot.by_discovery_cohort;
   delete snapshot.mcp_validation_kinds;
@@ -572,6 +573,7 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   assert.deepEqual(loaded.by_hour, {});
   assert.deepEqual(loaded.discovery_by_hour, {});
   assert.equal(loaded.cohort_capture_started_at, "2026-07-21T00:00:00.000Z");
+  assert.equal(loaded.collector_heartbeat_at, snapshot.updated_at);
   assert.deepEqual(loaded.by_cohort, {});
   assert.deepEqual(loaded.by_discovery_cohort, {});
   assert.equal(loaded.mcp_totals.protocol_error, 0);

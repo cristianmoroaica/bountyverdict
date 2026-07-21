@@ -28,11 +28,15 @@ try {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   snapshot = createFunnelSnapshot();
 }
+snapshot.collector_heartbeat_at = new Date().toISOString();
 
 await mkdir(dirname(stateFile), { recursive: true, mode: 0o700 });
 let flushChain = Promise.resolve();
 function flush(): Promise<void> {
-  flushChain = flushChain.then(async () => {
+  // A transient disk error must not permanently poison the serialized write
+  // chain. The caller that observed the failed write still reports it, while
+  // the next heartbeat or event gets a fresh chance to persist the snapshot.
+  flushChain = flushChain.catch(() => undefined).then(async () => {
     const temporary = `${stateFile}.${process.pid}.tmp`;
     await writeFile(temporary, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
     await rename(temporary, stateFile);
@@ -40,6 +44,12 @@ function flush(): Promise<void> {
   return flushChain;
 }
 await flush();
+const heartbeat = setInterval(() => {
+  snapshot.collector_heartbeat_at = new Date().toISOString();
+  void flush().catch((error) => {
+    process.stderr.write(`Funnel telemetry heartbeat write failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  });
+}, 15_000);
 
 class JsonObjectStream {
   private buffer = "";
@@ -118,6 +128,8 @@ child.on("error", (error) => {
   process.exitCode = 1;
 });
 child.on("exit", async (code, signal) => {
+  clearInterval(heartbeat);
+  snapshot.collector_heartbeat_at = new Date().toISOString();
   await flush();
   if (signal) process.stderr.write(`Cloudflare tail stopped by ${signal}.\n`);
   process.exit(code === 0 || signal ? 0 : code || 1);

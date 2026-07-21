@@ -12,7 +12,12 @@ import {
   recordDiscoveryObservation,
   recordFunnelObservation,
 } from "../src/funnel-telemetry.ts";
-import { captureTrustedFunnelBaseline, trustedBoundaryFingerprint, trustedFunnelBaseline } from "../src/funnel-epoch.ts";
+import {
+  assertFreshFunnelCollector,
+  captureTrustedFunnelBaseline,
+  trustedBoundaryFingerprint,
+  trustedFunnelBaseline,
+} from "../src/funnel-epoch.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -58,8 +63,23 @@ test("captures an immutable epoch baseline while excluding owner automation", ()
   assert.equal(baseline.counters.external_402_challenges, 1);
   assert.equal(baseline.counters.external_discovery_requests, 1);
   assert.equal(baseline.external_by_product.single.challenges_402, 1);
+  assert.equal(baseline.funnel_collector_heartbeat_at, state.collector_heartbeat_at);
   assert.equal(baseline.by_channel.owner_automation.challenges_402, 1);
   assert.deepEqual(trustedFunnelBaseline(baseline), baseline);
+});
+
+test("epoch rotation requires a live collector heartbeat", () => {
+  const state = createFunnelSnapshot("2026-07-21T17:00:00Z");
+  assert.doesNotThrow(() => assertFreshFunnelCollector(state, "2026-07-21T17:00:45Z"));
+  assert.throws(
+    () => assertFreshFunnelCollector(state, "2026-07-21T17:01:01Z"),
+    /heartbeat is stale/,
+  );
+  state.collector_heartbeat_at = "2026-07-21T17:00:10Z";
+  assert.throws(
+    () => assertFreshFunnelCollector(state, "2026-07-21T17:00:00Z"),
+    /ahead of the rotation boundary/,
+  );
 });
 
 test("loads legacy epoch-one baselines and rejects malformed records", () => {
@@ -159,7 +179,7 @@ test("epoch rotation closes and opens at one boundary and repairs a partial base
   const stateFile = join(directory, "funnel.json");
   const baselineFile = join(directory, "baseline.json");
   const historyFile = join(directory, "epochs.json");
-  const state = createFunnelSnapshot("2026-07-20T20:00:00Z");
+  const state = createFunnelSnapshot();
   const initial = captureTrustedFunnelBaseline(
     state,
     "2026-07-20T20:01:00Z",

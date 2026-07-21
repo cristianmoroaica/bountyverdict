@@ -211,6 +211,7 @@ export type FunnelSnapshot = {
   capture_started_at: string;
   enhanced_capture_started_at: string;
   cohort_capture_started_at: string;
+  collector_heartbeat_at: string;
   updated_at: string;
   privacy: string;
   totals: FunnelCounters;
@@ -685,6 +686,7 @@ export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnap
     capture_started_at: now,
     enhanced_capture_started_at: now,
     cohort_capture_started_at: now,
+    collector_heartbeat_at: now,
     updated_at: now,
     privacy: FUNNEL_PRIVACY,
     totals: emptyCounters(),
@@ -908,6 +910,7 @@ export function isFunnelSnapshot(value: unknown): value is FunnelSnapshot {
   const snapshot = value as Partial<FunnelSnapshot>;
   if (snapshot.schema_version !== FUNNEL_SCHEMA_VERSION || typeof snapshot.capture_started_at !== "string" ||
     typeof snapshot.enhanced_capture_started_at !== "string" || typeof snapshot.cohort_capture_started_at !== "string" ||
+    typeof snapshot.collector_heartbeat_at !== "string" || !Number.isFinite(Date.parse(snapshot.collector_heartbeat_at)) ||
     typeof snapshot.updated_at !== "string" ||
     typeof snapshot.privacy !== "string" || !countersValid(snapshot.totals)) return false;
   if (!keyedCountersValid(snapshot.by_product, PRODUCT_KEYS) ||
@@ -987,6 +990,9 @@ export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString(
       by_discovery_channel: { ...countersRecord(FUNNEL_CHANNELS), ...((existing.by_discovery_channel as object) || {}) },
       by_discovery_surface_source: { ...discoverySurfaceSourceRecord(), ...((existing.by_discovery_surface_source as object) || {}) },
       cohort_capture_started_at: existing.cohort_capture_started_at || now,
+      collector_heartbeat_at: typeof existing.collector_heartbeat_at === "string"
+        ? existing.collector_heartbeat_at
+        : existing.updated_at,
       by_cohort: existing.by_cohort || {},
       by_discovery_cohort: existing.by_discovery_cohort || {},
       discovery_by_day: existing.discovery_by_day || {},
@@ -1010,6 +1016,7 @@ export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString(
     typeof legacy.updated_at !== "string" || !legacy.totals || !legacy.by_product || !legacy.by_source) return null;
   const snapshot = createFunnelSnapshot(now);
   snapshot.capture_started_at = legacy.capture_started_at;
+  snapshot.collector_heartbeat_at = legacy.updated_at;
   snapshot.updated_at = legacy.updated_at;
   snapshot.totals = migrateCounters(legacy.totals);
   for (const product of PRODUCT_KEYS) snapshot.by_product[product] = migrateCounters(legacy.by_product[product]);

@@ -13,6 +13,7 @@ export type TrustedFunnelBaseline = {
   funnel_capture_started_at: string;
   funnel_schema_version: number;
   funnel_observed_through: string;
+  funnel_collector_heartbeat_at: string;
   cohort_capture_started_at: string;
   counters: {
     external_discovery_requests: number;
@@ -76,6 +77,7 @@ export function captureTrustedFunnelBaseline(
     funnel_capture_started_at: state.capture_started_at,
     funnel_schema_version: state.schema_version,
     funnel_observed_through: state.updated_at,
+    funnel_collector_heartbeat_at: state.collector_heartbeat_at,
     cohort_capture_started_at: state.cohort_capture_started_at,
     counters: {
       external_discovery_requests: subtractOwner(
@@ -128,6 +130,9 @@ export function trustedFunnelBaseline(value: unknown): TrustedFunnelBaseline | n
     funnel_observed_through: typeof baseline.funnel_observed_through === "string"
       ? baseline.funnel_observed_through
       : baseline.initialized_at,
+    funnel_collector_heartbeat_at: typeof baseline.funnel_collector_heartbeat_at === "string"
+      ? baseline.funnel_collector_heartbeat_at
+      : (typeof baseline.funnel_observed_through === "string" ? baseline.funnel_observed_through : baseline.initialized_at),
     cohort_capture_started_at: typeof baseline.cohort_capture_started_at === "string"
       ? baseline.cohort_capture_started_at
       : "legacy_unknown",
@@ -136,6 +141,23 @@ export function trustedFunnelBaseline(value: unknown): TrustedFunnelBaseline | n
     by_cohort: baseline.by_cohort || {},
     by_discovery_cohort: baseline.by_discovery_cohort || {},
   } as TrustedFunnelBaseline;
+}
+
+export function assertFreshFunnelCollector(
+  state: FunnelSnapshot,
+  observedAt: string,
+  maximumAgeSeconds = 60,
+): void {
+  const observedMs = Date.parse(observedAt);
+  const heartbeatMs = Date.parse(state.collector_heartbeat_at);
+  if (!Number.isFinite(observedMs) || !Number.isFinite(heartbeatMs) ||
+    !Number.isSafeInteger(maximumAgeSeconds) || maximumAgeSeconds < 15 || maximumAgeSeconds > 300) {
+    throw new Error("Funnel collector freshness inputs are invalid.");
+  }
+  const ageMs = observedMs - heartbeatMs;
+  if (ageMs < -5_000 || ageMs > maximumAgeSeconds * 1_000) {
+    throw new Error(`Funnel collector heartbeat is stale or ahead of the rotation boundary (${Math.round(ageMs / 1_000)}s).`);
+  }
 }
 
 export function trustedBoundaryFingerprint(baseline: TrustedFunnelBaseline): string {

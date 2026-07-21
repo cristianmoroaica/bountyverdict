@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { homedir } from "node:os";
 import { loadFunnelSnapshot } from "../src/funnel-telemetry.ts";
 import {
+  assertFreshFunnelCollector,
   captureTrustedFunnelBaseline,
   trustedBoundaryFingerprint,
   trustedFunnelBaseline,
@@ -38,6 +39,7 @@ let previous = trustedFunnelBaseline(JSON.parse(await readFile(baselineFile, "ut
 if (!previous) throw new Error("Trusted funnel baseline is malformed.");
 const now = new Date();
 const observedAt = now.toISOString();
+assertFreshFunnelCollector(state, observedAt);
 type Epoch = {
   id: number;
   status: "active" | "draining" | "closed";
