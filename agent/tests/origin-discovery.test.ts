@@ -98,8 +98,12 @@ test("ARD catalog publishes one semantic MCP entry without inventing an agent ru
   assert.equal(entry.identifier, "urn:air:bountyverdict-agent-production.mimirslab.workers.dev:server:bountyverdict");
   assert.equal(entry.type, "application/mcp-server-card+json");
   assert.equal(entry.url, `${origin}/.well-known/mcp.json`);
-  assert.equal(entry.representativeQueries.length, 5);
+  assert.equal(entry.representativeQueries.length, 6);
   assert.ok(entry.representativeQueries.every((query) => query === query.toLowerCase() && !/bountyverdict/i.test(query)));
+  assert.ok(entry.representativeQueries.some((query) => /why did.*actions.*fail/.test(query)));
+  assert.ok(entry.representativeQueries.some((query) => /retry.*once or fix/.test(query)));
+  assert.match(entry.description, /no-account/i);
+  assert.match(entry.description, /free, non-settling x402 challenge/i);
   assert.deepEqual(entry.capabilities, [
     "check_github_bounty",
     "rank_github_bounties",

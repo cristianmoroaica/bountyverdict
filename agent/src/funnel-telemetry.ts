@@ -87,6 +87,7 @@ export const MCP_FUNNEL_STAGES = Object.freeze([
   "protocol_error",
   "tool_not_found",
   "validation_error",
+  "capacity_rejected",
   "payment_required",
   "payment_present",
   "paid_success",
@@ -106,6 +107,15 @@ export const MCP_CLIENT_FAMILIES = Object.freeze([
   "missing",
   "not_applicable",
 ] as const);
+export const MCP_VALIDATION_KINDS = Object.freeze([
+  "invalid_issue_url",
+  "invalid_portfolio",
+  "invalid_repository_url",
+  "invalid_run_or_attempt",
+  "invalid_mcp_snapshot",
+  "schema_rejected_before_handler",
+  "legacy_unclassified",
+] as const);
 
 export type FunnelSourceCategory = typeof FUNNEL_SOURCE_CATEGORIES[number];
 export type FunnelClientClass = typeof FUNNEL_CLIENT_CLASSES[number];
@@ -116,6 +126,15 @@ export type FunnelResponsePreference = typeof FUNNEL_RESPONSE_PREFERENCES[number
 export type FunnelDiscoverySurface = typeof FUNNEL_DISCOVERY_SURFACES[number];
 export type McpFunnelStage = typeof MCP_FUNNEL_STAGES[number];
 export type McpClientFamily = typeof MCP_CLIENT_FAMILIES[number];
+export type McpValidationKind = typeof MCP_VALIDATION_KINDS[number];
+const MCP_SEMANTIC_VALIDATION_KIND_BY_PRODUCT = Object.freeze({
+  single: "invalid_issue_url",
+  portfolio: "invalid_portfolio",
+  harness: "invalid_repository_url",
+  run: "invalid_run_or_attempt",
+  flake: "invalid_run_or_attempt",
+  mcpdrift: "invalid_mcp_snapshot",
+} as const satisfies Record<Exclude<ProductKey, "skill">, Exclude<McpValidationKind, "schema_rejected_before_handler" | "legacy_unclassified">>);
 export type FunnelOutcome =
   | "challenge_402"
   | "signed_success"
@@ -156,6 +175,7 @@ export type McpFunnelObservation = {
   source: FunnelSourceCategory;
   client_class: FunnelClientClass;
   client_family: McpClientFamily;
+  validation_kind: McpValidationKind | "not_applicable";
   channel: FunnelChannel;
 };
 
@@ -207,6 +227,7 @@ export type FunnelSnapshot = {
   mcp_by_source: Record<FunnelSourceCategory, McpFunnelCounters>;
   mcp_by_client_class: Record<FunnelClientClass, McpFunnelCounters>;
   mcp_by_client_family: Record<McpClientFamily, McpFunnelCounters>;
+  mcp_validation_kinds: Record<McpValidationKind, number>;
   mcp_by_channel: Record<FunnelChannel, McpFunnelCounters>;
   mcp_by_day: Record<string, McpFunnelCounters>;
   mcp_by_hour: Record<string, McpFunnelCounters>;
@@ -284,6 +305,7 @@ function emptyMcpCounters(): McpFunnelCounters {
     protocol_error: 0,
     tool_not_found: 0,
     validation_error: 0,
+    capacity_rejected: 0,
     payment_required: 0,
     payment_present: 0,
     paid_success: 0,
@@ -525,26 +547,43 @@ function exactMcpLogEvent(value: unknown): {
   product: Exclude<ProductKey, "skill"> | null;
   source: "owner_automation" | "external";
   client_family: McpClientFamily;
+  validation_kind: McpValidationKind | "not_applicable";
 } | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record).sort();
   const versionOne = record.schema_version === 1 && keys.join("|") === "product|schema_version|source|stage|type";
   const versionTwo = record.schema_version === 2 && keys.join("|") === "client_family|product|schema_version|source|stage|type";
-  if ((!versionOne && !versionTwo) || record.type !== "bountyverdict_mcp_funnel" ||
+  const versionThree = record.schema_version === 3 && keys.join("|") === "client_family|product|schema_version|source|stage|type|validation_kind";
+  if ((!versionOne && !versionTwo && !versionThree) || record.type !== "bountyverdict_mcp_funnel" ||
     !MCP_FUNNEL_STAGES.includes(record.stage as McpFunnelStage) ||
     (record.source !== "owner_automation" && record.source !== "external")) return null;
   const stage = record.stage as McpFunnelStage;
   const product = record.product;
+  if (stage === "capacity_rejected" && (!versionThree || product !== "flake")) return null;
   if (stage === "initialize" || stage === "tools_list" || stage === "protocol_error" || stage === "tool_not_found") {
     if (product !== null) return null;
   } else if (!MCP_PRODUCTS.includes(product as Exclude<ProductKey, "skill">)) return null;
-  const clientFamily = versionTwo && MCP_CLIENT_FAMILIES.includes(record.client_family as McpClientFamily)
+  const clientFamily = (versionTwo || versionThree) && MCP_CLIENT_FAMILIES.includes(record.client_family as McpClientFamily)
     ? record.client_family as McpClientFamily
     : "not_applicable";
-  if (versionTwo && stage !== "initialize" && clientFamily !== "not_applicable") return null;
-  if (versionTwo && stage === "initialize" && clientFamily === "not_applicable") return null;
-  return { stage, product: product as Exclude<ProductKey, "skill"> | null, source: record.source, client_family: clientFamily };
+  if ((versionTwo || versionThree) && stage !== "initialize" && clientFamily !== "not_applicable") return null;
+  if ((versionTwo || versionThree) && stage === "initialize" && clientFamily === "not_applicable") return null;
+  const validationKind = versionThree
+    ? record.validation_kind
+    : stage === "validation_error" ? "legacy_unclassified" : "not_applicable";
+  if (stage === "validation_error") {
+    if (!MCP_VALIDATION_KINDS.includes(validationKind as McpValidationKind)) return null;
+    if (versionThree && validationKind !== "schema_rejected_before_handler" &&
+      validationKind !== MCP_SEMANTIC_VALIDATION_KIND_BY_PRODUCT[product as Exclude<ProductKey, "skill">]) return null;
+  } else if (validationKind !== "not_applicable") return null;
+  return {
+    stage,
+    product: product as Exclude<ProductKey, "skill"> | null,
+    source: record.source,
+    client_family: clientFamily,
+    validation_kind: validationKind as McpValidationKind | "not_applicable",
+  };
 }
 
 function mcpLogMessages(logs: unknown): string[] {
@@ -593,6 +632,7 @@ export function classifyMcpTailEvents(value: unknown): McpFunnelObservation[] {
       source: event.source === "owner_automation" ? "owner_automation" : classifiedSource,
       client_class: client,
       client_family: event.client_family,
+      validation_kind: event.validation_kind,
       channel: declaredKiroPower ? "kiro_power" : channelCategory(headers, client),
     });
   }
@@ -634,6 +674,7 @@ export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnap
     mcp_by_source: mcpCountersRecord(FUNNEL_SOURCE_CATEGORIES),
     mcp_by_client_class: mcpCountersRecord(FUNNEL_CLIENT_CLASSES),
     mcp_by_client_family: mcpCountersRecord(MCP_CLIENT_FAMILIES),
+    mcp_validation_kinds: Object.fromEntries(MCP_VALIDATION_KINDS.map((kind) => [kind, 0])) as Record<McpValidationKind, number>,
     mcp_by_channel: mcpCountersRecord(FUNNEL_CHANNELS),
     mcp_by_day: {},
     mcp_by_hour: {},
@@ -731,6 +772,9 @@ export function recordMcpObservation(snapshot: FunnelSnapshot, observation: McpF
   incrementMcp(snapshot.mcp_by_source[observation.source], observation.stage);
   incrementMcp(snapshot.mcp_by_client_class[observation.client_class], observation.stage);
   incrementMcp(snapshot.mcp_by_client_family[observation.client_family], observation.stage);
+  if (observation.stage === "validation_error" && observation.validation_kind !== "not_applicable") {
+    snapshot.mcp_validation_kinds[observation.validation_kind] += 1;
+  }
   incrementMcp(snapshot.mcp_by_channel[observation.channel], observation.stage);
   const day = observation.observed_at.slice(0, 10);
   const hour = observation.observed_at.slice(0, 13);
@@ -800,6 +844,25 @@ function keyedMcpCountersValid<K extends string>(value: unknown, keys: readonly 
   return keys.every((key) => mcpCountersValid(record[key]));
 }
 
+function mcpValidationKindsValid(value: unknown, expectedTotal: number): value is Record<McpValidationKind, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  return keys.length === MCP_VALIDATION_KINDS.length && keys.every((key) => MCP_VALIDATION_KINDS.includes(key as McpValidationKind)) &&
+    MCP_VALIDATION_KINDS.every((kind) => Number.isSafeInteger(record[kind]) && Number(record[kind]) >= 0) &&
+    MCP_VALIDATION_KINDS.reduce((sum, kind) => sum + Number(record[kind]), 0) === expectedTotal;
+}
+
+function migrateMcpValidationKinds(value: unknown, expectedTotal: number): Record<McpValidationKind, number> {
+  if (mcpValidationKindsValid(value, expectedTotal)) {
+    return Object.fromEntries(MCP_VALIDATION_KINDS.map((kind) => [kind, value[kind]])) as Record<McpValidationKind, number>;
+  }
+  return Object.fromEntries(MCP_VALIDATION_KINDS.map((kind) => [
+    kind,
+    kind === "legacy_unclassified" ? expectedTotal : 0,
+  ])) as Record<McpValidationKind, number>;
+}
+
 export function isFunnelSnapshot(value: unknown): value is FunnelSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const snapshot = value as Partial<FunnelSnapshot>;
@@ -824,7 +887,8 @@ export function isFunnelSnapshot(value: unknown): value is FunnelSnapshot {
     !keyedMcpCountersValid(snapshot.mcp_by_source, FUNNEL_SOURCE_CATEGORIES) ||
     !keyedMcpCountersValid(snapshot.mcp_by_client_class, FUNNEL_CLIENT_CLASSES) ||
     !keyedMcpCountersValid(snapshot.mcp_by_client_family, MCP_CLIENT_FAMILIES) ||
-    !keyedMcpCountersValid(snapshot.mcp_by_channel, FUNNEL_CHANNELS)) return false;
+    !keyedMcpCountersValid(snapshot.mcp_by_channel, FUNNEL_CHANNELS) ||
+    !mcpValidationKindsValid(snapshot.mcp_validation_kinds, snapshot.mcp_totals.validation_error)) return false;
   if (!snapshot.mcp_by_product_source || typeof snapshot.mcp_by_product_source !== "object" ||
     !MCP_PRODUCTS.every((product) => keyedMcpCountersValid(snapshot.mcp_by_product_source?.[product], FUNNEL_SOURCE_CATEGORIES))) return false;
   if (!snapshot.by_discovery_surface_source || typeof snapshot.by_discovery_surface_source !== "object" ||
@@ -871,6 +935,7 @@ export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString(
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if ((value as { schema_version?: unknown }).schema_version === FUNNEL_SCHEMA_VERSION) {
     const existing = value as Record<string, unknown>;
+    const migratedMcpTotals = migrateMcpCounters(existing.mcp_totals);
     const upgraded = {
       ...existing,
       privacy: FUNNEL_PRIVACY,
@@ -887,12 +952,13 @@ export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString(
       discovery_by_day: existing.discovery_by_day || {},
       discovery_by_hour: existing.discovery_by_hour || {},
       by_hour: existing.by_hour || {},
-      mcp_totals: migrateMcpCounters(existing.mcp_totals),
+      mcp_totals: migratedMcpTotals,
       mcp_by_product: migrateMcpCountersRecord(existing.mcp_by_product, MCP_PRODUCTS),
       mcp_by_product_source: migrateMcpProductSource(existing.mcp_by_product_source),
       mcp_by_source: migrateMcpCountersRecord(existing.mcp_by_source, FUNNEL_SOURCE_CATEGORIES),
       mcp_by_client_class: migrateMcpCountersRecord(existing.mcp_by_client_class, FUNNEL_CLIENT_CLASSES),
       mcp_by_client_family: migrateMcpCountersRecord(existing.mcp_by_client_family, MCP_CLIENT_FAMILIES),
+      mcp_validation_kinds: migrateMcpValidationKinds(existing.mcp_validation_kinds, migratedMcpTotals.validation_error),
       mcp_by_channel: migrateMcpCountersRecord(existing.mcp_by_channel, FUNNEL_CHANNELS),
       mcp_by_day: migrateMcpBuckets(existing.mcp_by_day),
       mcp_by_hour: migrateMcpBuckets(existing.mcp_by_hour),

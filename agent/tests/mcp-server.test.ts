@@ -50,6 +50,8 @@ test("MCP initializes as a stateless 2025-11-25 server", async () => {
   assert.deepEqual(body.result.capabilities, { tools: { listChanged: true } });
   assert.match(body.result.instructions, /one bounty -> check_github_bounty/);
   assert.match(body.result.instructions, /retry once versus fix.*classify_github_actions_flake/);
+  assert.match(body.result.instructions, /one unsigned call is a free, non-settling preview/);
+  assert.match(body.result.instructions, /Never call with missing, invented, or placeholder arguments/);
   assert.match(body.result.instructions, /Payment identifies the fixed-price tool, not its arguments/);
 });
 
@@ -60,6 +62,10 @@ test("MCP tools/list exposes exactly six executable paid tools and excludes Skil
   assert.equal(body.result.tools.some((tool: any) => /skillverdict/i.test(`${tool.name} ${tool.title} ${tool.description}`)), false);
   for (const tool of body.result.tools) {
     assert.match(tool.description, /Costs \$0\.\d+ USDC on Base via x402/);
+    assert.match(tool.description, /one unsigned call is a free, non-settling preview/);
+    assert.match(tool.description, /Payment occurs only after an authorized retry/);
+    assert.match(tool.description, /Never call with missing, invented, or placeholder arguments/);
+    assert.match(tool.description, /Free output sample: https:\/\//);
     assert.deepEqual(tool.annotations, {
       readOnlyHint: true,
       destructiveHint: false,
@@ -70,7 +76,9 @@ test("MCP tools/list exposes exactly six executable paid tools and excludes Skil
     assert.equal(tool.outputSchema.type, "object");
     assert.ok(Array.isArray(tool.outputSchema.required));
     assert.equal(tool.outputSchema.additionalProperties, true);
+    assert.ok(Buffer.byteLength(tool.description) <= 1_500, `${tool.name} description exceeds the tools/list context budget`);
   }
+  assert.ok(body.result.tools.reduce((total: number, tool: any) => total + Buffer.byteLength(tool.description), 0) <= 6_000);
   const drift = body.result.tools.find((tool: any) => tool.name === "check_mcp_tool_drift");
   assert.deepEqual(drift.inputSchema.required, ["contract_version", "subject", "annotation_source_trust", "baseline", "current"]);
   assert.equal(drift.inputSchema.additionalProperties, false);
@@ -78,13 +86,17 @@ test("MCP tools/list exposes exactly six executable paid tools and excludes Skil
   assert.equal(drift.inputSchema.properties.baseline.properties.complete.const, true);
   assert.equal(drift.inputSchema.properties.baseline.properties.tools.maxItems, 128);
   assert.deepEqual(drift.inputSchema.properties.baseline.properties.tools.items.required, ["name", "inputSchema"]);
+  assert.match(drift.description, /"contract_version":"mcp-drift\/1"/);
+  assert.match(drift.description, /replace both tools arrays with the complete aggregated catalogs/);
   const single = body.result.tools.find((tool: any) => tool.name === "check_github_bounty");
   assert.match(single.inputSchema.properties.issue_url.pattern, /github/);
   assert.match(single.inputSchema.properties.issue_url.description, /Canonical public GitHub issue URL/);
+  assert.match(single.description, /"issue_url":"https:\/\/github\.com\/owner\/repository\/issues\/123"/);
   const portfolio = body.result.tools.find((tool: any) => tool.name === "rank_github_bounties");
   assert.equal(portfolio.inputSchema.properties.issue_urls.minItems, 2);
   assert.equal(portfolio.inputSchema.properties.issue_urls.maxItems, 10);
   assert.match(portfolio.inputSchema.properties.issue_urls.description, /distinct/);
+  assert.match(portfolio.description, /"issue_urls":\["https:\/\/github\.com\/owner\/repository\/issues\/123"/);
   const run = body.result.tools.find((tool: any) => tool.name === "diagnose_github_actions_run");
   const flake = body.result.tools.find((tool: any) => tool.name === "classify_github_actions_flake");
   assert.match(run.description, /root cause/);
@@ -140,6 +152,40 @@ test("MCP rejects schema-invalid and unknown tool calls before payment", async (
   const unknown = await rpcBody(5, "tools/call", { name: "invented_tool", arguments: {} });
   assert.equal(unknown.result.isError, true);
   assert.match(unknown.result.content[0].text, /not found/i);
+});
+
+test("MCP records valid signed FlakeVerdict capacity rejection separately from invalid input", async () => {
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...values: unknown[]) => { logs.push(values.map(String).join(" ")); };
+  try {
+    const response = await app.request(`${origin}/mcp`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 6,
+        method: "tools/call",
+        params: {
+          name: "classify_github_actions_flake",
+          arguments: { run_url: "https://github.com/owner/repo/actions/runs/1", attempt: 1 },
+          _meta: { "x402/payment": { payload: "synthetic-test-only" } },
+        },
+      }),
+    }, { ...env, FLAKE_RATE_LIMITER: { limit: async () => ({ success: false }) } });
+    assert.equal(response.status, 200);
+    const body = await response.json() as any;
+    assert.equal(body.result.isError, true);
+    assert.match(body.result.content[0].text, /FLAKE_RATE_LIMITED/);
+  } finally {
+    console.log = originalLog;
+  }
+  const events = logs.flatMap((line) => {
+    try { return [JSON.parse(line)]; } catch { return []; }
+  }).filter((event) => event.type === "bountyverdict_mcp_funnel");
+  assert.equal(events.some((event) => event.stage === "payment_present" && event.product === "flake"), true);
+  assert.equal(events.some((event) => event.stage === "capacity_rejected" && event.product === "flake" && event.validation_kind === "not_applicable"), true);
+  assert.equal(events.some((event) => event.stage === "validation_error"), false);
 });
 
 const challengeCases = [

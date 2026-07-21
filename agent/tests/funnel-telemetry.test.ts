@@ -7,6 +7,7 @@ import {
   createFunnelSnapshot,
   isFunnelSnapshot,
   loadFunnelSnapshot,
+  MCP_VALIDATION_KINDS,
   recordDiscoveryObservation,
   recordFunnelObservation,
   recordMcpObservation,
@@ -61,7 +62,8 @@ test("learns MCP conversion stages without retaining tool arguments or request i
   Object.assign(value, {
     logs: [
       { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 2, stage: "payment_required", product: "single", source: "external", client_family: "not_applicable" })] },
-      { message: JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 2, stage: "validation_error", product: "mcpdrift", source: "external", client_family: "not_applicable" }) },
+      { message: JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 3, stage: "validation_error", product: "mcpdrift", source: "external", client_family: "not_applicable", validation_kind: "invalid_mcp_snapshot" }) },
+      { message: JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 3, stage: "capacity_rejected", product: "flake", source: "external", client_family: "not_applicable", validation_kind: "not_applicable" }) },
       { message: ["private raw console output", { secret: true }] },
     ],
   });
@@ -69,23 +71,28 @@ test("learns MCP conversion stages without retaining tool arguments or request i
   assert.deepEqual(observations.map(({ stage, product, source, client_class, channel }) => ({ stage, product, source, client_class, channel })), [
     { stage: "payment_required", product: "single", source: "automated_client", client_class: "agent_runtime", channel: "github" },
     { stage: "validation_error", product: "mcpdrift", source: "automated_client", client_class: "agent_runtime", channel: "github" },
+    { stage: "capacity_rejected", product: "flake", source: "automated_client", client_class: "agent_runtime", channel: "github" },
   ]);
   const snapshot = createFunnelSnapshot("2026-07-20T19:00:00.000Z");
   for (const observation of observations) recordMcpObservation(snapshot, observation);
-  assert.equal(snapshot.mcp_totals.events, 2);
+  assert.equal(snapshot.mcp_totals.events, 3);
   assert.equal(snapshot.mcp_totals.payment_required, 1);
   assert.equal(snapshot.mcp_totals.validation_error, 1);
+  assert.equal(snapshot.mcp_totals.capacity_rejected, 1);
+  assert.equal(observations[1].validation_kind, "invalid_mcp_snapshot");
+  assert.equal(snapshot.mcp_validation_kinds.invalid_mcp_snapshot, 1);
+  assert.equal(snapshot.mcp_validation_kinds.legacy_unclassified, 0);
   assert.equal(snapshot.mcp_by_product.single.payment_required, 1);
   assert.equal(snapshot.mcp_by_product.mcpdrift.validation_error, 1);
   assert.equal(snapshot.mcp_by_product_source.single.automated_client.payment_required, 1);
-  assert.equal(snapshot.mcp_by_source.automated_client.events, 2);
-  assert.equal(snapshot.mcp_by_client_class.agent_runtime.events, 2);
-  assert.equal(snapshot.mcp_by_client_family.not_applicable.events, 2);
-  assert.equal(snapshot.mcp_by_channel.github.events, 2);
-  assert.equal(snapshot.mcp_by_day["2026-07-20"].events, 2);
-  assert.equal(snapshot.mcp_by_hour["2026-07-20T20"].events, 2);
+  assert.equal(snapshot.mcp_by_source.automated_client.events, 3);
+  assert.equal(snapshot.mcp_by_client_class.agent_runtime.events, 3);
+  assert.equal(snapshot.mcp_by_client_family.not_applicable.events, 3);
+  assert.equal(snapshot.mcp_by_channel.github.events, 3);
+  assert.equal(snapshot.mcp_by_day["2026-07-20"].events, 3);
+  assert.equal(snapshot.mcp_by_hour["2026-07-20T20"].events, 3);
   const serialized = JSON.stringify(snapshot);
-  assert.doesNotMatch(serialized, /private|repository|token|secret|Codex|private-build/);
+  assert.doesNotMatch(serialized, /must-never-persist|github\.com\/private|token=secret|Codex\/99|private-build/);
   assert.equal(isFunnelSnapshot(snapshot), true);
 });
 
@@ -134,8 +141,37 @@ test("rejects malformed, forged, and identity-inconsistent MCP log events", () =
     { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "initialize", product: "single", source: "owner_automation" })] },
     { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "paid_success", product: "skill", source: "owner_automation" })] },
     { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "tools_list", product: null, source: "owner_automation", raw: "forbidden" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 3, stage: "validation_error", product: "single", source: "owner_automation", client_family: "not_applicable", validation_kind: "not_applicable" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 3, stage: "validation_error", product: "mcpdrift", source: "owner_automation", client_family: "not_applicable", validation_kind: "invalid_issue_url" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 3, stage: "validation_error", product: "single", source: "owner_automation", client_family: "not_applicable", validation_kind: "legacy_unclassified" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 3, stage: "capacity_rejected", product: "flake", source: "owner_automation", client_family: "not_applicable", validation_kind: "invalid_run_or_attempt" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 3, stage: "capacity_rejected", product: "single", source: "owner_automation", client_family: "not_applicable", validation_kind: "not_applicable" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "capacity_rejected", product: "flake", source: "owner_automation" })] },
   ] });
   assert.deepEqual(classifyMcpTailEvents(value), []);
+});
+
+test("drops non-allowlisted validation keys during snapshot migration", () => {
+  const snapshot = createFunnelSnapshot("2026-07-20T19:00:00.000Z");
+  const observation = classifyMcpTailEvents(Object.assign(event("/mcp", 200, {}, "POST"), { logs: [{ message: JSON.stringify({
+    type: "bountyverdict_mcp_funnel",
+    schema_version: 3,
+    stage: "validation_error",
+    product: "single",
+    source: "external",
+    client_family: "not_applicable",
+    validation_kind: "invalid_issue_url",
+  }) }] }))[0];
+  assert.ok(observation);
+  recordMcpObservation(snapshot, observation);
+  (snapshot.mcp_validation_kinds as Record<string, number>)["https://private.example/?token=secret"] = 99;
+  assert.equal(isFunnelSnapshot(snapshot), false);
+  const loaded = loadFunnelSnapshot(snapshot);
+  assert.ok(loaded);
+  assert.equal(loaded.mcp_validation_kinds.legacy_unclassified, 1);
+  assert.equal(loaded.mcp_validation_kinds.invalid_issue_url, 0);
+  assert.doesNotMatch(JSON.stringify(loaded), /private\.example|token=secret/);
+  assert.deepEqual(Object.keys(loaded.mcp_validation_kinds).sort(), [...MCP_VALIDATION_KINDS].sort());
 });
 
 test("records signed successes as funnel evidence rather than purchase proof", () => {
@@ -395,6 +431,9 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   delete snapshot.cohort_capture_started_at;
   delete snapshot.by_cohort;
   delete snapshot.by_discovery_cohort;
+  delete snapshot.mcp_validation_kinds;
+  (snapshot.mcp_totals as Record<string, unknown>).events = 2;
+  (snapshot.mcp_totals as Record<string, unknown>).validation_error = 2;
   const mcpContainers: Array<Record<string, unknown>> = [
     snapshot.mcp_totals as unknown as Record<string, unknown>,
     ...Object.values(snapshot.mcp_by_product as Record<string, Record<string, unknown>>),
@@ -406,7 +445,10 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   for (const sources of Object.values(snapshot.mcp_by_product_source as Record<string, Record<string, Record<string, unknown>>>)) {
     mcpContainers.push(...Object.values(sources));
   }
-  for (const counters of mcpContainers) delete counters.protocol_error;
+  for (const counters of mcpContainers) {
+    delete counters.protocol_error;
+    delete counters.capacity_rejected;
+  }
   snapshot.privacy = "legacy privacy wording";
   const loaded = loadFunnelSnapshot(snapshot, "2026-07-21T00:00:00.000Z");
   assert.ok(loaded);
@@ -418,6 +460,8 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   assert.deepEqual(loaded.by_cohort, {});
   assert.deepEqual(loaded.by_discovery_cohort, {});
   assert.equal(loaded.mcp_totals.protocol_error, 0);
+  assert.equal(loaded.mcp_totals.capacity_rejected, 0);
+  assert.equal(loaded.mcp_validation_kinds.legacy_unclassified, 2);
   assert.equal(loaded.mcp_by_product.single.protocol_error, 0);
   assert.equal(loaded.mcp_by_source.automated_client.protocol_error, 0);
   assert.match(loaded.privacy, /tool arguments/);

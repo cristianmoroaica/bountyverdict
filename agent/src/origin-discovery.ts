@@ -19,14 +19,17 @@ const MCP_TOOL_BY_PRODUCT = Object.freeze({
   flake: "classify_github_actions_flake",
   mcpdrift: "check_mcp_tool_drift",
 } as const satisfies Record<typeof DISTRIBUTED_PRODUCTS[number], string>);
-const AI_CATALOG_UPDATED_AT = "2026-07-21T06:35:00Z";
+const AI_CATALOG_UPDATED_AT = "2026-07-21T09:20:00Z";
 const AI_CATALOG_QUERIES = Object.freeze([
   "check whether a github bounty issue is still open claimed or worth coding",
   "compare github bounty issues and choose the best candidate",
   "audit repository coding agent instructions before autonomous work",
-  "diagnose a failed github actions workflow and decide whether to fix or retry",
+  "why did this github actions workflow run fail",
+  "should i retry this failed github actions run once or fix it",
   "check whether an mcp tools list schema change will break an agent",
 ] as const);
+
+const AGENT_DECISION_DESCRIPTION = "Six no-account, read-only checks tell agents whether to pursue a GitHub bounty, choose among 2-10 bounties, audit coding-agent repository instructions, diagnose a failed Actions run, retry once or fix, and accept or block an MCP tools/list change. $0.02-$0.40 Base USDC; a valid unsigned call returns a free, non-settling x402 challenge before any authorized payment retry.";
 
 const PRODUCT_GUIDANCE = Object.freeze({
   single: Object.freeze({
@@ -101,7 +104,7 @@ export function createOriginAgentManifest(originInput: string, network: string, 
     spec: "bountyverdict-agent-manifest/1",
     version: 1,
     name: "BountyVerdict Agent Decision APIs",
-    description: "Six bounded, read-only decision contracts for public GitHub bounty, repository-instruction, GitHub Actions, and MCP schema checks. Every result includes an exact service_reuse rule.",
+    description: `${AGENT_DECISION_DESCRIPTION} Every result includes an exact service_reuse rule.`,
     origin,
     repository: REPOSITORY,
     openapi: `${origin}/openapi.json`,
@@ -176,7 +179,7 @@ export function createMcpWellKnown(originInput: string, network: string) {
   return {
     name: "io.github.cristianmoroaica/bountyverdict",
     title: "BountyVerdict Agent Decision APIs",
-    description: "Six paid, read-only tools for GitHub bounty triage, repository-instruction audits, Actions diagnosis, flaky-retry decisions, and MCP schema-change gates.",
+    description: AGENT_DECISION_DESCRIPTION,
     url: `${origin}/mcp`,
     transport: "streamable-http",
     protocol_version: "2025-11-25",
@@ -215,7 +218,7 @@ export function createAiCatalog(originInput: string) {
       displayName: "BountyVerdict GitHub Engineering Decision MCP",
       type: "application/mcp-server-card+json",
       url: `${origin}/.well-known/mcp.json`,
-      description: "Six paid, read-only MCP tools for GitHub bounty selection, coding-agent instruction audits, Actions failure diagnosis, flaky-retry decisions, and MCP schema compatibility checks.",
+      description: AGENT_DECISION_DESCRIPTION,
       tags: ["github", "coding-agents", "ci", "mcp", "x402", "read-only"],
       capabilities: DISTRIBUTED_PRODUCTS.map((product) => MCP_TOOL_BY_PRODUCT[product]),
       representativeQueries: [...AI_CATALOG_QUERIES],
