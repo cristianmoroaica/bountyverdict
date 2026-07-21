@@ -32,6 +32,7 @@ export const FUNNEL_CHANNELS = Object.freeze([
   "payan",
   "skills_sh",
   "agent_plugins",
+  "kiro_power",
   "github",
   "web_search",
   "agent402",
@@ -575,6 +576,9 @@ export function classifyMcpTailEvents(value: unknown): McpFunnelObservation[] {
   const timestamp = typeof tail.eventTimestamp === "number" && Number.isFinite(tail.eventTimestamp)
     ? new Date(tail.eventTimestamp).toISOString()
     : new Date().toISOString();
+  const declaredKiroPower = url.searchParams.size === 1 &&
+    url.searchParams.getAll("source").length === 1 &&
+    url.searchParams.get("source") === "kiro-power";
   const observations: McpFunnelObservation[] = [];
   for (const message of mcpLogMessages(tail.logs)) {
     let parsed: unknown;
@@ -589,7 +593,7 @@ export function classifyMcpTailEvents(value: unknown): McpFunnelObservation[] {
       source: event.source === "owner_automation" ? "owner_automation" : classifiedSource,
       client_class: client,
       client_family: event.client_family,
-      channel: channelCategory(headers, client),
+      channel: declaredKiroPower ? "kiro_power" : channelCategory(headers, client),
     });
   }
   return observations;
