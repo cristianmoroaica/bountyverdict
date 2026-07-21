@@ -1013,7 +1013,7 @@ async function geminiCliGalleryStatus(
     const entry = matches[0] as Record<string, unknown> | undefined;
     const listed = Boolean(entry);
     const contractVerified = Boolean(entry && entry.url === repository && entry.extensionName === "bountyverdict" &&
-      entry.extensionVersion === "1.1.0" && entry.hasMCP === true);
+      entry.extensionVersion === "1.1.1" && entry.hasMCP === true);
     return {
       url: "https://geminicli.com/extensions/",
       catalog_url: geminiCliGalleryUrl,

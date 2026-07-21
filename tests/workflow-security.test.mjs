@@ -24,3 +24,17 @@ test("every third-party GitHub Action is pinned to its reviewed immutable commit
     }
   }
 });
+
+test("the MCP Registry publisher is version- and digest-pinned", async () => {
+  const source = await readFile(new URL("../.github/workflows/publish-mcp.yml", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /releases\/latest\/download/);
+  assert.match(source, /releases\/download\/v1\.8\.0\/\$asset/);
+  assert.match(source, /1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf/);
+  assert.match(source, /sha256sum --check --strict/);
+});
+
+test("the MCP Registry manifest keeps schema-bounded public metadata", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../server.json", import.meta.url), "utf8"));
+  assert.equal(manifest.version, "1.1.1");
+  assert.ok(manifest.description.length <= 100, "server description must fit the current registry schema");
+});

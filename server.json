@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.cristianmoroaica/bountyverdict",
   "title": "BountyVerdict Agent Decision Tools",
-  "description": "No-account, read-only checks help agents pursue or avoid GitHub bounties, choose among 2-10, audit coding-agent instructions, diagnose failed Actions, retry once or fix, and accept or block MCP tools/list changes. $0.02-$0.40 Base USDC; valid unsigned calls return a free, non-settling x402 challenge before payment.",
-  "version": "1.1.0",
+  "description": "Read-only GitHub bounty, agent harness, Actions failure, flake, and MCP tool-drift decisions.",
+  "version": "1.1.1",
   "icons": [
     {
       "src": "https://cristianmoroaica.github.io/bountyverdict/favicon.svg",

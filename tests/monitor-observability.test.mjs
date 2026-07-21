@@ -372,7 +372,7 @@ test("Gemini CLI extension exposes only the hosted paid MCP without secrets", as
   const manifest = JSON.parse(await readFile(geminiExtensionUrl, "utf8"));
   assert.deepEqual(manifest, {
     name: "bountyverdict",
-    version: "1.1.0",
+    version: "1.1.1",
     description: "Paid GitHub bounty selection, CI diagnosis, flaky-run triage, agent-instruction audits, and MCP compatibility checks for autonomous coding agents.",
     mcpServers: {
       bountyverdict: {

@@ -222,7 +222,7 @@ export function createAiCatalog(originInput: string) {
       tags: ["github", "coding-agents", "ci", "mcp", "x402", "read-only"],
       capabilities: DISTRIBUTED_PRODUCTS.map((product) => MCP_TOOL_BY_PRODUCT[product]),
       representativeQueries: [...AI_CATALOG_QUERIES],
-      version: "1.1.0",
+      version: "1.1.1",
       updatedAt: AI_CATALOG_UPDATED_AT,
       metadata: {
         authentication: "none",

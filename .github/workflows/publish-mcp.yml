@@ -65,9 +65,13 @@ jobs:
       - name: Install MCP Registry publisher
         if: steps.existing.outputs.published != 'true'
         run: |
+          asset="mcp-publisher_linux_amd64.tar.gz"
           curl --fail --location --silent --show-error \
-            "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
-            | tar xz mcp-publisher
+            "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.0/$asset" \
+            --output "$asset"
+          echo "1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf  $asset" | sha256sum --check --strict
+          tar xzf "$asset" mcp-publisher
+          ./mcp-publisher --version
 
       - name: Publish through GitHub OIDC
         if: steps.existing.outputs.published != 'true'
