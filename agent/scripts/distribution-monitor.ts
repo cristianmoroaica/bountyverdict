@@ -225,6 +225,16 @@ async function requireStatus(path: string, expected = 200): Promise<number> {
   return response.status;
 }
 
+async function requireJsonObject(path: string): Promise<Record<string, any>> {
+  const response = await monitoredFetch(`${api}${path}`);
+  if (response.status !== 200) throw new Error(`${path} returned HTTP ${response.status}; expected 200.`);
+  const body = await response.json();
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error(`${path} returned malformed JSON metadata.`);
+  }
+  return body as Record<string, any>;
+}
+
 async function mcpRegistryStatus(): Promise<Record<string, unknown>> {
   const endpoint = `${api}/mcp`;
   const response = await monitoredFetch(`https://registry.modelcontextprotocol.io/v0.1/servers?search=${encodeURIComponent(MCP_REGISTRY_NAME)}`);
@@ -1904,7 +1914,7 @@ try {
     requireStatus("/api/flake/sample"),
     requireStatus("/api/mcp-drift/sample"),
     requireStatus("/.well-known/x402"),
-    requireStatus("/.well-known/mcp.json"),
+    requireJsonObject("/.well-known/mcp.json"),
     requireStatus("/openapi.json"),
     requireStatus("/llms.txt"),
   ]);

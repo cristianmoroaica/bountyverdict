@@ -233,7 +233,7 @@ test("Kiro Power source attribution remains aggregate and separate from purchase
 
 test("production reporting keeps the executable MCP payment handoff visible", async () => {
   const distribution = await readFile(distributionUrl, "utf8");
-  assert.match(distribution, /requireStatus\("\/\.well-known\/mcp\.json"\)/);
+  assert.match(distribution, /requireJsonObject\("\/\.well-known\/mcp\.json"\)/);
   assert.match(distribution, /mcp_metadata: mcpMetadata/);
   assert.match(distribution, /MCP paid-call handoff/);
   assert.match(distribution, /direct MCP payment requires @x402\/mcp/);
