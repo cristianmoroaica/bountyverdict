@@ -12,5 +12,9 @@ test("every production deployment probe identifies as owner automation", async (
   assert.match(workflow, /curl --user-agent "bountyverdict-owner-audit\/1\.0"/);
   assert.equal((workflow.match(/\n\s+owner_curl --/g) || []).length, 14);
   assert.doesNotMatch(workflow, /\n\s+curl --(?:fail|silent|show-error)/);
+  assert.match(workflow, /io\.github\.cristianmoroaica\/bountyverdict\/http-payment-handoff/);
+  assert.match(workflow, /automatic_payment_requires !== "@x402\/mcp"/);
+  assert.match(workflow, /payment\.exact_request\.normalized_body_sha256/);
+  assert.match(workflow, /payment\?\.agentic_wallet\?\.execute_as_argument_vector !== true/);
   assert.match(canary, /"User-Agent": "bountyverdict-owner-audit\/1\.0"/);
 });

@@ -228,19 +228,34 @@ jobs:
           const compatibilityListed = await compatibilityRpc(21, "tools/list");
           if (JSON.stringify(compatibilityListed.result?.tools?.map(({ name }) => name)) !== JSON.stringify(expectedNames)) process.exit(1);
           const calls = [
-            ["check_github_bounty", { issue_url: "https://github.com/owner/repo/issues/1" }, "50000"],
-            ["rank_github_bounties", { issue_urls: ["https://github.com/owner/repo/issues/1", "https://github.com/owner/repo/issues/2"] }, "400000"],
-            ["audit_agent_harness", { repo_url: "https://github.com/owner/repo" }, "30000"],
-            ["diagnose_github_actions_run", { run_url: "https://github.com/owner/repo/actions/runs/1" }, "40000"],
-            ["classify_github_actions_flake", { run_url: "https://github.com/owner/repo/actions/runs/1", attempt: 1 }, "70000"],
-            ["check_mcp_tool_drift", { contract_version: "mcp-drift/1", subject: { server_id: "release-check" }, annotation_source_trust: "trusted", baseline: { protocol_version: "2025-11-25", complete: true, tools: [] }, current: { protocol_version: "2025-11-25", complete: true, tools: [] } }, "20000"],
+            ["check_github_bounty", { issue_url: "https://github.com/owner/repo/issues/1" }, "50000", "/api/verdict", "GET"],
+            ["rank_github_bounties", { issue_urls: ["https://github.com/owner/repo/issues/1", "https://github.com/owner/repo/issues/2"] }, "400000", "/api/portfolio", "POST"],
+            ["audit_agent_harness", { repo_url: "https://github.com/owner/repo" }, "30000", "/api/harness", "GET"],
+            ["diagnose_github_actions_run", { run_url: "https://github.com/owner/repo/actions/runs/1" }, "40000", "/api/run", "GET"],
+            ["classify_github_actions_flake", { run_url: "https://github.com/owner/repo/actions/runs/1", attempt: 1 }, "70000", "/api/flake", "GET"],
+            ["check_mcp_tool_drift", { contract_version: "mcp-drift/1", subject: { server_id: "release-check" }, annotation_source_trust: "trusted", baseline: { protocol_version: "2025-11-25", complete: true, tools: [] }, current: { protocol_version: "2025-11-25", complete: true, tools: [] } }, "20000", "/api/mcp-drift", "POST"],
           ];
-          for (const [name, args, amount] of calls) {
+          const handoffKey = "io.github.cristianmoroaica/bountyverdict/http-payment-handoff";
+          for (const [name, args, amount, path, method] of calls) {
             const called = await rpc(3, "tools/call", { name, arguments: args });
             const challenge = JSON.parse(called.result?.content?.[0]?.text || "null");
             if (!called.result?.isError || called.result?.structuredContent !== undefined) process.exit(1);
             if (challenge?.accepts?.[0]?.amount !== amount || challenge?.accepts?.[0]?.network !== "eip155:8453") process.exit(1);
             if (challenge?.resource?.url !== `mcp://tool/${name}` || challenge?.extensions?.bazaar?.info?.input?.toolName !== name) process.exit(1);
+            const handoff = challenge?.extensions?.[handoffKey]?.info;
+            const payment = handoff?.payment;
+            if (handoff?.version !== "1" || handoff?.direct_mcp?.automatic_payment_requires !== "@x402/mcp") process.exit(1);
+            if (handoff?.wallet_mcp?.capability !== "make_x402_request" || handoff?.wallet_mcp?.use_exact_request !== true) process.exit(1);
+            if (payment?.max_amount_atomic !== amount || payment?.exact_request?.method !== method) process.exit(1);
+            if (new URL(payment?.exact_request?.url || "invalid").pathname !== path) process.exit(1);
+            if (payment?.agentic_wallet?.executable !== "npx" || payment?.agentic_wallet?.execute_as_argument_vector !== true || payment?.agentic_wallet?.do_not_join_into_shell_string !== true) process.exit(1);
+            const argv = payment?.agentic_wallet?.argv;
+            if (!Array.isArray(argv) || JSON.stringify(argv.slice(0, 3)) !== JSON.stringify(["awal@2.12.0", "x402", "pay"])) process.exit(1);
+            if (JSON.stringify(argv.slice(-3)) !== JSON.stringify(["--max-amount", amount, "--json"])) process.exit(1);
+            if (method === "POST") {
+              if (JSON.stringify(payment.exact_request.body) !== JSON.stringify(args) || !/^sha256:[a-f0-9]{64}$/.test(payment.exact_request.normalized_body_sha256 || "")) process.exit(1);
+              if (payment.authorization_scope !== "resource_url_not_post_body") process.exit(1);
+            } else if (payment.exact_request.body !== undefined || payment.exact_request.normalized_body_sha256 !== undefined || payment.authorization_scope !== "resource_url") process.exit(1);
           }
           NODE
           owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/openapi.json" | node -e '
