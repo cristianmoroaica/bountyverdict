@@ -57,6 +57,8 @@ test("directory monitoring tracks the exact AgentSkills.in adapter and source co
   assert.match(directory, /Karanjot786\/agent-skills-cli/);
   assert.match(directory, /agent_skills_in: agentSkillsIn/);
   assert.match(directory, /submitted_catalog_unavailable/);
+  assert.match(directory, /agentSkillsInFallbackSearchUrl/);
+  assert.match(directory, /bounded_fallback_search/);
   assert.match(parser, /AGENT_SKILLS_IN_REPOSITORY = "cristianmoroaica\/bountyverdict-mcp-skill"/);
   assert.match(parser, /AGENT_SKILLS_IN_SKILL_NAME = "route-github-agent-decisions"/);
   assert.match(parser, /submission_and_exact_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue|pending_indexing/);

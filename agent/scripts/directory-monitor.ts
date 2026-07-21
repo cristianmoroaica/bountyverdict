@@ -61,6 +61,7 @@ const directory402SubmissionIds = Object.freeze([50, 51, 52, 53, 54, 55, 56]);
 const index402Api = "https://402index.io/api/v1/services";
 const agentSkillSearchUrl = "https://agentskill.sh/api/agent/search?q=bountyverdict&limit=20";
 const agentSkillsInSearchUrl = "https://www.agentskills.in/api/skills?name=route-github-agent-decisions&author=cristianmoroaica&limit=20";
+const agentSkillsInFallbackSearchUrl = "https://www.agentskills.in/api/skills?search=bountyverdict&author=cristianmoroaica&limit=50&offset=0&sortBy=recent";
 const agentSkillsInListingUrl = "https://www.agentskills.in/marketplace/%40cristianmoroaica/route-github-agent-decisions";
 const agentSkillsInSubmissionIssueNumber = 23;
 const agentSkillsInSubmissionIssueUrl =
@@ -1881,29 +1882,43 @@ async function agentSkillsInStatus(
       direct_endpoint_attempts: 2,
       direct_endpoint_result: "backend_failed_403_then_cloudflare_1101",
     };
+    let catalogResponse = response;
+    let lookup = "exact_name";
     if (!response.ok) {
-      return {
-        url: agentSkillsInSubmissionIssueUrl,
-        listing_url: agentSkillsInListingUrl,
-        search_url: agentSkillsInSearchUrl,
-        http_status: response.status,
-        listed: false,
-        listed_skills: 0,
-        expected_skills: 1,
-        status: issue.state === "CLOSED" ? "submission_closed_catalog_unavailable" : "submitted_catalog_unavailable",
-        submission,
-        exposed_at: null,
-        catalog_error: `AgentSkills.in search returned HTTP ${response.status}.`,
-        measurement: "submission_and_exact_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
-      };
+      catalogResponse = await fetch(agentSkillsInFallbackSearchUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      lookup = "bounded_fallback_search";
+      if (!catalogResponse.ok) {
+        return {
+          url: agentSkillsInSubmissionIssueUrl,
+          listing_url: agentSkillsInListingUrl,
+          search_url: agentSkillsInFallbackSearchUrl,
+          exact_name_search_url: agentSkillsInSearchUrl,
+          primary_http_status: response.status,
+          http_status: catalogResponse.status,
+          listed: false,
+          listed_skills: 0,
+          expected_skills: 1,
+          status: issue.state === "CLOSED" ? "submission_closed_catalog_unavailable" : "submitted_catalog_unavailable",
+          submission,
+          exposed_at: null,
+          catalog_error: `AgentSkills.in exact-name search returned HTTP ${response.status}; bounded fallback returned HTTP ${catalogResponse.status}.`,
+          measurement: "submission_and_exact_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
+        };
+      }
     }
-    const catalog = parseAgentSkillsInSearchPayload(await response.json());
+    const catalog = parseAgentSkillsInSearchPayload(await catalogResponse.json());
     const listed = catalog.listed === true;
     return {
       url: agentSkillsInSubmissionIssueUrl,
       listing_url: agentSkillsInListingUrl,
-      search_url: agentSkillsInSearchUrl,
-      http_status: response.status,
+      search_url: lookup === "exact_name" ? agentSkillsInSearchUrl : agentSkillsInFallbackSearchUrl,
+      exact_name_search_url: agentSkillsInSearchUrl,
+      primary_http_status: response.status,
+      http_status: catalogResponse.status,
+      lookup,
       ...catalog,
       status: listed
         ? "listed"
