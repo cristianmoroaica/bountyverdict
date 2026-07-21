@@ -59,6 +59,15 @@ export type DockerMcpRegistryStatus = {
   skillverdict_contamination_risk: boolean;
 };
 
+export type McpServersOrgStatus = {
+  listed: boolean;
+  repository_metadata_verified: boolean;
+  contract_verified: boolean;
+  repository: string;
+  endpoint: string;
+  skillverdict_contamination_risk: boolean;
+};
+
 export function parseAwesomeMcpServersReadme(
   markdown: unknown,
   expectedRepository: string,
@@ -231,6 +240,33 @@ export function parseDockerMcpHubPage(
     listed,
     contract_verified: listed && html.includes(expectedEndpoint) && /streamable-http/i.test(html) &&
       !skillverdictContaminationRisk,
+    endpoint: expectedEndpoint,
+    skillverdict_contamination_risk: skillverdictContaminationRisk,
+  };
+}
+
+export function parseMcpServersOrgPage(
+  html: unknown,
+  expectedRepository: string,
+  expectedEndpoint: string,
+): McpServersOrgStatus {
+  if (typeof html !== "string" || html.length > 2_000_000) {
+    throw new Error("MCPServers.org listing page is invalid or unbounded.");
+  }
+  const lines = html.split("\n");
+  if (lines.length > 50_000 || lines.some((line) => line.length > 200_000)) {
+    throw new Error("MCPServers.org listing page lines are unbounded.");
+  }
+  const skillverdictContaminationRisk = /skillverdict|\/api\/skill|preflight-agent-skills/i.test(html);
+  const repositoryMetadataVerified = /BountyVerdict Agent Decision Tools/i.test(html) &&
+    html.includes(expectedRepository);
+  const contractVerified = repositoryMetadataVerified && html.includes(expectedEndpoint) &&
+    /streamable[ -]?http/i.test(html) && /\bx402\b/i.test(html) && !skillverdictContaminationRisk;
+  return {
+    listed: repositoryMetadataVerified,
+    repository_metadata_verified: repositoryMetadataVerified,
+    contract_verified: contractVerified,
+    repository: expectedRepository,
     endpoint: expectedEndpoint,
     skillverdict_contamination_risk: skillverdictContaminationRisk,
   };

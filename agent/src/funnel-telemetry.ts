@@ -330,7 +330,7 @@ function clientClass(userAgent: string, signed: boolean): FunnelClientClass {
   }
   if (/agent402/i.test(userAgent)) return "agent402";
   if (/x402-observer/i.test(userAgent)) return "x402_observer";
-  if (/(?:opendexter|x402gle|402index|tollbooth|x402dash|x402scan|x402scout|mcp-spider)/i.test(userAgent)) {
+  if (/(?:opendexter|x402gle|402index|tollbooth|x402dash|x402scan|x402scout|mcp-spider|smitherybot\/)/i.test(userAgent)) {
     return "registry_crawler";
   }
   if (signed || /(?:\bawal\b|agentkit|modelcontextprotocol|\bmcp\b|claude|codex|openai|gemini|langchain|crewai|autogpt|eliza|x402-client)/i.test(userAgent)) {

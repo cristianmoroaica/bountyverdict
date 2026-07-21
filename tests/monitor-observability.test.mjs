@@ -125,6 +125,32 @@ test("directory monitoring tracks Docker registry review separately from live ca
   assert.match(distribution, /Docker catalog placement only, never an impression, tool call, purchase, or revenue/);
 });
 
+test("directory monitoring tracks the exact MCPServers.org submission without search inflation", async () => {
+  const [directory, distribution] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+  ]);
+  assert.match(directory, /const mcpServersOrgSubmissionId = 4842/);
+  assert.match(directory, /async function mcpServersOrgStatus/);
+  assert.match(directory, /method: "HEAD"/);
+  assert.match(directory, /mcp_servers_org: mcpServersOrg/);
+  assert.doesNotMatch(directory, /mcpservers\.org\/search\?query/);
+  assert.match(distribution, /MCPServers\.org/);
+  assert.match(distribution, /exact receipt\/listing checks only, never search impressions, tool calls, purchases, or revenue/);
+});
+
+test("MCP buyer-intent reporting excludes identified directory crawlers but retains them separately", async () => {
+  const [distribution, telemetry] = await Promise.all([
+    readFile(distributionUrl, "utf8"),
+    readFile(new URL("../agent/src/funnel-telemetry.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(telemetry, /smitherybot\\\//i);
+  assert.match(distribution, /buyerCandidateMcpTotals/);
+  assert.match(distribution, /state\.mcp_by_client_class\.registry_crawler/);
+  assert.match(distribution, /MCP buyer-candidate funnel/);
+  assert.match(distribution, /MCP directory-crawler activity/);
+});
+
 test("directory monitoring retains MCPRepository validation without calling it demand", async () => {
   const directory = await readFile(directoryMonitorUrl, "utf8");
   const distribution = await readFile(distributionUrl, "utf8");

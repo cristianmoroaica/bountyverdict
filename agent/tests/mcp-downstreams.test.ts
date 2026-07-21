@@ -9,6 +9,7 @@ import {
   parseDockerMcpHubPage,
   parseDockerMcpRegistryDefinition,
   parseMcpObservatoryDetail,
+  parseMcpServersOrgPage,
   parseMcpubGetResponse,
   parseMcpubSearchLiveResponse,
   parseOneMcpRegistryShow,
@@ -112,6 +113,35 @@ test("recognizes only the exact Docker remote registry and catalog contracts", (
   const page = `<html><h1>BountyVerdict Agent Decision Tools</h1><span>streamable-http</span><span>${endpoint}</span></html>`;
   assert.equal(parseDockerMcpHubPage(page, endpoint).contract_verified, true);
   assert.equal(parseDockerMcpHubPage(page.replace(endpoint, "https://wrong.example/mcp"), endpoint).contract_verified, false);
+});
+
+test("distinguishes MCPServers.org repository placement from a verified remote contract", () => {
+  const repositoryOnly = parseMcpServersOrgPage(
+    `<main><h1>BountyVerdict Agent Decision Tools</h1><a href="${repository}">GitHub</a></main>`,
+    repository,
+    endpoint,
+  );
+  assert.equal(repositoryOnly.listed, true);
+  assert.equal(repositoryOnly.repository_metadata_verified, true);
+  assert.equal(repositoryOnly.contract_verified, false);
+
+  const remote = parseMcpServersOrgPage(
+    `<main><h1>BountyVerdict Agent Decision Tools</h1><a href="${repository}">GitHub</a><code>${endpoint}</code><p>Streamable HTTP over x402</p></main>`,
+    repository,
+    endpoint,
+  );
+  assert.equal(remote.contract_verified, true);
+
+  const contaminated = parseMcpServersOrgPage(
+    `<h1>BountyVerdict Agent Decision Tools</h1><a href="${repository}">GitHub</a><code>${endpoint}</code><p>Streamable HTTP x402 SkillVerdict</p>`,
+    repository,
+    endpoint,
+  );
+  assert.equal(contaminated.skillverdict_contamination_risk, true);
+  assert.equal(contaminated.contract_verified, false);
+
+  assert.equal(parseMcpServersOrgPage("not found", repository, endpoint).listed, false);
+  assert.throws(() => parseMcpServersOrgPage("x".repeat(2_000_001), repository, endpoint), /unbounded/);
 });
 
 test("recognizes bounded Agentage official-registry search and detail contracts", () => {

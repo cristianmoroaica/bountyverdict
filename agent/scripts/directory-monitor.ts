@@ -18,6 +18,7 @@ import {
   parseAwesomeMcpServersReadme,
   parseDockerMcpHubPage,
   parseDockerMcpRegistryDefinition,
+  parseMcpServersOrgPage,
   parseMcpObservatoryDetail,
   parseTensorBlockProfile,
   parseTensorBlockSearch,
@@ -73,6 +74,10 @@ const dockerMcpRegistryPrNumber = 4496;
 const dockerMcpRegistryPrUrl = `https://github.com/docker/mcp-registry/pull/${dockerMcpRegistryPrNumber}`;
 const dockerMcpRegistryDefinitionUrl = "https://raw.githubusercontent.com/docker/mcp-registry/main/servers/bountyverdict/server.yaml";
 const dockerMcpHubUrl = "https://hub.docker.com/mcp/server/bountyverdict/overview";
+const mcpServersOrgSubmissionId = 4842;
+const mcpServersOrgSubmittedAt = "2026-07-21T05:32:29.746Z";
+const mcpServersOrgReceiptUrl = `https://mcpservers.org/submit-success?submission_id=${mcpServersOrgSubmissionId}`;
+const mcpServersOrgListingUrl = "https://mcpservers.org/servers/cristianmoroaica/bountyverdict";
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -653,6 +658,87 @@ async function dockerMcpRegistryStatus(
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
       measurement: "submission_and_docker_catalog_presence_not_impressions_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function mcpServersOrgStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const [receiptResponse, listingHead] = await Promise.all([
+      fetch(mcpServersOrgReceiptUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(mcpServersOrgListingUrl, {
+        method: "HEAD",
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    ]);
+    if (receiptResponse.status !== 200 || ![200, 404].includes(listingHead.status)) {
+      throw new Error(`MCPServers.org returned HTTP ${receiptResponse.status}/${listingHead.status}.`);
+    }
+    const receiptBody = await receiptResponse.text();
+    if (receiptBody.length > 1_000_000 ||
+      !receiptBody.includes("BountyVerdict Agent Decision Tools") ||
+      !receiptBody.includes("has been submitted successfully") ||
+      (!receiptBody.includes(`submissionId":${mcpServersOrgSubmissionId}`) &&
+        !receiptBody.includes(`submissionId\\":${mcpServersOrgSubmissionId}`))) {
+      throw new Error("MCPServers.org submission receipt is malformed or mismatched.");
+    }
+    let listing = null;
+    if (listingHead.status === 200) {
+      const listingResponse = await fetch(mcpServersOrgListingUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (listingResponse.status !== 200) {
+        throw new Error(`MCPServers.org listing changed from HTTP 200 to ${listingResponse.status}.`);
+      }
+      listing = parseMcpServersOrgPage(await listingResponse.text(), repository, `${productionOrigin}/mcp`);
+    }
+    const contractVerified = listing?.contract_verified === true;
+    const listed = listing?.listed === true;
+    return {
+      submission_id: mcpServersOrgSubmissionId,
+      submitted_at: mcpServersOrgSubmittedAt,
+      plan: "free",
+      payment_status: "not_required",
+      receipt_url: mcpServersOrgReceiptUrl,
+      receipt_verified: true,
+      listing_url: mcpServersOrgListingUrl,
+      listing_http_status: listingHead.status,
+      listing,
+      listed,
+      repository_metadata_verified: listing?.repository_metadata_verified === true,
+      contract_verified: contractVerified,
+      status: contractVerified
+        ? "catalog_remote_contract_verified"
+        : listed
+          ? "catalog_repository_metadata_only"
+          : "pending_review",
+      first_listed_at: listed ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "exact_submission_receipt_and_listing_presence_not_search_impressions_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      submission_id: mcpServersOrgSubmissionId,
+      submitted_at: mcpServersOrgSubmittedAt,
+      plan: "free",
+      payment_status: "not_required",
+      receipt_url: mcpServersOrgReceiptUrl,
+      listing_url: mcpServersOrgListingUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "exact_submission_receipt_and_listing_presence_not_search_impressions_tool_calls_purchases_or_revenue",
     };
   }
 }
@@ -1428,6 +1514,7 @@ const [
   tensorBlockMcpIndex,
   agentage,
   dockerMcpRegistry,
+  mcpServersOrg,
   agent402,
   x402scout,
   x402scan,
@@ -1454,6 +1541,7 @@ const [
   tensorBlockMcpIndexStatus(previous.tensorblock_mcp_index || {}, new Date().toISOString()),
   agentageStatus(previous.agentage || {}, new Date().toISOString()),
   dockerMcpRegistryStatus(previous.docker_mcp_registry || {}, new Date().toISOString()),
+  mcpServersOrgStatus(previous.mcp_servers_org || {}, new Date().toISOString()),
   agent402Status(),
   x402ScoutStatus(),
   x402ScanStatus(),
@@ -1526,6 +1614,7 @@ const state = {
   tensorblock_mcp_index: tensorBlockMcpIndex,
   agentage,
   docker_mcp_registry: dockerMcpRegistry,
+  mcp_servers_org: mcpServersOrg,
   agent402,
   x402scout,
   x402scan,
