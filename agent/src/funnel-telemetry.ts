@@ -1,6 +1,7 @@
 import { PRODUCT_CATALOG, PRODUCT_KEYS, type ProductKey } from "./product-catalog.ts";
 
 export const FUNNEL_SCHEMA_VERSION = 2 as const;
+const FUNNEL_PRIVACY = "Aggregate REST, discovery, and MCP funnel counts only; raw URLs, query values, tool arguments, bodies, headers, payment payloads, payer addresses, IP addresses, geolocation, visitor IDs, and full user-agent strings are discarded.";
 
 export const FUNNEL_SOURCE_CATEGORIES = Object.freeze([
   "owner_automation",
@@ -570,7 +571,7 @@ export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnap
     enhanced_capture_started_at: now,
     cohort_capture_started_at: now,
     updated_at: now,
-    privacy: "Aggregate REST, discovery, and MCP funnel counts only; raw URLs, query values, tool arguments, bodies, headers, payment payloads, payer addresses, IP addresses, geolocation, visitor IDs, and full user-agent strings are discarded.",
+    privacy: FUNNEL_PRIVACY,
     totals: emptyCounters(),
     by_product: countersRecord(PRODUCT_KEYS),
     by_source: countersRecord(FUNNEL_SOURCE_CATEGORIES),
@@ -803,6 +804,7 @@ export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString(
     const existing = value as Record<string, unknown>;
     const upgraded = {
       ...existing,
+      privacy: FUNNEL_PRIVACY,
       discovery_totals: existing.discovery_totals || emptyCounters(),
       by_channel: { ...countersRecord(FUNNEL_CHANNELS), ...((existing.by_channel as object) || {}) },
       by_discovery_surface: existing.by_discovery_surface || countersRecord(FUNNEL_DISCOVERY_SURFACES),

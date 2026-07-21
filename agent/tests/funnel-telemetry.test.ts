@@ -302,4 +302,6 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   assert.equal(loaded.cohort_capture_started_at, "2026-07-21T00:00:00.000Z");
   assert.deepEqual(loaded.by_cohort, {});
   assert.deepEqual(loaded.by_discovery_cohort, {});
+  assert.match(loaded.privacy, /tool arguments/);
+  assert.match(loaded.privacy, /payer addresses/);
 });

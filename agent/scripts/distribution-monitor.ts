@@ -42,6 +42,8 @@ const NETWORK = "eip155:8453";
 const TIMEOUT_MS = 30_000;
 const execFileAsync = promisify(execFile);
 const GITHUB_REPOSITORY = "cristianmoroaica/bountyverdict";
+const MCP_REGISTRY_NAME = "io.github.cristianmoroaica/bountyverdict";
+const MCP_REGISTRY_VERSION = "1.0.0";
 
 const configuration = loadDistributionMonitorConfiguration(process.env);
 const api = configuration.productionApi;
@@ -214,6 +216,28 @@ async function requireStatus(path: string, expected = 200): Promise<number> {
     throw new Error(`${path} returned HTTP ${response.status}; expected ${expected}.`);
   }
   return response.status;
+}
+
+async function mcpRegistryStatus(): Promise<Record<string, unknown>> {
+  const endpoint = `${api}/mcp`;
+  const response = await monitoredFetch(`https://registry.modelcontextprotocol.io/v0.1/servers?search=${encodeURIComponent(MCP_REGISTRY_NAME)}`);
+  if (!response.ok) throw new Error(`MCP Registry returned HTTP ${response.status}.`);
+  const body = await response.json() as { servers?: Array<{ server?: { name?: unknown; version?: unknown; remotes?: unknown } }> };
+  if (!Array.isArray(body.servers) || body.servers.length > 100) throw new Error("MCP Registry response is malformed or unbounded.");
+  const entry = body.servers.find(({ server }) => server?.name === MCP_REGISTRY_NAME && server?.version === MCP_REGISTRY_VERSION)?.server;
+  if (!entry || !Array.isArray(entry.remotes) || !entry.remotes.some((remote) => remote && typeof remote === "object" &&
+    (remote as { type?: unknown }).type === "streamable-http" && (remote as { url?: unknown }).url === endpoint)) {
+    throw new Error("Official MCP Registry listing is missing or has drifted from the production endpoint.");
+  }
+  return {
+    listed: true,
+    name: MCP_REGISTRY_NAME,
+    version: MCP_REGISTRY_VERSION,
+    transport: "streamable-http",
+    endpoint,
+    checked_at: new Date().toISOString(),
+    accounting_note: "Registry presence is distribution evidence only; it is not an impression, purchase, or revenue.",
+  };
 }
 
 function decodeChallenge(header: string): any {
@@ -1481,6 +1505,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
 - **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external discovery hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
 - **MCP agent funnel:** ${funnel.available ? `${Number(funnel.mcp_external?.initialize || 0)} initializations; ${Number(funnel.mcp_external?.tools_list || 0)} tool-list requests; ${Number(funnel.mcp_external?.payment_required || 0)} valid unpaid tool calls; ${Number(funnel.mcp_external?.payment_present || 0)} payment presentations; ${Number(funnel.mcp_external?.paid_success || 0)} paid successes` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner automation excluded)
+- **Official MCP Registry:** ${report.acquisition?.mcp_registry?.listed ? `${report.acquisition.mcp_registry.name}@${report.acquisition.mcp_registry.version} listed at the exact production Streamable HTTP endpoint` : `unavailable (${report.acquisition?.mcp_registry?.error || "not checked"})`} (placement only, never a purchase)
 - **Measurement boundary:** ${funnel.trusted_measurement_eligible === false ? `draining owner-triggered downstream probes; ${Number(funnel.provisional_external_discovery_requests || 0)} discovery and ${Number(funnel.provisional_external_402_challenges || 0)} challenge signals are excluded until a stable new epoch activates` : `epoch ${Number(funnel.trusted_epoch_id || 1)} eligible`}
 - **Current funnel diagnosis:** ${funnel.learning_stage || "unavailable"}
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
@@ -1514,12 +1539,12 @@ Owner-funded launch proofs and every settlement from the dedicated owner canary 
 
 ## Current milestone
 
-The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. The production origin now serves a canonical agent manifest and installable routing skill for the six independently distributed non-SkillVerdict contracts, including exact prices, samples, typed task guidance, and payment safeguards; SkillVerdict remains absent from those new surfaces while its earned-placement experiment is frozen. Six existing products are independently buyable through the402, NEAR Agent Market, and PayanAgent, all seven paid endpoints are registered through x402scan, and six method-compatible endpoints are live on 402 Index. Agent Tools Cloud also discovered the origin organically; its exact resource coverage, health, payee, price range, and metadata breadth are monitored as catalog evidence only, never as impressions or revenue. Agent402 indexing and unbranded buyer-language retrieval checks remain separate from organic impressions. Privacy-safe edge capture distinguishes discovery, 402 challenges, signed attempts, and successful responses without retaining visitor identifiers or request content. Distribution is the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers.
+The seven-product suite is healthy in production and unattended GitHub-to-Cloudflare deployment is verified end to end. Six independently distributed non-SkillVerdict contracts are now exposed as real paid MCP 2025-11-25 tools through one stateless Streamable HTTP endpoint and listed in the official MCP Registry as \`io.github.cristianmoroaica/bountyverdict@1.0.0\`; SkillVerdict remains excluded while its earned-placement experiment is frozen. The same six products remain independently buyable through the402, NEAR Agent Market, and PayanAgent, all seven paid endpoints are registered through x402scan, and six method-compatible endpoints are live on 402 Index. Agent Tools Cloud also discovered the origin organically; its exact resource coverage, health, payee, price range, and metadata breadth are monitored as catalog evidence only, never as impressions or revenue. Privacy-safe edge capture now distinguishes both REST and MCP discovery, validation, challenge, payment-presentation, and success stages without retaining visitor identifiers, request content, tool arguments, or payment material. Distribution is the sole product milestone: no eighth tool will be built until ten genuine purchases have been recognized from external payers.
 
 ## What is next
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
-2. Measure whether crawlers use the origin-native \`/agent-manifest.json\` and \`/SKILL.md\`, and whether Agent Tools Cloud adds MCPDriftVerdict or broadens its currently incomplete suite metadata; do not confuse either event with buyer demand.
+2. Measure whether agents discover the official MCP Registry entry, call \`tools/list\`, select a specific tool, and present payment; separately watch whether Agent Tools Cloud adds MCPDriftVerdict or broadens its currently incomplete suite metadata. Do not confuse registry presence or owner verification with buyer demand.
 3. Monitor GitHub Skill, AgentTool, AgentSkill, Agent Plugins PR/catalog activation, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
 4. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, Agent402 listing and unbranded retrieval, all seven x402scan routes, six 402 Index listings, x402gle synthesized skills, Monetize Your Agent and 402directory reviews, Agentic Market's automatic mirror, guarded buyer-request feed, edge challenges, and exact receipt attribution.
 5. Use the neutral buyer-query benchmark and edge funnel—not best-case phrase ranks—to decide the next distribution change after the frozen experiment. Do not build an eighth product before ten external purchases are recognized.
@@ -1739,6 +1764,17 @@ try {
 }
 
 acquisition = await acquisitionStatus();
+
+try {
+  acquisition = {
+    ...acquisition,
+    mcp_registry: await mcpRegistryStatus(),
+  };
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  acquisition = { ...acquisition, mcp_registry: { listed: false, checked_at: checkedAt, error: message } };
+  errors.push(`MCP Registry: ${message}`);
+}
 
 try {
   acquisition = {
