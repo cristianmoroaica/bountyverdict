@@ -66,6 +66,14 @@ export const TASKMARKET_TRACKED_SUBMISSIONS = Object.freeze([
     expected_net_atomic: "17575000",
     operator_estimated_net_atomic: "110000",
   }),
+  Object.freeze({
+    task_id: "0xb572510c687f254cb763989553a74a9dff1c76687579f8507335c2461de1ab1a",
+    submission_id: "fe459a0b-e2e8-429b-8080-9e776af10da1",
+    submit_tx_hash: "0x19a717548d6931e6a620ca79f12c4a6ae0e81284739f428a1059d9c5c7220a0a",
+    reward_atomic: "150000",
+    expected_net_atomic: "138750",
+    operator_estimated_net_atomic: "46250",
+  }),
 ]);
 
 type TaskStatus = "open" | "claimed" | "worker_selected" | "pending_approval" | "review" |

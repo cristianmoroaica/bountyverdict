@@ -112,7 +112,7 @@ const tracked: readonly TaskmarketTrackedSpecification[] = [{
   expected_net_atomic: "138750",
 }];
 
-test("Taskmarket production tracker pins the isolated worker and all five public receipts", () => {
+test("Taskmarket production tracker pins the isolated worker and all six public receipts", () => {
   assert.equal(TASKMARKET_WORKER_ADDRESS, "0xe5E0fe496B7283032d034Dc79C305b384Ad1ee67");
   assert.deepEqual(TASKMARKET_TRACKED_SUBMISSIONS, [
     {
@@ -158,6 +158,14 @@ test("Taskmarket production tracker pins the isolated worker and all five public
       reward_atomic: "19000000",
       expected_net_atomic: "17575000",
       operator_estimated_net_atomic: "110000",
+    },
+    {
+      task_id: "0xb572510c687f254cb763989553a74a9dff1c76687579f8507335c2461de1ab1a",
+      submission_id: "fe459a0b-e2e8-429b-8080-9e776af10da1",
+      submit_tx_hash: "0x19a717548d6931e6a620ca79f12c4a6ae0e81284739f428a1059d9c5c7220a0a",
+      reward_atomic: "150000",
+      expected_net_atomic: "138750",
+      operator_estimated_net_atomic: "46250",
     },
   ]);
 });
