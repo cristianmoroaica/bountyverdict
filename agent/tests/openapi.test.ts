@@ -25,6 +25,10 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.equal(operation["x-x402"].network, "eip155:8453");
   assert.equal(operation.requestBody.content["application/json"].schema.additionalProperties, false);
   assert.deepEqual(operation.requestBody.content["application/json"].schema.required, ["issue_url"]);
+  assert.equal(
+    operation.requestBody.content["application/json"].schema.properties.issue_url.example,
+    "https://github.com/typeorm/typeorm/issues/3357",
+  );
   assert.equal(spec.paths["/api/verdict"].get.deprecated, true);
   assert.equal(spec.paths["/api/verdict"].get.operationId, "checkBountyVerdictLegacyGet");
   assert.ok(spec.paths["/api/verdict"].get.parameters.some((parameter) => parameter.name === "issue_url"));
@@ -53,26 +57,66 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.equal(operation["x-payment-info"].price.amount, "0.050000");
   assert.equal(spec.paths["/api/portfolio"].post["x-x402"].price, "$0.40");
   assert.equal(spec.paths["/api/portfolio"].post.requestBody.content["application/json"].schema.properties.issue_urls.maxItems, 10);
+  assert.deepEqual(
+    spec.paths["/api/portfolio"].post.requestBody.content["application/json"].schema.properties.issue_urls.example,
+    ["https://github.com/tenstorrent/tt-metal/issues/50522", "https://github.com/typeorm/typeorm/issues/3357"],
+  );
+  assert.deepEqual(
+    spec.paths["/api/portfolio"].post.requestBody.content["application/json"].schema.properties.issue_urls.default,
+    ["https://github.com/tenstorrent/tt-metal/issues/50522", "https://github.com/typeorm/typeorm/issues/3357"],
+  );
   const harness = spec.paths["/api/repository-agent-instructions-audit"].post;
   assert.equal(harness["x-x402"].price, "$0.03");
   assert.deepEqual(harness.requestBody.content["application/json"].schema.required, ["repo_url"]);
   assert.equal(harness.requestBody.content["application/json"].schema.additionalProperties, false);
+  assert.equal(
+    harness.requestBody.content["application/json"].schema.properties.repo_url.example,
+    "https://github.com/openai/codex",
+  );
   assert.equal(spec.paths["/api/harness"].get.deprecated, true);
   assert.equal(spec.paths["/api/skill"].get["x-x402"].price, "$0.06");
   assert.deepEqual(spec.paths["/api/skill"].get.parameters.map((parameter) => parameter.name), ["repo_url", "skill_path"]);
+  assert.deepEqual(
+    spec.paths["/api/skill"].get.parameters.map((parameter) => parameter.schema.example),
+    ["https://github.com/coinbase/agentic-wallet-skills", "skills/agentic-wallet"],
+  );
+  assert.deepEqual(
+    spec.paths["/api/skill"].get.parameters.map((parameter) => parameter.schema.default),
+    ["https://github.com/coinbase/agentic-wallet-skills", "skills/agentic-wallet"],
+  );
   const run = spec.paths["/api/github-actions-run-diagnosis"].post;
   assert.equal(run["x-x402"].price, "$0.04");
   assert.deepEqual(run.requestBody.content["application/json"].schema.required, ["run_url"]);
+  assert.equal(
+    run.requestBody.content["application/json"].schema.properties.run_url.example,
+    "https://github.com/openai/codex/actions/runs/29728148711",
+  );
   assert.equal(spec.paths["/api/run"].get.deprecated, true);
   const flake = spec.paths["/api/github-actions-flake-retry-gate"].post;
   assert.equal(flake["x-x402"].price, "$0.07");
   assert.deepEqual(Object.keys(flake.requestBody.content["application/json"].schema.properties), ["run_url", "attempt"]);
+  assert.equal(
+    flake.requestBody.content["application/json"].schema.properties.run_url.example,
+    "https://github.com/actions/runner/actions/runs/29423388605",
+  );
   assert.equal(flake.responses["429"].description.includes("not settled"), true);
   assert.equal(spec.paths["/api/flake"].get.deprecated, true);
   assert.equal(spec.paths["/api/mcp-drift"].post["x-x402"].price, "$0.02");
   assert.match(spec.paths["/api/mcp-drift"].post.summary, /MCP schema drift/i);
   assert.match(spec.paths["/api/mcp-drift"].post.description, /MCP tools\/list compatibility/i);
   assert.equal(spec.paths["/api/mcp-drift"].post.requestBody.content["application/json"].schema.additionalProperties, false);
+  assert.deepEqual(
+    spec.paths["/api/mcp-drift"].post.requestBody.content["application/json"].schema.properties.subject.example,
+    { server_id: "acme/tasks@production" },
+  );
+  assert.equal(
+    spec.paths["/api/mcp-drift"].post.requestBody.content["application/json"].schema.properties.baseline.example.protocol_version,
+    "2025-11-25",
+  );
+  assert.equal(
+    spec.paths["/api/mcp-drift"].post.requestBody.content["application/json"].schema.properties.current.example.protocol_version,
+    "2025-11-25",
+  );
   assert.equal(spec.paths["/api/mcp-drift"].post.responses["422"].description.includes("no payment challenge"), true);
   assert.match(spec.externalDocs.url, /agent-manifest\.json$/);
 

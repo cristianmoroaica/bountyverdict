@@ -417,3 +417,16 @@ Commit `a2846a5` passed 335 agent tests, 73 public tests, type checking, synchro
 Moved 0.14 USDC of project working capital from the seller wallet to the already revenue-excluded canary payer in transaction `0x0b76b26814dd1c98e03688e3a6d64ca220c8ee3583d5ad6d356faca71abe4a88`. Three sequential, exact-price activations then settled on Base and returned HTTP 200: HarnessVerdict 0.03 USDC in `0xc4b4a8daecdbbf86e932dbc96081136ca126ccfe12b216c081bc7e5443f2e721`, RunVerdict 0.04 USDC in `0x1fb701ef83055f59169ee3cb3aecaf5f0eac7f12f23a8660712989ae3bfdcfbf`, and FlakeVerdict 0.07 USDC in `0x26bafd35af4ab6e3b132d58ee4ff00c42c4905b637662f07ba489f3143990160`. Each receipt and declining buyer balance was reconciled before the next payment. The payer ended at the expected 0.01 USDC, and all three hashes are pinned as owner-funded non-revenue evidence.
 
 Coinbase Bazaar admitted all three new URLs immediately after settlement. On natural buyer-like searches, HarnessVerdict appeared fifth for repository instruction auditing; RunVerdict appeared fourth for failed-workflow root cause and third for retry-versus-fix; FlakeVerdict appeared sixth and fourth on those two CI searches. These owner-run rankings are distribution measurements, not impressions, purchases, or customer demand. SkillVerdict remains unchanged and frozen until its earned-placement experiment ends.
+
+## 2026-07-21 — x402scan canonical transport repair
+
+- Genuine external purchases: **0 / 10**
+- Customer revenue: **$0.00**
+- Tracked acquisition costs: **$1.011**
+- Current recognized-USDC profit before historic gas conversion: **-$1.011**
+
+Corrected a concrete distribution defect found during the best-seller research pass. x402scan still exposed the four obsolete GET transports for BountyVerdict, HarnessVerdict, RunVerdict, and FlakeVerdict while the canonical paid contracts had moved to POST. Its generic OpenAPI probe also could not construct valid inputs for strict validation-before-payment routes, so merely refreshing the origin would have left the catalog partial.
+
+Added non-secret property-level OpenAPI examples for all strict POST inputs plus schema defaults for the two contracts whose valid probe inputs require multiple values or query parameters. Required fields remain required, invalid inputs still fail before HTTP 402, prices and handlers are unchanged, and SkillVerdict's earned-placement treatment remains frozen. The directory monitor now pins BountyVerdict to `POST /api/bounty-preflight` alongside the other six canonical transports.
+
+x402scan's public server-side batch probe verified the exact Portfolio and Skill inputs, and the resulting opaque probe session was passed back to its origin registration flow. The registry then reported **7 registered, 0 failed**. Its active catalog contains exactly the seven canonical paid resources; the four compatibility GET transports are retained only as deprecated records. The audited directory monitor independently confirmed **7 / 7** canonical registry presence. These probes and listings are distribution evidence only, not customer calls, purchases, or revenue.

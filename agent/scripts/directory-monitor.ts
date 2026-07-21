@@ -193,7 +193,7 @@ const index402Listings = Object.freeze([
   { product: "flake", id: "2d2fb88a-7402-4d1a-ab66-63d4e9ba1031", path: "/api/flake", method: "GET" },
 ]);
 const x402ScanResources = Object.freeze([
-  { product: "single", url: `${productionOrigin}/api/verdict`, method: "GET" },
+  { product: "single", url: `${productionOrigin}/api/bounty-preflight`, method: "POST" },
   { product: "portfolio", url: `${productionOrigin}/api/portfolio`, method: "POST" },
   { product: "harness", url: `${productionOrigin}/api/repository-agent-instructions-audit`, method: "POST" },
   { product: "skill", url: `${productionOrigin}/api/skill`, method: "GET" },

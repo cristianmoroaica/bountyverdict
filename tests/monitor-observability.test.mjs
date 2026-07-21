@@ -322,6 +322,25 @@ test("directory monitoring tracks Cline review and exact in-agent install contra
   assert.match(distribution, /aggregate events, not installs, unique agents, purchases, or revenue/);
 });
 
+test("x402scan monitoring follows the seven canonical paid transports", async () => {
+  const directory = await readFile(directoryMonitorUrl, "utf8");
+  const start = directory.indexOf("const x402ScanResources");
+  const end = directory.indexOf("const x402ScoutIds", start);
+  assert.ok(start >= 0 && end > start);
+  const resources = directory.slice(start, end);
+  const expected = [
+    '{ product: "single", url: `${productionOrigin}/api/bounty-preflight`, method: "POST" }',
+    '{ product: "portfolio", url: `${productionOrigin}/api/portfolio`, method: "POST" }',
+    '{ product: "harness", url: `${productionOrigin}/api/repository-agent-instructions-audit`, method: "POST" }',
+    '{ product: "skill", url: `${productionOrigin}/api/skill`, method: "GET" }',
+    '{ product: "run", url: `${productionOrigin}/api/github-actions-run-diagnosis`, method: "POST" }',
+    '{ product: "flake", url: `${productionOrigin}/api/github-actions-flake-retry-gate`, method: "POST" }',
+    '{ product: "mcpdrift", url: `${productionOrigin}/api/mcp-drift`, method: "POST" }',
+  ];
+  for (const resource of expected) assert.ok(resources.includes(resource));
+  assert.doesNotMatch(resources, /\/api\/verdict/);
+});
+
 test("directory PR monitoring uses authenticated GitHub reads instead of exhausted anonymous API quota", async () => {
   const [directory, telemetry, distribution] = await Promise.all([
     readFile(new URL("../agent/scripts/directory-monitor.ts", import.meta.url), "utf8"),

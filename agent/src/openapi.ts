@@ -115,6 +115,7 @@ export function createOpenApi(
                       type: "string",
                       pattern: "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[1-9][0-9]*$",
                       description: "Exact canonical public GitHub issue URL without a query string, fragment, or trailing slash.",
+                      example: "https://github.com/typeorm/typeorm/issues/3357",
                     },
                   },
                   required: ["issue_url"],
@@ -225,6 +226,14 @@ export function createOpenApi(
                       minItems: 2,
                       maxItems: 10,
                       uniqueItems: true,
+                      default: [
+                        "https://github.com/tenstorrent/tt-metal/issues/50522",
+                        "https://github.com/typeorm/typeorm/issues/3357",
+                      ],
+                      example: [
+                        "https://github.com/tenstorrent/tt-metal/issues/50522",
+                        "https://github.com/typeorm/typeorm/issues/3357",
+                      ],
                       items: {
                         type: "string",
                         pattern: "^https://github\\.com/[^/]+/[^/]+/issues/[0-9]+([?#].*)?$",
@@ -291,7 +300,11 @@ export function createOpenApi(
             content: { "application/json": {
               schema: {
                 type: "object",
-                properties: { repo_url: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$" } },
+                properties: { repo_url: {
+                  type: "string",
+                  pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$",
+                  example: "https://github.com/openai/codex",
+                } },
                 required: ["repo_url"],
                 additionalProperties: false,
               },
@@ -373,7 +386,12 @@ export function createOpenApi(
               in: "query",
               required: true,
               description: "Canonical public GitHub repository URL",
-              schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$" },
+              schema: {
+                type: "string",
+                pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$",
+                default: "https://github.com/coinbase/agentic-wallet-skills",
+                example: "https://github.com/coinbase/agentic-wallet-skills",
+              },
               example: "https://github.com/coinbase/agentic-wallet-skills",
             },
             {
@@ -381,7 +399,12 @@ export function createOpenApi(
               in: "query",
               required: true,
               description: "Repository-relative skill directory or exact SKILL.md path",
-              schema: { type: "string", pattern: "^[A-Za-z0-9._/-]+$" },
+              schema: {
+                type: "string",
+                pattern: "^[A-Za-z0-9._/-]+$",
+                default: "skills/agentic-wallet",
+                example: "skills/agentic-wallet",
+              },
               example: "skills/agentic-wallet",
             },
           ],
@@ -435,7 +458,11 @@ export function createOpenApi(
             content: { "application/json": {
               schema: {
                 type: "object",
-                properties: { run_url: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" } },
+                properties: { run_url: {
+                  type: "string",
+                  pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$",
+                  example: "https://github.com/openai/codex/actions/runs/29728148711",
+                } },
                 required: ["run_url"],
                 additionalProperties: false,
               },
@@ -508,7 +535,11 @@ export function createOpenApi(
               schema: {
                 type: "object",
                 properties: {
-                  run_url: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" },
+                  run_url: {
+                    type: "string",
+                    pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$",
+                    example: "https://github.com/actions/runner/actions/runs/29423388605",
+                  },
                   attempt: { type: "integer", minimum: 1 },
                 },
                 required: ["run_url"],
@@ -586,7 +617,15 @@ export function createOpenApi(
             required: true,
             content: {
               "application/json": {
-                schema: mcpDriftInputSchema,
+                schema: {
+                  ...mcpDriftInputSchema,
+                  properties: {
+                    ...mcpDriftInputSchema.properties,
+                    subject: { ...mcpDriftInputSchema.properties.subject, example: mcpDriftExampleInput.subject },
+                    baseline: { ...mcpDriftInputSchema.properties.baseline, example: mcpDriftExampleInput.baseline },
+                    current: { ...mcpDriftInputSchema.properties.current, example: mcpDriftExampleInput.current },
+                  },
+                },
                 example: mcpDriftExampleInput,
               },
             },
