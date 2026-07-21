@@ -1265,6 +1265,7 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
       agent_plugins_pr: state.agent_plugins_pr || null,
       agent_plugins_catalog: state.agent_plugins_catalog || null,
       awesome_copilot: state.awesome_copilot || null,
+      lobehub: state.lobehub || null,
       agent402: state.agent402 || null,
       x402scout: state.x402scout || null,
       x402scan: state.x402scan || null,
@@ -1660,6 +1661,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **skills.sh global search:** ${Number(skillsShSearch.exact_found || 0)} / ${Number(skillsShSearch.exact_expected || 7)} exact names; ${Number(skillsShSearch.natural_found || 0)} / ${Number(skillsShSearch.natural_expected || 7)} natural buyer queries (owner-run corpus check, not impressions)
 - **Agent Plugins catalog:** ${report.acquisition?.agent_plugins_catalog?.listed_skills ?? 0} / 7 skills listed; provider PR ${report.acquisition?.agent_plugins_pr?.status || "unavailable"} (${report.acquisition?.agent_plugins_pr?.url || "submission not recorded"})
 - **Awesome Copilot default marketplace:** ${report.acquisition?.awesome_copilot?.listed ? `listed at version ${report.acquisition.awesome_copilot.listed_version}` : report.acquisition?.awesome_copilot?.review_status || "unavailable"} (${report.acquisition?.awesome_copilot?.url || "submission not recorded"}; no install/impression telemetry exposed)
+- **LobeHub MCP marketplace:** ${report.acquisition?.lobehub?.status || "pending_review"} (${report.acquisition?.lobehub?.url || "https://github.com/lobehub/lobehub/issues/17401"}; submission or catalog presence is never an impression, tool call, purchase, or revenue)
 - **Owner canary settlements excluded:** ${Number(report.revenue?.canary_transfer_count || 0)} (${money(report.revenue?.canary_usdc || 0)})
 - **Unrelated incoming transfers:** ${Number(report.revenue?.unrelated_incoming_transfer_count || 0)}
 - **Last refreshed:** ${report.checked_at}
@@ -1741,6 +1743,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - x402 ecosystem directory PR: ${report.acquisition?.x402_directory_pr?.status || "unavailable"} (${report.acquisition?.x402_directory_pr?.url || "not recorded"})
 - Agent Plugins: ${report.acquisition?.agent_plugins_catalog?.listed_skills ?? 0} / 7 skills in the daily catalog; provider PR ${report.acquisition?.agent_plugins_pr?.status || "unavailable"} (${report.acquisition?.agent_plugins_pr?.url || "not recorded"}; catalog placement and quality metadata are not purchases)
 - Awesome Copilot: ${report.acquisition?.awesome_copilot?.listed ? `listed at version ${report.acquisition.awesome_copilot.listed_version}` : report.acquisition?.awesome_copilot?.review_status || "unavailable"} (${report.acquisition?.awesome_copilot?.url || "not recorded"}; default-marketplace presence is not an impression, install, or purchase)
+- LobeHub MCP marketplace: ${report.acquisition?.lobehub?.status || "pending_review"} (${report.acquisition?.lobehub?.url || "https://github.com/lobehub/lobehub/issues/17401"}; review and catalog presence are not impressions, tool calls, purchases, or revenue)
 - Agent402 open router: ${report.acquisition?.agent402?.listed ? "listed" : "unavailable"}; exact-route retrieval ${report.acquisition?.agent402?.found_queries ?? 0} / ${report.acquisition?.agent402?.query_count ?? 7}, top-three ${report.acquisition?.agent402?.top_three_queries ?? 0} (${report.acquisition?.agent402?.listing_source || "unknown source"}; fixed owner-run queries are not impressions)
 - x402Scout GET listings: ${report.acquisition?.x402scout?.listed_entries ?? "unavailable"} / ${report.acquisition?.x402scout?.expected_entries ?? 5} (${report.acquisition?.x402scout?.status || "unavailable"}; positions ${Array.isArray(report.acquisition?.x402scout?.catalog_positions) ? report.acquisition.x402scout.catalog_positions.join(", ") : "unavailable"} of ${report.acquisition?.x402scout?.catalog_entries ?? "unavailable"}; ${typeof report.acquisition?.x402scout?.total_query_count === "number" ? report.acquisition.x402scout.total_query_count : "unavailable"} catalog queries)
 - x402scan paid endpoints: ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence is not counted as purchase activity)

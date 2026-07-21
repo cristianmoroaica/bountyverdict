@@ -46,6 +46,9 @@ const agentNdxIndexUrl = "https://agentndx.ai/api/servers.json";
 const agentNdxSubmittedAt = "2026-07-21T03:33:34Z";
 const mcpObservatoryServerId = "github:cristianmoroaica/bountyverdict";
 const mcpObservatoryUrl = `https://mcpobservatory.com/api/servers/${mcpObservatoryServerId}`;
+const lobeHubIssueNumber = 17401;
+const lobeHubIssueUrl = `https://github.com/lobehub/lobehub/issues/${lobeHubIssueNumber}`;
+const lobeHubListingUrl = "https://market.lobehub.com/s/plugins/io-github-cristianmoroaica-bountyverdict";
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -263,6 +266,67 @@ async function awesomeCopilotStatus(
     exposed_at: listed ? previousStatus.exposed_at || observedAt : null,
     measurement: "submission_review_and_default_catalog_presence_not_impressions_installs_or_purchases",
   };
+}
+
+async function lobeHubStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const [{ stdout: issueOutput }, listingResponse] = await Promise.all([
+      execFileAsync("gh", [
+        "issue", "view", String(lobeHubIssueNumber),
+        "--repo", "lobehub/lobehub",
+        "--json", "number,title,state,labels,createdAt,updatedAt,closedAt,url",
+      ], { timeout: timeoutMs, maxBuffer: 1_000_000, encoding: "utf8" }),
+      fetch(lobeHubListingUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    ]);
+    const issue = JSON.parse(issueOutput) as Record<string, any>;
+    if (issue.number !== lobeHubIssueNumber || issue.url !== lobeHubIssueUrl || !Array.isArray(issue.labels)) {
+      throw new Error("LobeHub returned malformed submission telemetry.");
+    }
+    const body = await listingResponse.text();
+    if (body.length > 1_000_000) throw new Error("LobeHub listing response is unbounded.");
+    const exactListing = listingResponse.ok && (
+      body.includes("io.github.cristianmoroaica/bountyverdict") ||
+      body.includes(`${productionOrigin}/mcp`)
+    );
+    const labels = issue.labels.map((label: Record<string, unknown>) => String(label.name || ""))
+      .filter(Boolean)
+      .sort();
+    const status = exactListing
+      ? "listed"
+      : listingResponse.ok
+        ? "contract_drift"
+        : issue.state === "CLOSED"
+          ? "closed_without_listing"
+          : "pending_review";
+    return {
+      url: lobeHubIssueUrl,
+      listing_url: lobeHubListingUrl,
+      issue_state: issue.state,
+      issue_labels: labels,
+      issue_created_at: issue.createdAt,
+      issue_updated_at: issue.updatedAt,
+      issue_closed_at: issue.closedAt,
+      listing_http_status: listingResponse.status,
+      listed: exactListing,
+      status,
+      exposed_at: exactListing ? previousStatus.exposed_at || observedAt : null,
+      measurement: "submission_review_and_catalog_presence_not_impressions_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: lobeHubIssueUrl,
+      listing_url: lobeHubListingUrl,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function agentToolStatus(): Promise<Record<string, unknown>> {
@@ -1031,6 +1095,7 @@ const [
   agentPluginsPr,
   agentPluginsCatalog,
   awesomeCopilot,
+  lobeHub,
   agent402,
   x402scout,
   x402scan,
@@ -1052,6 +1117,7 @@ const [
   githubPrStatus("dmgrok", "agent-plugins", 97, agentPluginsPrUrl),
   agentPluginsCatalogStatus(),
   awesomeCopilotStatus(previous.awesome_copilot || {}, new Date().toISOString()),
+  lobeHubStatus(previous.lobehub || {}, new Date().toISOString()),
   agent402Status(),
   x402ScoutStatus(),
   x402ScanStatus(),
@@ -1119,6 +1185,7 @@ const state = {
   agent_plugins_pr: agentPluginsPr,
   agent_plugins_catalog: agentPluginsCatalog,
   awesome_copilot: awesomeCopilot,
+  lobehub: lobeHub,
   agent402,
   x402scout,
   x402scan,

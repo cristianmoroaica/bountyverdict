@@ -59,6 +59,19 @@ test("directory monitoring separates Awesome Copilot review and catalog presence
   assert.match(distribution, /default-marketplace presence is not an impression, install, or purchase/);
 });
 
+test("directory monitoring tracks LobeHub review and exact listing without calling it demand", async () => {
+  const directory = await readFile(directoryMonitorUrl, "utf8");
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(directory, /async function lobeHubStatus/);
+  assert.match(directory, /const lobeHubIssueNumber = 17401/);
+  assert.match(directory, /lobehub\/lobehub/);
+  assert.match(directory, /io-github-cristianmoroaica-bountyverdict/);
+  assert.match(directory, /submission_review_and_catalog_presence_not_impressions_tool_calls_purchases_or_revenue/);
+  assert.match(directory, /lobehub: lobeHub/);
+  assert.match(distribution, /LobeHub MCP marketplace/);
+  assert.match(distribution, /submission or catalog presence is never an impression, tool call, purchase, or revenue/);
+});
+
 test("directory monitoring retains MCPRepository validation without calling it demand", async () => {
   const directory = await readFile(directoryMonitorUrl, "utf8");
   const distribution = await readFile(distributionUrl, "utf8");
