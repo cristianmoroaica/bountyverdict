@@ -430,3 +430,18 @@ Corrected a concrete distribution defect found during the best-seller research p
 Added non-secret property-level OpenAPI examples for all strict POST inputs plus schema defaults for the two contracts whose valid probe inputs require multiple values or query parameters. Required fields remain required, invalid inputs still fail before HTTP 402, prices and handlers are unchanged, and SkillVerdict's earned-placement treatment remains frozen. The directory monitor now pins BountyVerdict to `POST /api/bounty-preflight` alongside the other six canonical transports.
 
 x402scan's public server-side batch probe verified the exact Portfolio and Skill inputs, and the resulting opaque probe session was passed back to its origin registration flow. The registry then reported **7 registered, 0 failed**. Its active catalog contains exactly the seven canonical paid resources; the four compatibility GET transports are retained only as deprecated records. The audited directory monitor independently confirmed **7 / 7** canonical registry presence. These probes and listings are distribution evidence only, not customer calls, purchases, or revenue.
+
+## 2026-07-21 — Owner-attributed buyer journey from natural search to settlement
+
+- Genuine external purchases: **0 / 10**
+- Customer revenue: **$0.00**
+- Tracked acquisition costs: **$1.011**
+- Current recognized-USDC profit before historic gas conversion: **-$1.011**
+
+Ran the purchase journey from the buyer side using the ordinary task phrase `will this MCP tools list update break existing agents`, not a product name or seller-authored keyword. Coinbase Bazaar ranked MCPDriftVerdict first of five results at **$0.02**. The nearest cheaper result was a security scanner that did not answer the compatibility question, so price alone did not change the selection.
+
+The journey exposed two Agentic Wallet integration defects before any authorization occurred. `awal x402 details` cannot discover strict validation-before-payment POST resources because it probes without their required body, and `awal x402 pay --headers` accepts arbitrary headers in its CLI contract but Coinbase's Electron request layer rejects a custom `User-Agent` as `INVALID_INPUT`. Both failures happened during payment-requirement discovery; the wallet balance stayed unchanged. A session-wide Electron User-Agent workaround was rejected because Coinbase treated the changed browser identity as unauthenticated and cleared the persisted Agentic Wallet login. The normal companion app was restored and left open, but it now requires fresh email authentication.
+
+Completed the signing portion with the existing CDP policy-bound test buyer rather than weakening owner attribution or asking for a blind wallet retry. The one-use client was capped at exactly 20,000 atomic USDC, allowed only canonical Base USDC and the production seller, and used the same strict representative MCPDrift body and normal unsigned-challenge/signed-retry x402 flow. Transaction `0xef1a51820c785f17cb7ae2a807c9c06222277acc85a09495b88e3e44d0692760` settled in Base block 48,937,380. Buyer balance fell from **0.86 to 0.84 USDC**, seller balance rose from **3.119 to 3.139 USDC**, and the paid response returned `SAFE_ADDITIVE`, `ACCEPT_CURRENT`, one relation check, and one proven subset.
+
+Seller-side telemetry recorded the challenge, signed request, and successful paid response under `owner_automation`. The authoritative ledger reconciled the transfer among nine excluded dedicated-buyer proofs totaling **0.41 USDC**, while recognized customer revenue and genuine purchases remained exactly zero. This proves search, selection, payment, settlement, delivery, telemetry, and accounting end to end without manufacturing a customer sale.
