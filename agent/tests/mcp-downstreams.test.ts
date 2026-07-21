@@ -6,6 +6,8 @@ import {
   parseAgentageGetResponse,
   parseAgentageSearchResponse,
   parseAwesomeMcpServersReadme,
+  parseDockerMcpHubPage,
+  parseDockerMcpRegistryDefinition,
   parseMcpObservatoryDetail,
   parseMcpubGetResponse,
   parseMcpubSearchLiveResponse,
@@ -98,6 +100,18 @@ test("recognizes only the exact TensorBlock search entry and remote profile", ()
       sourcePullRequest: 999,
     }],
   }, id, repository, 1312), /drifted/);
+});
+
+test("recognizes only the exact Docker remote registry and catalog contracts", () => {
+  const definition = `name: bountyverdict\ntype: remote\nabout:\n  title: BountyVerdict Agent Decision Tools\n  description: Six read-only tools settle through x402.\nremote:\n  transport_type: streamable-http\n  url: ${endpoint}\n`;
+  assert.equal(parseDockerMcpRegistryDefinition(definition, endpoint).contract_verified, true);
+  assert.equal(parseDockerMcpRegistryDefinition(definition.replace(endpoint, "https://wrong.example/mcp"), endpoint).contract_verified, false);
+  assert.equal(parseDockerMcpRegistryDefinition(`${definition}  SkillVerdict\n`, endpoint).skillverdict_contamination_risk, true);
+  assert.throws(() => parseDockerMcpRegistryDefinition(`${definition}name: bountyverdict\n`, endpoint), /duplicated/);
+
+  const page = `<html><h1>BountyVerdict Agent Decision Tools</h1><span>streamable-http</span><span>${endpoint}</span></html>`;
+  assert.equal(parseDockerMcpHubPage(page, endpoint).contract_verified, true);
+  assert.equal(parseDockerMcpHubPage(page.replace(endpoint, "https://wrong.example/mcp"), endpoint).contract_verified, false);
 });
 
 test("recognizes bounded Agentage official-registry search and detail contracts", () => {

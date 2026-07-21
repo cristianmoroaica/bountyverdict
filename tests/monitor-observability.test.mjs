@@ -111,6 +111,20 @@ test("directory monitoring tracks TensorBlock and Agentage as placement-only age
   assert.match(distribution, /exact owner-run record lookup only, never an impression, tool call, purchase, or revenue/);
 });
 
+test("directory monitoring tracks Docker registry review separately from live catalog exposure", async () => {
+  const [directory, distribution] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+  ]);
+  assert.match(directory, /const dockerMcpRegistryPrNumber = 4496/);
+  assert.match(directory, /async function dockerMcpRegistryStatus/);
+  assert.match(directory, /parseDockerMcpRegistryDefinition/);
+  assert.match(directory, /parseDockerMcpHubPage/);
+  assert.match(directory, /docker_mcp_registry: dockerMcpRegistry/);
+  assert.match(distribution, /Docker MCP Registry/);
+  assert.match(distribution, /Docker catalog placement only, never an impression, tool call, purchase, or revenue/);
+});
+
 test("directory monitoring retains MCPRepository validation without calling it demand", async () => {
   const directory = await readFile(directoryMonitorUrl, "utf8");
   const distribution = await readFile(distributionUrl, "utf8");

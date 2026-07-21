@@ -16,6 +16,8 @@ import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
 import {
   parseAgentageGetResponse,
   parseAwesomeMcpServersReadme,
+  parseDockerMcpHubPage,
+  parseDockerMcpRegistryDefinition,
   parseMcpObservatoryDetail,
   parseTensorBlockProfile,
   parseTensorBlockSearch,
@@ -67,6 +69,10 @@ const tensorBlockIndexApi = "https://mcp-index.tensorblock.co";
 const tensorBlockServerId = "github-cristianmoroaica-bountyverdict-038d60c1";
 const agentageMcpUrl = "https://catalog.agentage.io/mcp";
 const agentageSlug = "io-github-cristianmoroaica-bountyverdict";
+const dockerMcpRegistryPrNumber = 4496;
+const dockerMcpRegistryPrUrl = `https://github.com/docker/mcp-registry/pull/${dockerMcpRegistryPrNumber}`;
+const dockerMcpRegistryDefinitionUrl = "https://raw.githubusercontent.com/docker/mcp-registry/main/servers/bountyverdict/server.yaml";
+const dockerMcpHubUrl = "https://hub.docker.com/mcp/server/bountyverdict/overview";
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -575,6 +581,78 @@ async function agentageStatus(
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
       measurement: "owner_run_exact_catalog_record_lookup_not_search_impressions_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function dockerMcpRegistryStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const [review, definitionResponse, hubResponse] = await Promise.all([
+      githubPrStatus("docker", "mcp-registry", dockerMcpRegistryPrNumber, dockerMcpRegistryPrUrl),
+      fetch(dockerMcpRegistryDefinitionUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(dockerMcpHubUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    ]);
+    if (![200, 404].includes(definitionResponse.status) || ![200, 404].includes(hubResponse.status)) {
+      throw new Error(`Docker MCP Registry returned HTTP ${definitionResponse.status}/${hubResponse.status}.`);
+    }
+    const definition = definitionResponse.status === 200
+      ? parseDockerMcpRegistryDefinition(await definitionResponse.text(), `${productionOrigin}/mcp`)
+      : null;
+    const hub = hubResponse.status === 200
+      ? parseDockerMcpHubPage(await hubResponse.text(), `${productionOrigin}/mcp`)
+      : null;
+    const prStatus = String(review.status || "unknown");
+    const contractVerified = hub?.contract_verified === true;
+    const status = contractVerified
+      ? "catalog_listed"
+      : definition?.contract_verified === true
+        ? "registry_merged_awaiting_catalog"
+        : prStatus === "open"
+          ? "pr_open"
+          : prStatus === "merged"
+            ? "pr_merged_definition_pending"
+            : prStatus === "closed"
+              ? "pr_closed_without_catalog"
+              : "pr_status_unknown";
+    return {
+      url: dockerMcpRegistryPrUrl,
+      definition_url: dockerMcpRegistryDefinitionUrl,
+      catalog_url: dockerMcpHubUrl,
+      pr_status: prStatus,
+      pr_merged_at: review.merged_at || null,
+      pr_draft: review.draft === true,
+      pr_mergeable: review.mergeable ?? null,
+      definition_http_status: definitionResponse.status,
+      catalog_http_status: hubResponse.status,
+      definition,
+      hub,
+      listed: hub?.listed === true,
+      contract_verified: contractVerified,
+      skillverdict_contamination_risk: definition?.skillverdict_contamination_risk === true ||
+        hub?.skillverdict_contamination_risk === true,
+      status,
+      first_listed_at: contractVerified ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "submission_and_docker_catalog_presence_not_impressions_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: dockerMcpRegistryPrUrl,
+      definition_url: dockerMcpRegistryDefinitionUrl,
+      catalog_url: dockerMcpHubUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "submission_and_docker_catalog_presence_not_impressions_tool_calls_purchases_or_revenue",
     };
   }
 }
@@ -1349,6 +1427,7 @@ const [
   awesomeMcpServers,
   tensorBlockMcpIndex,
   agentage,
+  dockerMcpRegistry,
   agent402,
   x402scout,
   x402scan,
@@ -1374,6 +1453,7 @@ const [
   awesomeMcpServersStatus(previous.awesome_mcp_servers || {}, new Date().toISOString()),
   tensorBlockMcpIndexStatus(previous.tensorblock_mcp_index || {}, new Date().toISOString()),
   agentageStatus(previous.agentage || {}, new Date().toISOString()),
+  dockerMcpRegistryStatus(previous.docker_mcp_registry || {}, new Date().toISOString()),
   agent402Status(),
   x402ScoutStatus(),
   x402ScanStatus(),
@@ -1445,6 +1525,7 @@ const state = {
   awesome_mcp_servers: awesomeMcpServers,
   tensorblock_mcp_index: tensorBlockMcpIndex,
   agentage,
+  docker_mcp_registry: dockerMcpRegistry,
   agent402,
   x402scout,
   x402scan,

@@ -52,6 +52,13 @@ export type TensorBlockProfileStatus = {
   license: string | null;
 };
 
+export type DockerMcpRegistryStatus = {
+  listed: boolean;
+  contract_verified: boolean;
+  endpoint: string;
+  skillverdict_contamination_risk: boolean;
+};
+
 export function parseAwesomeMcpServersReadme(
   markdown: unknown,
   expectedRepository: string,
@@ -176,6 +183,56 @@ export function parseTensorBlockProfile(
     transport,
     auth_type: profile.auth.type,
     license: profile.license,
+  };
+}
+
+export function parseDockerMcpRegistryDefinition(
+  yaml: unknown,
+  expectedEndpoint: string,
+): DockerMcpRegistryStatus {
+  if (typeof yaml !== "string" || yaml.length > 100_000) {
+    throw new Error("Docker MCP Registry definition is invalid or unbounded.");
+  }
+  const lines = yaml.split("\n");
+  if (lines.length > 2_000 || lines.some((line) => line.length > 10_000)) {
+    throw new Error("Docker MCP Registry definition lines are unbounded.");
+  }
+  const count = (line: string) => lines.filter((candidate) => candidate.trim() === line).length;
+  const required = [
+    "name: bountyverdict",
+    "type: remote",
+    "title: BountyVerdict Agent Decision Tools",
+    "transport_type: streamable-http",
+    `url: ${expectedEndpoint}`,
+  ];
+  if (required.some((line) => count(line) > 1)) {
+    throw new Error("Docker MCP Registry duplicated a BountyVerdict contract field.");
+  }
+  const skillverdictContaminationRisk = /skillverdict|\/api\/skill|preflight-agent-skills/i.test(yaml);
+  return {
+    listed: count("name: bountyverdict") === 1,
+    contract_verified: required.every((line) => count(line) === 1) &&
+      /six read-only tools/i.test(yaml) && /\bx402\b/i.test(yaml) && !skillverdictContaminationRisk,
+    endpoint: expectedEndpoint,
+    skillverdict_contamination_risk: skillverdictContaminationRisk,
+  };
+}
+
+export function parseDockerMcpHubPage(
+  html: unknown,
+  expectedEndpoint: string,
+): DockerMcpRegistryStatus {
+  if (typeof html !== "string" || html.length > 2_000_000) {
+    throw new Error("Docker MCP Hub page is invalid or unbounded.");
+  }
+  const skillverdictContaminationRisk = /skillverdict|\/api\/skill|preflight-agent-skills/i.test(html);
+  const listed = /BountyVerdict Agent Decision Tools/i.test(html);
+  return {
+    listed,
+    contract_verified: listed && html.includes(expectedEndpoint) && /streamable-http/i.test(html) &&
+      !skillverdictContaminationRisk,
+    endpoint: expectedEndpoint,
+    skillverdict_contamination_risk: skillverdictContaminationRisk,
   };
 }
 
