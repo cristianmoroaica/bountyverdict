@@ -1860,11 +1860,37 @@ async function agentSkillsInStatus(
         signal: AbortSignal.timeout(timeoutMs),
       }),
     ]);
-    if (!response.ok) throw new Error(`AgentSkills.in search returned HTTP ${response.status}.`);
     const issue = JSON.parse(stdout) as Record<string, any>;
     if (issue.number !== agentSkillsInSubmissionIssueNumber || issue.url !== agentSkillsInSubmissionIssueUrl ||
       !Array.isArray(issue.labels) || !Array.isArray(issue.comments) || !["OPEN", "CLOSED"].includes(issue.state)) {
       throw new Error("AgentSkills.in submission issue telemetry is malformed.");
+    }
+    const submission = {
+      issue_number: issue.number,
+      issue_state: issue.state,
+      issue_created_at: issue.createdAt,
+      issue_updated_at: issue.updatedAt,
+      issue_closed_at: issue.closedAt,
+      labels: issue.labels.map((label: Record<string, unknown>) => String(label.name || "")).filter(Boolean).sort(),
+      maintainer_comments: issue.comments.length,
+      direct_endpoint_attempts: 2,
+      direct_endpoint_result: "backend_failed_403_then_cloudflare_1101",
+    };
+    if (!response.ok) {
+      return {
+        url: agentSkillsInSubmissionIssueUrl,
+        listing_url: agentSkillsInListingUrl,
+        search_url: agentSkillsInSearchUrl,
+        http_status: response.status,
+        listed: false,
+        listed_skills: 0,
+        expected_skills: 1,
+        status: issue.state === "CLOSED" ? "submission_closed_catalog_unavailable" : "submitted_catalog_unavailable",
+        submission,
+        exposed_at: null,
+        catalog_error: `AgentSkills.in search returned HTTP ${response.status}.`,
+        measurement: "submission_and_exact_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
+      };
     }
     const catalog = parseAgentSkillsInSearchPayload(await response.json());
     const listed = catalog.listed === true;
@@ -1881,17 +1907,7 @@ async function agentSkillsInStatus(
           : issue.state === "CLOSED"
             ? "submission_closed_without_listing"
             : "submitted_pending_indexing",
-      submission: {
-        issue_number: issue.number,
-        issue_state: issue.state,
-        issue_created_at: issue.createdAt,
-        issue_updated_at: issue.updatedAt,
-        issue_closed_at: issue.closedAt,
-        labels: issue.labels.map((label: Record<string, unknown>) => String(label.name || "")).filter(Boolean).sort(),
-        maintainer_comments: issue.comments.length,
-        direct_endpoint_attempts: 2,
-        direct_endpoint_result: "backend_failed_403_then_cloudflare_1101",
-      },
+      submission,
       exposed_at: listed ? previousStatus.exposed_at || observedAt : null,
       measurement: "submission_and_exact_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
     };
