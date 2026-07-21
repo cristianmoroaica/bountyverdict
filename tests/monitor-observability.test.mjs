@@ -70,6 +70,20 @@ test("directory monitoring tracks the exact AgentSkills.in adapter and source co
   assert.match(distribution, /submission\/listing and aggregate events are not installs, unique agents, purchases, or revenue/);
 });
 
+test("directory monitoring verifies the anonymous Agent-Skills.md adapter without inventing demand", async () => {
+  const [directory, distribution] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+  ]);
+  assert.match(directory, /async function agentSkillsMdStatus/);
+  assert.match(directory, /agent-skills\.md\/skills\/cristianmoroaica\/bountyverdict-mcp-skill\/route-github-agent-decisions/);
+  assert.match(directory, /Repo captured\. cristianmoroaica\/bountyverdict-mcp-skill added with 1 skills\./);
+  assert.match(directory, /agent_skills_md: agentSkillsMd/);
+  assert.match(directory, /anonymous_submission_and_exact_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue/);
+  assert.match(distribution, /Agent-Skills\.md adapter/);
+  assert.match(distribution, /anonymous submission and catalog presence are never impressions, installs, tool calls, purchases, or revenue/);
+});
+
 test("directory monitoring tracks the exact SkillsMD submission and public install counter without claiming revenue", async () => {
   const [directory, distribution, parser] = await Promise.all([
     readFile(directoryMonitorUrl, "utf8"),

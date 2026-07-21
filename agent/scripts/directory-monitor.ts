@@ -79,6 +79,12 @@ const skillsMdSubmissionId = "e68e968f-d03d-4808-b36b-5fd3b42b6489";
 const skillsMdSubmittedAt = "2026-07-21T10:26:21Z";
 const askillSearchUrl = "https://askill.sh/api/v1/skills?q=route-github-agent-decisions&owner=cristianmoroaica&repo=bountyverdict-mcp-skill&limit=20";
 const askillSubmittedAt = "2026-07-21T10:42:45.083Z";
+const askillRefreshRecordedAt = "2026-07-21T16:00:14Z";
+const askillRefreshResult = "existing_skill_skipped_zero_indexed";
+const agentSkillsMdSubmissionRecordedAt = "2026-07-21T15:54:20Z";
+const agentSkillsMdListingUrl = "https://agent-skills.md/skills/cristianmoroaica/bountyverdict-mcp-skill/route-github-agent-decisions";
+const agentSkillsMdTaskFirstDescription =
+  "Diagnose why a GitHub Actions run failed and find its root cause; decide whether to retry that failed Action once; check or rank GitHub bounties; audit AGENTS.md readiness; detect MCP schema drift.";
 const githubSkillReleaseTag = "v1.0.3";
 const mcpRepositoryUrl = "https://mcprepository.com/cristianmoroaica/bountyverdict";
 const mcpRepositorySubmittedAt = "2026-07-21T03:31:45Z";
@@ -2222,7 +2228,12 @@ async function askillStatus(
         listed_skills: 0,
         expected_skills: 1,
         status: "catalog_unavailable",
-        submission: { submitted_at: askillSubmittedAt, indexed: true },
+        submission: {
+          submitted_at: askillSubmittedAt,
+          indexed: true,
+          refresh_recorded_at: askillRefreshRecordedAt,
+          refresh_result: askillRefreshResult,
+        },
         exposed_at: previousStatus.exposed_at || askillSubmittedAt,
         catalog_error: `askill search returned HTTP ${response.status}.`,
         measurement: "exact_catalog_presence_and_public_favorites_not_impressions_installs_tool_calls_purchases_or_revenue",
@@ -2265,7 +2276,12 @@ async function askillStatus(
       search_url: askillSearchUrl,
       http_status: response.status,
       ...catalog,
-      submission: { submitted_at: askillSubmittedAt, indexed: true },
+      submission: {
+        submitted_at: askillSubmittedAt,
+        indexed: true,
+        refresh_recorded_at: askillRefreshRecordedAt,
+        refresh_result: askillRefreshResult,
+      },
       buyer_query_benchmark: buyerQueryBenchmark,
       exposed_at: listed ? previousStatus.exposed_at || askillSubmittedAt : null,
       measurement: "exact_catalog_presence_and_public_favorites_not_impressions_installs_tool_calls_purchases_or_revenue",
@@ -2278,10 +2294,73 @@ async function askillStatus(
       listed_skills: 0,
       expected_skills: 1,
       status: "catalog_request_failed",
-      submission: { submitted_at: askillSubmittedAt, indexed: true },
+      submission: {
+        submitted_at: askillSubmittedAt,
+        indexed: true,
+        refresh_recorded_at: askillRefreshRecordedAt,
+        refresh_result: askillRefreshResult,
+      },
       exposed_at: previousStatus.exposed_at || askillSubmittedAt,
       error: error instanceof Error ? error.message : String(error),
       measurement: "exact_catalog_presence_and_public_favorites_not_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function agentSkillsMdStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(agentSkillsMdListingUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (![200, 404].includes(response.status)) {
+      throw new Error(`Agent-Skills.md returned HTTP ${response.status}.`);
+    }
+    const body = await response.text();
+    if (body.length > 2_000_000) throw new Error("Agent-Skills.md listing response is unbounded.");
+    const requiredMarkers = [
+      "Route GitHub Agent Decisions Skill",
+      agentSkillsMdTaskFirstDescription,
+      "cristianmoroaica/bountyverdict-mcp-skill/route-github-agent-decisions",
+      "bountyverdict-agent-production.mimirslab.workers.dev/mcp?source=agent-skills-marketplace",
+      "check_github_bounty",
+      "rank_github_bounties",
+      "audit_agent_harness",
+      "diagnose_github_actions_run",
+      "classify_github_actions_flake",
+      "check_mcp_tool_drift",
+      "io.github.cristianmoroaica/bountyverdict/http-payment-handoff",
+    ];
+    const listed = response.status === 200 && requiredMarkers.every((marker) => body.includes(marker));
+    return {
+      submission_recorded_at: agentSkillsMdSubmissionRecordedAt,
+      submission_recorded: true,
+      submission_response_message: "Repo captured. cristianmoroaica/bountyverdict-mcp-skill added with 1 skills.",
+      payment_status: "not_required",
+      listing_url: agentSkillsMdListingUrl,
+      listing_http_status: response.status,
+      listed,
+      contract_verified: listed,
+      status: listed ? "catalog_contract_verified" : response.status === 404 ? "pending_publication" : "catalog_contract_drift",
+      first_listed_at: listed ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "anonymous_submission_and_exact_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      submission_recorded_at: agentSkillsMdSubmissionRecordedAt,
+      submission_recorded: true,
+      submission_response_message: "Repo captured. cristianmoroaica/bountyverdict-mcp-skill added with 1 skills.",
+      payment_status: "not_required",
+      listing_url: agentSkillsMdListingUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "anonymous_submission_and_exact_listing_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
     };
   }
 }
@@ -2457,6 +2536,7 @@ const [
   agentSkillsIn,
   skillsMd,
   askill,
+  agentSkillsMd,
 ] = await Promise.all([
   skillsShStatus(),
   agentToolStatus(),
@@ -2497,6 +2577,7 @@ const [
   agentSkillsInStatus(previous.agent_skills_in || {}, new Date().toISOString()),
   skillsMdStatus(previous.skills_md || {}, new Date().toISOString()),
   askillStatus(previous.askill || {}, new Date().toISOString()),
+  agentSkillsMdStatus(previous.agent_skills_md || {}, new Date().toISOString()),
 ]);
 if (Number(x402scan.listed_resources || 0) > 0) {
   x402scan.exposed_at = previous.x402scan?.exposed_at || new Date().toISOString();
@@ -2694,6 +2775,7 @@ const state = {
   agent_skills_in: agentSkillsIn,
   skills_md: skillsMd,
   askill,
+  agent_skills_md: agentSkillsMd,
   github_skill: githubSkill,
   security_directory_pr: securityDirectoryPr,
   x402_directory_pr: x402DirectoryPr,
