@@ -13,6 +13,8 @@ Submitted the existing remote MCP to ToolHive's agent-facing catalog through iss
 
 Added ToolHive to the authenticated recurring directory monitor instead of leaving its state as a static note. Each audited directory pass now verifies PR identity, mergeability, review state, exact catalog path, release `1.1.1`, Streamable HTTP endpoint, MIT metadata, required discovery tags, and the complete six-tool set. The parser fails closed on identity, endpoint, version, tool, or trust-metadata drift while permitting harmless catalog tag enrichment. This makes review and merge changes actionable without owner polling and without contacting production or treating catalog activity as demand.
 
+Extended the same authenticated monitor across every tracked distribution PR to collect bounded GitHub Actions check-run and legacy status-context outcomes. The top-level monitor now distinguishes unreadable PR sources, successful checks, genuinely failed checks, pending checks, and first-contributor review/approval gates, exposing bounded failed-check names without mistaking workflow activity for buyer demand or revenue.
+
 Smithery remains publish-ready but unauthenticated: the CLI still reports no API key after the browser login was opened. Publication therefore remains behind the one-time publisher approval and namespace step; no credential was placed in Git.
 
 ## 2026-07-21 — Clean conversion measurement restored

@@ -261,7 +261,13 @@ test("directory PR monitoring uses authenticated GitHub reads instead of exhaust
   assert.match(directory, /github_pr_monitoring: githubPrMonitoring/);
   assert.match(directory, /\.\.\.githubPrFields\(review\)/);
   assert.match(telemetry, /"gh", \[\.\.\.args\]/);
-  assert.match(telemetry, /number,url,state,mergedAt,isDraft,mergeable,mergeStateStatus,reviewDecision/);
+  assert.match(telemetry, /number,url,state,mergedAt,isDraft,mergeable,mergeStateStatus,reviewDecision,headRefName,headRefOid,statusCheckRollup/);
+  assert.match(telemetry, /StatusContext/);
+  assert.match(directory, /workflow_runs: githubGateTotals\.workflows/);
+  assert.match(directory, /action_required_check_names/);
+  assert.match(directory, /\["agent_finder_catalog", agentFinderCatalog\]/);
+  assert.match(distribution, /githubWorkflowRuns\.action_required/);
+  assert.doesNotMatch(directory, /fetch\(`https:\/\/api\.github\.com\/repos\/github\/agentfinder-catalog\/pulls/);
   assert.match(distribution, /Authenticated GitHub PR telemetry/);
   assert.doesNotMatch(directory, /fetch\(`https:\/\/api\.github\.com\/repos\/\$\{owner\}\/\$\{repo\}\/pulls\/\$\{pull\}`/);
 });

@@ -1115,21 +1115,18 @@ async function agentFinderCatalogStatus(
   previousStatus: Record<string, any>,
   observedAt: string,
 ): Promise<Record<string, unknown>> {
-  const githubHeaders = {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "bountyverdict-directory-monitor",
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
   try {
-    const [prResponse, prFilesResponse, catalogResponse, registryResponse, searchResponse] = await Promise.all([
-      fetch(`https://api.github.com/repos/github/agentfinder-catalog/pulls/${agentFinderPrNumber}`, {
-        headers: githubHeaders,
-        signal: AbortSignal.timeout(timeoutMs),
+    const [prReview, { stdout: prOutput }, { stdout: prFilesOutput }, catalogResponse, registryResponse, searchResponse] = await Promise.all([
+      readGitHubPrStatus("github", "agentfinder-catalog", agentFinderPrNumber, agentFinderPrUrl, timeoutMs),
+      execFileAsync("gh", ["api", `repos/github/agentfinder-catalog/pulls/${agentFinderPrNumber}`], {
+        timeout: timeoutMs,
+        maxBuffer: 1_000_000,
+        encoding: "utf8",
       }),
-      fetch(`https://api.github.com/repos/github/agentfinder-catalog/pulls/${agentFinderPrNumber}/files?per_page=100`, {
-        headers: githubHeaders,
-        signal: AbortSignal.timeout(timeoutMs),
-      }),
+      execFileAsync("gh", [
+        "api", "--method", "GET", `repos/github/agentfinder-catalog/pulls/${agentFinderPrNumber}/files`,
+        "-f", "per_page=100",
+      ], { timeout: timeoutMs, maxBuffer: 1_000_000, encoding: "utf8" }),
       fetch(agentFinderCatalogEntryUrl, {
         headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
         signal: AbortSignal.timeout(timeoutMs),
@@ -1143,12 +1140,12 @@ async function agentFinderCatalogStatus(
         signal: AbortSignal.timeout(timeoutMs),
       }),
     ]);
-    if (prResponse.status !== 200 || prFilesResponse.status !== 200 ||
-      ![200, 404].includes(catalogResponse.status) || registryResponse.status !== 200 || searchResponse.status !== 200) {
-      throw new Error(`Agent Finder returned HTTP ${prResponse.status}/${prFilesResponse.status}/${catalogResponse.status}/${registryResponse.status}/${searchResponse.status}.`);
+    if (prReview.status === "request_failed" || ![200, 404].includes(catalogResponse.status) ||
+      registryResponse.status !== 200 || searchResponse.status !== 200) {
+      throw new Error(`Agent Finder returned unavailable PR telemetry or HTTP ${catalogResponse.status}/${registryResponse.status}/${searchResponse.status}.`);
     }
-    const pr = await prResponse.json() as Record<string, any>;
-    const prFiles = await prFilesResponse.json() as unknown;
+    const pr = JSON.parse(String(prOutput)) as Record<string, any>;
+    const prFiles = JSON.parse(String(prFilesOutput)) as unknown;
     if (!Array.isArray(prFiles) || prFiles.length > 100 ||
       prFiles.some((file: unknown) => !file || typeof file !== "object" || Array.isArray(file) ||
         typeof (file as Record<string, unknown>).filename !== "string" ||
@@ -1159,7 +1156,7 @@ async function agentFinderCatalogStatus(
       pr.base?.repo?.full_name === "github/agentfinder-catalog" && pr.base?.ref === "main" &&
       pr.head?.label === "cristianmoroaica:add-bountyverdict-agent-tools" && pr.changed_files === 1 &&
       prFiles.length === 1 && prFiles[0].filename === agentFinderCatalogEntryPath && prFiles[0].status === "added";
-    const prStatus = pr.merged_at ? "merged" : typeof pr.state === "string" ? pr.state : "unknown";
+    const prStatus = prReview.status;
 
     let catalog = null;
     if (catalogResponse.status === 200) {
@@ -1204,9 +1201,7 @@ async function agentFinderCatalogStatus(
       url: agentFinderPrUrl,
       pr_number: agentFinderPrNumber,
       pr_status: prStatus,
-      pr_merged_at: pr.merged_at || null,
-      pr_draft: pr.draft === true,
-      pr_mergeable: pr.mergeable ?? null,
+      ...githubPrFields(prReview),
       pr_contract_verified: prContractVerified,
       catalog_url: agentFinderCatalogEntryUrl,
       catalog_http_status: catalogResponse.status,
@@ -2386,7 +2381,10 @@ const githubPrChecks = [
   ["cline_marketplace", clineMarketplace],
   ["kilo_marketplace", kiloMarketplace],
   ["toolhive", toolHive],
+  ["agent_finder_catalog", agentFinderCatalog],
 ] as const;
+const prTelemetryValue = (normalized: Record<string, unknown>, field: string): unknown =>
+  normalized[`pr_${field}`] ?? normalized[field];
 const githubPrFailures = githubPrChecks.flatMap(([name, check]) => {
   const normalized = check as Record<string, unknown>;
   const status = String(normalized.pr_status || normalized.status || "unknown");
@@ -2395,16 +2393,123 @@ const githubPrFailures = githubPrChecks.flatMap(([name, check]) => {
     : typeof normalized.error === "string"
       ? normalized.error
       : null;
-  return status === "request_failed" || status === "unknown" || status === "pr_status_unknown"
-    ? [{ name, url: normalized.pr_url || normalized.url || null, status, error: error || "GitHub PR status unavailable." }]
+  const sourceFailure = status === "request_failed" || status === "unknown" || status === "pr_status_unknown"
+    ? [{
+        kind: "source_unreadable",
+        name,
+        url: normalized.pr_url || normalized.url || null,
+        status,
+        error: error || "GitHub PR status unavailable.",
+      }]
+    : [];
+  const failedChecks = Number(prTelemetryValue(normalized, "checks_failed"));
+  const checkFailure = Number.isInteger(failedChecks) && failedChecks > 0
+    ? [{
+        kind: "check_runs_failed",
+        name,
+        url: normalized.pr_url || normalized.url || null,
+        status,
+        failed_checks: failedChecks,
+        failed_check_names: Array.isArray(prTelemetryValue(normalized, "failed_check_names"))
+          ? (prTelemetryValue(normalized, "failed_check_names") as unknown[]).filter((value): value is string => typeof value === "string").slice(0, 100)
+          : [],
+      }]
+    : [];
+  const cancelledChecks = Number(prTelemetryValue(normalized, "checks_cancelled_or_stale"));
+  const cancelledCheckFailure = Number.isInteger(cancelledChecks) && cancelledChecks > 0
+    ? [{
+        kind: "check_runs_cancelled_or_stale",
+        name,
+        url: normalized.pr_url || normalized.url || null,
+        status,
+        cancelled_or_stale_checks: cancelledChecks,
+      }]
+    : [];
+  const failedWorkflowRuns = Number(prTelemetryValue(normalized, "workflow_runs_failed"));
+  const workflowFailure = Number.isInteger(failedWorkflowRuns) && failedWorkflowRuns > 0
+    ? [{
+        kind: "workflow_runs_failed",
+        name,
+        url: normalized.pr_url || normalized.url || null,
+        status,
+        failed_workflow_runs: failedWorkflowRuns,
+        failed_check_names: Array.isArray(prTelemetryValue(normalized, "failed_workflow_names"))
+          ? (prTelemetryValue(normalized, "failed_workflow_names") as unknown[]).filter((value): value is string => typeof value === "string").slice(0, 100)
+          : [],
+      }]
+    : [];
+  const cancelledWorkflowRuns = Number(prTelemetryValue(normalized, "workflow_runs_cancelled_or_stale"));
+  const cancelledWorkflowFailure = Number.isInteger(cancelledWorkflowRuns) && cancelledWorkflowRuns > 0
+    ? [{
+        kind: "workflow_runs_cancelled_or_stale",
+        name,
+        url: normalized.pr_url || normalized.url || null,
+        status,
+        cancelled_or_stale_workflow_runs: cancelledWorkflowRuns,
+      }]
+    : [];
+  return [...sourceFailure, ...checkFailure, ...cancelledCheckFailure, ...workflowFailure, ...cancelledWorkflowFailure];
+});
+const githubPrActionRequired = githubPrChecks.flatMap(([name, check]) => {
+  const normalized = check as Record<string, unknown>;
+  const workflowActionRequired = Number(prTelemetryValue(normalized, "workflow_runs_action_required"));
+  const checkActionRequired = Number(prTelemetryValue(normalized, "checks_action_required"));
+  const workflowNames = Array.isArray(prTelemetryValue(normalized, "action_required_workflow_names"))
+    ? (prTelemetryValue(normalized, "action_required_workflow_names") as unknown[]).filter((value): value is string => typeof value === "string").slice(0, 100)
+    : [];
+  const checkNames = Array.isArray(prTelemetryValue(normalized, "action_required_check_names"))
+    ? (prTelemetryValue(normalized, "action_required_check_names") as unknown[]).filter((value): value is string => typeof value === "string").slice(0, 100)
+    : [];
+  const actionRequired = (Number.isInteger(workflowActionRequired) && workflowActionRequired > 0 ? workflowActionRequired : 0) +
+    (Number.isInteger(checkActionRequired) && checkActionRequired > 0 ? checkActionRequired : 0);
+  return actionRequired > 0
+    ? [{
+        name,
+        url: normalized.pr_url || normalized.url || null,
+        action_required_workflow_runs: Number.isInteger(workflowActionRequired) ? workflowActionRequired : 0,
+        action_required_check_runs: Number.isInteger(checkActionRequired) ? checkActionRequired : 0,
+        gate_names: [...new Set([...workflowNames, ...checkNames])].sort().slice(0, 100),
+      }]
     : [];
 });
+const githubGateTotals = githubPrChecks.reduce((totals, [, check]) => {
+  const normalized = check as Record<string, unknown>;
+  const count = (field: string): number => {
+    const value = Number(prTelemetryValue(normalized, field));
+    return Number.isInteger(value) && value >= 0 && value <= 100 ? value : 0;
+  };
+  totals.checks.total += count("checks_total");
+  totals.checks.pending += count("checks_pending");
+  totals.checks.succeeded += count("checks_succeeded");
+  totals.checks.neutral_or_skipped += count("checks_neutral_or_skipped");
+  totals.checks.failed += count("checks_failed");
+  totals.checks.cancelled_or_stale += count("checks_cancelled_or_stale");
+  totals.checks.action_required += count("checks_action_required");
+  totals.workflows.total += count("workflow_runs_total");
+  totals.workflows.pending += count("workflow_runs_pending");
+  totals.workflows.succeeded += count("workflow_runs_succeeded");
+  totals.workflows.neutral_or_skipped += count("workflow_runs_neutral_or_skipped");
+  totals.workflows.failed += count("workflow_runs_failed");
+  totals.workflows.cancelled_or_stale += count("workflow_runs_cancelled_or_stale");
+  totals.workflows.action_required += count("workflow_runs_action_required");
+  return totals;
+}, {
+  checks: { total: 0, pending: 0, succeeded: 0, neutral_or_skipped: 0, failed: 0, cancelled_or_stale: 0, action_required: 0 },
+  workflows: { total: 0, pending: 0, succeeded: 0, neutral_or_skipped: 0, failed: 0, cancelled_or_stale: 0, action_required: 0 },
+});
+const githubSourceFailures = githubPrFailures.filter(({ kind }) => kind === "source_unreadable").length;
 const githubPrMonitoring = {
   healthy: githubPrFailures.length === 0,
   checked: githubPrChecks.length,
+  sources_readable: githubPrChecks.length - githubSourceFailures,
+  source_failures: githubSourceFailures,
   failed: githubPrFailures.length,
+  check_runs: githubGateTotals.checks,
+  workflow_runs: githubGateTotals.workflows,
+  requires_maintainer_action: githubPrActionRequired.length > 0,
+  action_required: githubPrActionRequired,
   failures: githubPrFailures,
-  measurement: "authenticated_pr_state_only_not_catalog_exposure_impressions_installs_or_purchases",
+  measurement: "authenticated_pr_and_workflow_state_only_not_catalog_exposure_impressions_installs_or_purchases",
 };
 const state = {
   checked_at: new Date().toISOString(),
