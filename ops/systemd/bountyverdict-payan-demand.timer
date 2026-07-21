@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll Payan for exact existing-product demand every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=bountyverdict-payan-demand.service
+
+[Install]
+WantedBy=timers.target

@@ -33,3 +33,12 @@ test("directory monitoring retains public AgentSkill and GitHub Skill conversion
   assert.match(directory, /one_rotating_owner_run_exact_github_code_search_per_hour/);
   assert.match(directory, /github_skill: githubSkill/);
 });
+
+test("distribution monitoring treats Payan demand state as a funnel and receipts as settlement attribution", async () => {
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(distribution, /async function payanDemandStatus/);
+  assert.match(distribution, /exact_fit_request_bids_and_fulfillment_state_not_settlement_or_revenue_by_itself/);
+  assert.match(distribution, /delivered_request_sales/);
+  assert.match(distribution, /\["direct", "escrow_release"\]/);
+  assert.match(distribution, /Payan exact-fit demand capture/);
+});

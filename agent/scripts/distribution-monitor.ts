@@ -56,6 +56,8 @@ const directoryStateFile = process.env.DIRECTORY_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/directories.json`;
 const experimentStateFile = process.env.EXPERIMENT_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/acquisition-experiment.json`;
+const payanDemandStateFile = process.env.PAYAN_DEMAND_STATE_FILE ||
+  `${homedir()}/.local/state/bountyverdict/payan-demand.json`;
 const funnelStateFile = process.env.FUNNEL_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/funnel-telemetry.json`;
 const trustedFunnelBaselineFile = process.env.TRUSTED_FUNNEL_BASELINE_FILE ||
@@ -836,12 +838,57 @@ function payanOfferMap(): Record<string, string> {
   return offerMap;
 }
 
+async function payanDemandStatus(): Promise<Record<string, any>> {
+  const state = JSON.parse(await readFile(payanDemandStateFile, "utf8")) as Record<string, any>;
+  if (state.schema_version !== 1 || state.provider_id !== PAYAN_PROVIDER_ID ||
+    typeof state.checked_at !== "string" || !Number.isFinite(Date.parse(state.checked_at)) ||
+    !state.records || typeof state.records !== "object" || Array.isArray(state.records) ||
+    Object.keys(state.records).length > 200 || !state.last_run || typeof state.last_run !== "object") {
+    throw new Error("Payan demand capture state is malformed.");
+  }
+  const ageMs = Date.now() - Date.parse(state.checked_at);
+  if (ageMs < 0 || ageMs > 15 * 60 * 1000) throw new Error("Payan demand capture state is stale.");
+  const counters = [
+    "open_requests_seen", "exact_matches", "bids_created", "existing_bids_recovered",
+    "accepted", "fulfilled", "approved", "errors", "tracked_requests",
+  ];
+  for (const field of counters) {
+    if (!Number.isSafeInteger(state.last_run[field]) || Number(state.last_run[field]) < 0) {
+      throw new Error(`Payan demand ${field} is invalid.`);
+    }
+  }
+  if (state.last_run.bid_enabled !== true || state.last_run.fulfill_enabled !== true) {
+    throw new Error("Payan demand capture is not enabled for bids and fulfillment.");
+  }
+  const records = Object.values(state.records) as Array<Record<string, any>>;
+  const products: Record<string, number> = {};
+  for (const record of records) {
+    if (!/^[a-z0-9]{20,64}$/.test(record.request_id || "") ||
+      !/^[a-z0-9]{20,64}$/.test(record.bid_id || "") ||
+      !PAYAN_OFFERS.some(({ product }) => product === record.decision?.product) ||
+      !Number.isSafeInteger(record.decision?.price_cents) || Number(record.decision.price_cents) < 1) {
+      throw new Error("Payan demand record is malformed.");
+    }
+    products[record.decision.product] = Number(products[record.decision.product] || 0) + 1;
+  }
+  return {
+    healthy: Number(state.last_run.errors) === 0,
+    checked_at: state.checked_at,
+    age_seconds: Math.round(ageMs / 1000),
+    ...state.last_run,
+    tracked_products: products,
+    records,
+    measurement: "exact_fit_request_bids_and_fulfillment_state_not_settlement_or_revenue_by_itself",
+  };
+}
+
 async function payanStatus(): Promise<Record<string, unknown>> {
   if (!payanApiKey || !/^pk_live_[A-Za-z0-9_-]+$/.test(payanApiKey)) throw new Error("PAYAN_API_KEY is missing or invalid.");
   if (payanAgentId !== PAYAN_PROVIDER_ID) throw new Error("PAYAN_AGENT_ID does not match the pinned provider.");
   const offerMap = payanOfferMap();
-  const [receiptResponse, ...offerResponses] = await Promise.all([
+  const [receiptResponse, demandCapture, ...offerResponses] = await Promise.all([
     monitoredFetch(`${PAYAN_API}/agents/${PAYAN_PROVIDER_ID}/receipts`),
+    payanDemandStatus(),
     ...PAYAN_OFFERS.map(({ product }) => monitoredFetch(`${PAYAN_API}/offers/${offerMap[product]}`)),
   ]);
   if (!receiptResponse.ok) throw new Error(`receipt lookup returned HTTP ${receiptResponse.status}.`);
@@ -862,10 +909,22 @@ async function payanStatus(): Promise<Record<string, unknown>> {
   }
   const receipts = Array.isArray(receiptPayload.receipts) ? receiptPayload.receipts as Array<Record<string, any>> : [];
   const offerIds = new Set(Object.values(offerMap));
-  const delivered = receipts.filter((receipt) =>
+  const deliveredOffers = receipts.filter((receipt) =>
     receipt.sellerId === PAYAN_PROVIDER_ID && receipt.buyerId !== PAYAN_PROVIDER_ID &&
     offerIds.has(String(receipt.offerId)) && receipt.status === "confirmed" && receipt.delivered === true
   );
+  const requestContracts = new Map((demandCapture.records as Array<Record<string, any>>).map((record) => [
+    record.request_id,
+    { price_cents: Number(record.decision.price_cents), receipt_id: record.settlement_receipt_id || null },
+  ]));
+  const deliveredRequests = receipts.filter((receipt) => {
+    const contract = requestContracts.get(String(receipt.requestId));
+    return Boolean(contract) && receipt.sellerId === PAYAN_PROVIDER_ID && receipt.buyerId !== PAYAN_PROVIDER_ID &&
+      receipt.status === "confirmed" && ["direct", "escrow_release"].includes(String(receipt.settlementType)) &&
+      Number(receipt.amountCents) === contract!.price_cents &&
+      (!contract!.receipt_id || receipt._id === contract!.receipt_id);
+  });
+  const delivered = [...new Map([...deliveredOffers, ...deliveredRequests].map((receipt) => [receipt._id, receipt])).values()];
   const receiptRevenueCents = delivered.reduce((sum, receipt) => sum + Number(receipt.amountCents || 0), 0);
   if (!Number.isSafeInteger(receiptRevenueCents) || receiptRevenueCents < 0) throw new Error("receipt revenue is invalid.");
   return {
@@ -874,9 +933,12 @@ async function payanStatus(): Promise<Record<string, unknown>> {
     offer_count: offers.length,
     listing_contracts_verified: true,
     delivered_external_sales: delivered.length,
+    delivered_offer_sales: deliveredOffers.length,
+    delivered_request_sales: deliveredRequests.length,
     delivered_receipt_ids: delivered.map(({ _id }) => _id),
     delivered_transaction_hashes: delivered.map(({ txHash }) => txHash),
     receipt_revenue_usdc: receiptRevenueCents / 100,
+    demand_capture: demandCapture,
     accounting_note: "PayanAgent settles directly to the Base revenue wallet; these receipts are attribution metadata and are already counted by direct onchain settlement accounting.",
   };
 }
@@ -1287,6 +1349,7 @@ function renderMonitorNote(report: Record<string, any>): string {
   const subscriptionPurchases = Number(report.marketplaces?.the402?.subscription_purchases || 0);
   const nearPurchases = Number(report.marketplaces?.near?.completed_external_jobs || 0);
   const payanAttributedSales = Number(report.marketplaces?.payan?.delivered_external_sales || 0);
+  const payanDemand = report.marketplaces?.payan?.demand_capture || {};
   const agenticIndexed = report.marketplaces?.agentic_market?.indexed_products || {};
   const agenticMissing = Array.isArray(report.marketplaces?.agentic_market?.missing_products)
     ? report.marketplaces.agentic_market.missing_products
@@ -1346,6 +1409,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **the402 monthly bundle:** ${report.marketplaces?.the402?.subscription_plan?.active ? `$${Number(report.marketplaces.the402.subscription_plan.agent_price_usd).toFixed(2)} for up to ${report.marketplaces.the402.subscription_plan.maximum_monthly_requests} requests` : "unavailable"}
 - **NEAR Agent Market listings:** ${report.marketplaces?.near?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"}
 - **PayanAgent offers:** ${report.marketplaces?.payan?.listing_contracts_verified ? "6 / 6 exact contracts verified" : "unavailable or drifted"} (${payanAttributedSales} delivered sales, attributed inside direct onchain totals)
+- **Payan exact-fit demand capture:** ${payanDemand.healthy ? "enabled and healthy" : "unavailable or degraded"}; ${Number(payanDemand.open_requests_seen || 0)} open seen, ${Number(payanDemand.exact_matches || 0)} exact fits, ${Number(payanDemand.tracked_requests || 0)} tracked bids, ${Number(payanDemand.accepted || 0)} accepted, ${Number(payanDemand.fulfilled || 0)} fulfilled, ${Number(payanDemand.approved || 0)} approved (never bids on incomplete or mismatched briefs)
 - **Agentic Market automatic directory:** ${report.marketplaces?.agentic_market?.exact_contracts_verified ? `${report.marketplaces.agentic_market.endpoint_count} / 7 exact contracts indexed` : "unavailable or drifted"}${agenticMissing.length ? `; pending ${agenticMissing.join(", ")}` : ""}
 - **Agent402 open router:** ${report.acquisition?.agent402?.listed ? `${report.acquisition.agent402.found_queries ?? 0} / ${report.acquisition.agent402.query_count ?? 7} unbranded buyer queries retrieve the exact route; ${report.acquisition.agent402.top_three_queries ?? 0} top-three` : "unavailable or missing"} (${report.acquisition?.agent402?.listing_source || "unknown source"}; owner-run benchmark, not impressions)
 - **x402scan registry:** ${report.acquisition?.x402scan?.listed_resources ?? "unavailable"} / ${report.acquisition?.x402scan?.expected_resources ?? 7} paid endpoints (${report.acquisition?.x402scan?.status || "unavailable"}; registry presence only, never a purchase)
@@ -1441,7 +1505,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - the402 listings: ${report.marketplaces?.the402?.service_count ?? "unavailable"} / 6 (${report.marketplaces?.the402?.webhook_healthy ? "signed webhook healthy" : "unavailable"}; SkillVerdict excluded during isolated experiment)
 - the402 per-product service attempts: ${Object.entries(report.marketplaces?.the402?.service_outcomes || {}).map(([product, outcome]: [string, any]) => `${product} ${Number(outcome.total_jobs || 0)} total/${Number(outcome.failed_jobs || 0)} failed/${Number(outcome.disputed_jobs || 0)} disputed`).join("; ") || "unavailable"} (attempt telemetry only; settlements remain authoritative)
 - NEAR Agent Market listings: ${report.marketplaces?.near?.service_count ?? "unavailable"} / 6 (automated JSON fulfillment; SkillVerdict excluded)
-- PayanAgent offers: ${report.marketplaces?.payan?.offer_count ?? "unavailable"} / 6 (Base x402 proxy; SkillVerdict excluded)
+- PayanAgent offers: ${report.marketplaces?.payan?.offer_count ?? "unavailable"} / 6 (Base x402 proxy; SkillVerdict excluded); exact-fit request automation ${report.marketplaces?.payan?.demand_capture?.healthy ? "healthy" : "unavailable"}
 - Agentic Market automatic endpoints: ${report.marketplaces?.agentic_market?.endpoint_count ?? "unavailable"} / 7 (CDP Bazaar mirror; reported quality counters excluded from purchase and revenue accounting)
 - Edge funnel capture: ${funnel.available ? `${Number(funnel.trusted_external_402_challenges || 0)} trusted external challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}; ${Number(funnel.external_402_challenges || 0)} older/lifetime external-or-unattributed challenges retained but excluded from rates` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
 - Discovery-surface capture: ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external since the clean boundary; ${Number(funnel.external_discovery_requests || 0)} lifetime external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
@@ -1481,6 +1545,7 @@ skills.sh counts are anonymous CLI telemetry with unknown provenance. They are t
 - NEAR Agent Market completed external jobs: ${nearPurchases}
 - NEAR Agent Market earned USDC balance: ${money(nearRevenueValue)}
 - PayanAgent delivered receipts: ${payanAttributedSales} (${money(report.marketplaces?.payan?.receipt_revenue_usdc || 0)} already included in direct Base settlements, never added twice)
+- PayanAgent request funnel: ${Number(payanDemand.exact_matches || 0)} exact fits, ${Number(payanDemand.tracked_requests || 0)} bids tracked, ${Number(payanDemand.accepted || 0)} accepted, ${Number(payanDemand.fulfilled || 0)} fulfilled, ${Number(payanDemand.approved || 0)} approved
 
 - Single verdict purchases: ${Number(purchases.single || 0)}
 - Portfolio purchases: ${Number(purchases.portfolio || 0)}

@@ -106,6 +106,14 @@ The production monitor verifies all free routes, all seven exact mainnet payment
 npm run distribution:monitor
 ```
 
+Payan's open-request automation is separate from offer fulfillment. It polls the public feed, bids only when the brief itself contains a complete canonical input for one existing non-SkillVerdict product, rechecks authenticated detail for duplicate bids, and refuses accepted hidden inputs that differ from the public SHA-256 contract. The provider then calls the existing bounded production handler and submits the validated JSON output once. Runtime state is private and contains no API key:
+
+```bash
+node --env-file="$HOME/.config/bountyverdict/payan.env" --experimental-strip-types scripts/payan-demand.ts
+```
+
+`PAYAN_BID=YES` and `PAYAN_FULFILL=YES` enable the two live mutations. The systemd unit sets both only after the dry run and tests pass.
+
 It atomically writes the latest machine-readable snapshot to `~/.local/state/bountyverdict/distribution-status.json` and overwrites the SSH-friendly milestone dashboard at `~/notes/mimirx402.md`, keeping health, next work, customer revenue, tracked costs, and profit at the top. The versioned user-service templates in `ops/systemd/` run it every 15 minutes; per-product merchant indexing and semantic-search rank are tracked without treating normal discovery-cache delay as a health failure. Owner-funded production proofs and marketplace registration costs are retained separately and excluded from customer purchases and earned revenue.
 
 the402 provider credentials are written outside the repository to `~/.config/bountyverdict/the402.env` with mode `0600`, mirrored to encrypted Worker and GitHub Actions secret stores, and loaded by the distribution monitor. The public production service-ID map contains six existing products; SkillVerdict stays excluded until its isolated earned-placement experiment ends. Each listing publishes the canonical typed output schema and is checked for contract drift. The same six services are bundled in the `BountyVerdict Agent Engineering Monthly` plan at $1.05 agent price for up to 20 combined requests; the monitor validates its exact public contract and persists explicitly attributed subscription settlements as one purchase each. The signed `request.created` feed evaluates future buyer postings and bids only when the complete brief and explicit intent match one of those six existing schemas; ambiguous, expired, subcontracted, over-tier, or unrelated work is ignored.

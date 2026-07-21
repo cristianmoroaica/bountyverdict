@@ -1,0 +1,20 @@
+[Unit]
+Description=BountyVerdict exact-fit Payan demand capture and fulfillment
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/sandbox/bountyverdict/agent
+Environment=PATH=%h/.local/share/mise/shims:/usr/local/bin:/usr/bin
+Environment=PAYAN_BID=YES
+Environment=PAYAN_FULFILL=YES
+EnvironmentFile=%h/.config/bountyverdict/payan.env
+ExecStart=/usr/bin/env node --experimental-strip-types scripts/payan-demand.ts
+NoNewPrivileges=yes
+PrivateTmp=yes
+UMask=0077
+TimeoutStartSec=5min
+
+[Install]
+WantedBy=default.target
