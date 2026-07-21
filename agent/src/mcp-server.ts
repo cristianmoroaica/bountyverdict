@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
 import { createPaymentWrapper, type PaymentRequirements } from "@x402/mcp";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { z } from "zod";
@@ -15,7 +16,6 @@ import { MCP_SUCCESS_OUTPUT_SCHEMAS } from "./mcp-output-contracts.ts";
 import { PRODUCT_CATALOG, type ProductKey } from "./product-catalog.ts";
 import { createX402ServerContext, type X402ServerEnvironment } from "./x402-resource-server.ts";
 
-const MCP_PROTOCOL_VERSION = "2025-11-25";
 const MCP_BODY_LIMIT_BYTES = MCP_DRIFT_MAX_BODY_BYTES + 64 * 1024;
 const MCP_SERVER_VERSION = "1.1.0";
 const MCP_ALLOWED_BROWSER_ORIGINS = new Set(["https://playground.ai.cloudflare.com"]);
@@ -399,7 +399,6 @@ export async function handleMcpRequest(request: Request, env: McpEnvironment): P
     const headers = new Headers(response.headers);
     headers.set("Cache-Control", "no-store");
     headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("MCP-Protocol-Version", MCP_PROTOCOL_VERSION);
     if (allowedCorsOrigin) {
       headers.set("Access-Control-Allow-Origin", allowedCorsOrigin);
       headers.append("Vary", "Origin");
@@ -435,9 +434,8 @@ export async function handleMcpRequest(request: Request, env: McpEnvironment): P
   const classification = classifyRequest(request, parsedBody);
   const method = parsedBody && typeof parsedBody === "object" && !Array.isArray(parsedBody) ? (parsedBody as { method?: unknown }).method : undefined;
   const requestedProtocol = request.headers.get("MCP-Protocol-Version");
-  if (method !== "initialize" && requestedProtocol !== MCP_PROTOCOL_VERSION) {
-    return respond(jsonRpcHttpError(400, -32600, `MCP-Protocol-Version must be ${MCP_PROTOCOL_VERSION}`));
-  }
+  const unsupportedProtocol = method !== "initialize" && requestedProtocol !== null &&
+    !(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requestedProtocol);
   if (method === "initialize") emitMcpEvent("initialize", null, classification);
   if (method === "tools/list") emitMcpEvent("tools_list", null, classification);
 
@@ -446,6 +444,7 @@ export async function handleMcpRequest(request: Request, env: McpEnvironment): P
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     await server.connect(transport);
     const response = await transport.handleRequest(request, parsedBody === undefined ? undefined : { parsedBody });
+    if (unsupportedProtocol && response.status >= 400) emitMcpEvent("protocol_error", null, classification);
     if (method === "tools/call" && !classification.toolStageEmitted) {
       const toolName = (parsedBody as { params?: { name?: unknown } }).params?.name;
       const product = typeof toolName === "string" ? TOOL_PRODUCT[toolName as ToolName] : undefined;

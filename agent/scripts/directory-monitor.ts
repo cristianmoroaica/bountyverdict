@@ -91,6 +91,7 @@ const kiloMarketplacePrNumber = 192;
 const kiloMarketplacePrUrl = `https://github.com/Kilo-Org/kilo-marketplace/pull/${kiloMarketplacePrNumber}`;
 const kiloMarketplaceDefinitionUrl = "https://raw.githubusercontent.com/Kilo-Org/kilo-marketplace/main/mcps/bountyverdict/MCP.yaml";
 const kiloMarketplaceCatalogUrl = "https://raw.githubusercontent.com/Kilo-Org/kilo-marketplace/main/mcps/marketplace.yaml";
+const geminiCliGalleryUrl = "https://geminicli.com/extensions.json";
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -946,6 +947,53 @@ async function kiloMarketplaceStatus(
   }
 }
 
+async function geminiCliGalleryStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(geminiCliGalleryUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) throw new Error(`Gemini CLI Extensions Gallery returned HTTP ${response.status}.`);
+    const body = await response.text();
+    if (body.length > 5_000_000) throw new Error("Gemini CLI Extensions Gallery response is unbounded.");
+    const entries = JSON.parse(body) as unknown;
+    if (!Array.isArray(entries)) throw new Error("Gemini CLI Extensions Gallery returned a malformed catalog.");
+    const matches = entries.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry) &&
+      String((entry as Record<string, unknown>).fullName || "").toLowerCase() === "cristianmoroaica/bountyverdict");
+    if (matches.length > 1) throw new Error("Gemini CLI Extensions Gallery duplicated BountyVerdict.");
+    const entry = matches[0] as Record<string, unknown> | undefined;
+    const listed = Boolean(entry);
+    const contractVerified = Boolean(entry && entry.url === repository && entry.extensionName === "bountyverdict" &&
+      entry.extensionVersion === "1.1.0" && entry.hasMCP === true);
+    return {
+      url: "https://geminicli.com/extensions/",
+      catalog_url: geminiCliGalleryUrl,
+      catalog_http_status: response.status,
+      listed,
+      contract_verified: contractVerified,
+      status: contractVerified ? "catalog_listed" : listed ? "catalog_contract_drift" : "pending_daily_crawl",
+      rank: typeof entry?.rank === "number" ? entry.rank : null,
+      stars: typeof entry?.stars === "number" ? entry.stars : null,
+      last_updated: typeof entry?.lastUpdated === "string" ? entry.lastUpdated : null,
+      first_listed_at: contractVerified ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "exact_gemini_cli_gallery_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: "https://geminicli.com/extensions/",
+      catalog_url: geminiCliGalleryUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "exact_gemini_cli_gallery_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
 async function agentToolStatus(): Promise<Record<string, unknown>> {
   const apiUrl = "https://agenttool.sh/api/tools/bountyverdict-agent-decision-apis";
   try {
@@ -1721,6 +1769,7 @@ const [
   mcpDirectory,
   clineMarketplace,
   kiloMarketplace,
+  geminiCliGallery,
   agent402,
   x402scout,
   x402scan,
@@ -1751,6 +1800,7 @@ const [
   mcpDirectoryStatus(previous.mcp_directory || {}, new Date().toISOString()),
   clineMarketplaceStatus(previous.cline_marketplace || {}, new Date().toISOString()),
   kiloMarketplaceStatus(previous.kilo_marketplace || {}, new Date().toISOString()),
+  geminiCliGalleryStatus(previous.gemini_cli_gallery || {}, new Date().toISOString()),
   agent402Status(),
   x402ScoutStatus(),
   x402ScanStatus(),
@@ -1827,6 +1877,7 @@ const state = {
   mcp_directory: mcpDirectory,
   cline_marketplace: clineMarketplace,
   kilo_marketplace: kiloMarketplace,
+  gemini_cli_gallery: geminiCliGallery,
   agent402,
   x402scout,
   x402scan,

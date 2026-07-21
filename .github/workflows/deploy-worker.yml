@@ -193,6 +193,24 @@ jobs:
           const outputSchemaSizes = listed.result.tools.map(({ outputSchema }) => Buffer.byteLength(JSON.stringify(outputSchema)));
           if (listed.result.tools.some(({ outputSchema }) => outputSchema?.type !== "object" || !Array.isArray(outputSchema.required))) process.exit(1);
           if (outputSchemaSizes.some((bytes) => bytes > 2048) || outputSchemaSizes.reduce((total, bytes) => total + bytes, 0) > 12000) process.exit(1);
+          const compatibilityHeaders = { ...headers, "MCP-Protocol-Version": "2025-06-18" };
+          async function compatibilityRpc(id, method, params = {}) {
+            const response = await fetch(`${api}/mcp`, {
+              method: "POST",
+              headers: compatibilityHeaders,
+              body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+            });
+            if (!response.ok) throw new Error(`MCP compatibility ${method} returned ${response.status}`);
+            return response.json();
+          }
+          const compatibilityInitialized = await compatibilityRpc(20, "initialize", {
+            protocolVersion: "2025-06-18",
+            capabilities: {},
+            clientInfo: { name: "bountyverdict-release-check", version: "1.0.0" },
+          });
+          if (compatibilityInitialized.result?.protocolVersion !== "2025-06-18") process.exit(1);
+          const compatibilityListed = await compatibilityRpc(21, "tools/list");
+          if (JSON.stringify(compatibilityListed.result?.tools?.map(({ name }) => name)) !== JSON.stringify(expectedNames)) process.exit(1);
           const calls = [
             ["check_github_bounty", { issue_url: "https://github.com/owner/repo/issues/1" }, "50000"],
             ["rank_github_bounties", { issue_urls: ["https://github.com/owner/repo/issues/1", "https://github.com/owner/repo/issues/2"] }, "400000"],

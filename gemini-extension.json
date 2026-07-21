@@ -1,0 +1,10 @@
+{
+  "name": "bountyverdict",
+  "version": "1.1.0",
+  "description": "Paid GitHub bounty selection, CI diagnosis, flaky-run triage, agent-instruction audits, and MCP compatibility checks for autonomous coding agents.",
+  "mcpServers": {
+    "bountyverdict": {
+      "httpUrl": "https://bountyverdict-agent-production.mimirslab.workers.dev/mcp"
+    }
+  }
+}

@@ -108,6 +108,25 @@ test("retains only an allowlisted MCP initialize client family", () => {
   assert.equal(isFunnelSnapshot(snapshot), true);
 });
 
+test("records protocol negotiation failures without retaining the requested version", () => {
+  const value = event("/mcp", 400, { "user-agent": "Codex/private", "mcp-protocol-version": "secret-version" }, "POST");
+  Object.assign(value, { logs: [{ message: [JSON.stringify({
+    type: "bountyverdict_mcp_funnel",
+    schema_version: 2,
+    stage: "protocol_error",
+    product: null,
+    source: "external",
+    client_family: "not_applicable",
+  })] }] });
+  const observations = classifyMcpTailEvents(value);
+  assert.equal(observations.length, 1);
+  const snapshot = recordMcpObservation(createFunnelSnapshot("2026-07-20T19:00:00.000Z"), observations[0]);
+  assert.equal(snapshot.mcp_totals.protocol_error, 1);
+  assert.equal(snapshot.mcp_by_client_class.agent_runtime.protocol_error, 1);
+  assert.doesNotMatch(JSON.stringify(snapshot), /secret-version|Codex\/private/);
+  assert.equal(isFunnelSnapshot(snapshot), true);
+});
+
 test("rejects malformed, forged, and identity-inconsistent MCP log events", () => {
   const value = event("/mcp", 200, { "user-agent": "bountyverdict-owner-audit/1" }, "POST");
   Object.assign(value, { logs: [
@@ -343,6 +362,18 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   delete snapshot.cohort_capture_started_at;
   delete snapshot.by_cohort;
   delete snapshot.by_discovery_cohort;
+  const mcpContainers: Array<Record<string, unknown>> = [
+    snapshot.mcp_totals as unknown as Record<string, unknown>,
+    ...Object.values(snapshot.mcp_by_product as Record<string, Record<string, unknown>>),
+    ...Object.values(snapshot.mcp_by_source as Record<string, Record<string, unknown>>),
+    ...Object.values(snapshot.mcp_by_client_class as Record<string, Record<string, unknown>>),
+    ...Object.values(snapshot.mcp_by_client_family as Record<string, Record<string, unknown>>),
+    ...Object.values(snapshot.mcp_by_channel as Record<string, Record<string, unknown>>),
+  ];
+  for (const sources of Object.values(snapshot.mcp_by_product_source as Record<string, Record<string, Record<string, unknown>>>)) {
+    mcpContainers.push(...Object.values(sources));
+  }
+  for (const counters of mcpContainers) delete counters.protocol_error;
   snapshot.privacy = "legacy privacy wording";
   const loaded = loadFunnelSnapshot(snapshot, "2026-07-21T00:00:00.000Z");
   assert.ok(loaded);
@@ -353,6 +384,9 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   assert.equal(loaded.cohort_capture_started_at, "2026-07-21T00:00:00.000Z");
   assert.deepEqual(loaded.by_cohort, {});
   assert.deepEqual(loaded.by_discovery_cohort, {});
+  assert.equal(loaded.mcp_totals.protocol_error, 0);
+  assert.equal(loaded.mcp_by_product.single.protocol_error, 0);
+  assert.equal(loaded.mcp_by_source.automated_client.protocol_error, 0);
   assert.match(loaded.privacy, /tool arguments/);
   assert.match(loaded.privacy, /payer addresses/);
 });

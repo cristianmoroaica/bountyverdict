@@ -82,6 +82,7 @@ export const FUNNEL_DISCOVERY_SURFACES = Object.freeze([
 export const MCP_FUNNEL_STAGES = Object.freeze([
   "initialize",
   "tools_list",
+  "protocol_error",
   "tool_not_found",
   "validation_error",
   "payment_required",
@@ -277,6 +278,7 @@ function emptyMcpCounters(): McpFunnelCounters {
     events: 0,
     initialize: 0,
     tools_list: 0,
+    protocol_error: 0,
     tool_not_found: 0,
     validation_error: 0,
     payment_required: 0,
@@ -531,7 +533,7 @@ function exactMcpLogEvent(value: unknown): {
     (record.source !== "owner_automation" && record.source !== "external")) return null;
   const stage = record.stage as McpFunnelStage;
   const product = record.product;
-  if (stage === "initialize" || stage === "tools_list" || stage === "tool_not_found") {
+  if (stage === "initialize" || stage === "tools_list" || stage === "protocol_error" || stage === "tool_not_found") {
     if (product !== null) return null;
   } else if (!MCP_PRODUCTS.includes(product as Exclude<ProductKey, "skill">)) return null;
   const clientFamily = versionTwo && MCP_CLIENT_FAMILIES.includes(record.client_family as McpClientFamily)
@@ -755,6 +757,37 @@ function mcpCountersValid(counters: unknown): counters is McpFunnelCounters {
     Number(record.events) === MCP_FUNNEL_STAGES.reduce((sum, stage) => sum + Number(record[stage]), 0);
 }
 
+function migrateMcpCounters(value: unknown): McpFunnelCounters {
+  const counters = emptyMcpCounters();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    for (const stage of MCP_FUNNEL_STAGES) {
+      const count = record[stage];
+      if (Number.isSafeInteger(count) && Number(count) >= 0) counters[stage] = Number(count);
+    }
+  }
+  counters.events = MCP_FUNNEL_STAGES.reduce((sum, stage) => sum + counters[stage], 0);
+  return counters;
+}
+
+function migrateMcpCountersRecord<K extends string>(value: unknown, keys: readonly K[]): Record<K, McpFunnelCounters> {
+  const record = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return Object.fromEntries(keys.map((key) => [key, migrateMcpCounters(record[key])])) as Record<K, McpFunnelCounters>;
+}
+
+function migrateMcpProductSource(value: unknown): FunnelSnapshot["mcp_by_product_source"] {
+  const record = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return Object.fromEntries(MCP_PRODUCTS.map((product) => [
+    product,
+    migrateMcpCountersRecord(record[product], FUNNEL_SOURCE_CATEGORIES),
+  ])) as FunnelSnapshot["mcp_by_product_source"];
+}
+
+function migrateMcpBuckets(value: unknown): Record<string, McpFunnelCounters> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([bucket, counters]) => [bucket, migrateMcpCounters(counters)]));
+}
+
 function keyedMcpCountersValid<K extends string>(value: unknown, keys: readonly K[]): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
@@ -848,15 +881,15 @@ export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString(
       discovery_by_day: existing.discovery_by_day || {},
       discovery_by_hour: existing.discovery_by_hour || {},
       by_hour: existing.by_hour || {},
-      mcp_totals: existing.mcp_totals || emptyMcpCounters(),
-      mcp_by_product: existing.mcp_by_product || mcpCountersRecord(MCP_PRODUCTS),
-      mcp_by_product_source: existing.mcp_by_product_source || mcpProductSourceRecord(),
-      mcp_by_source: existing.mcp_by_source || mcpCountersRecord(FUNNEL_SOURCE_CATEGORIES),
-      mcp_by_client_class: existing.mcp_by_client_class || mcpCountersRecord(FUNNEL_CLIENT_CLASSES),
-      mcp_by_client_family: existing.mcp_by_client_family || mcpCountersRecord(MCP_CLIENT_FAMILIES),
-      mcp_by_channel: existing.mcp_by_channel || mcpCountersRecord(FUNNEL_CHANNELS),
-      mcp_by_day: existing.mcp_by_day || {},
-      mcp_by_hour: existing.mcp_by_hour || {},
+      mcp_totals: migrateMcpCounters(existing.mcp_totals),
+      mcp_by_product: migrateMcpCountersRecord(existing.mcp_by_product, MCP_PRODUCTS),
+      mcp_by_product_source: migrateMcpProductSource(existing.mcp_by_product_source),
+      mcp_by_source: migrateMcpCountersRecord(existing.mcp_by_source, FUNNEL_SOURCE_CATEGORIES),
+      mcp_by_client_class: migrateMcpCountersRecord(existing.mcp_by_client_class, FUNNEL_CLIENT_CLASSES),
+      mcp_by_client_family: migrateMcpCountersRecord(existing.mcp_by_client_family, MCP_CLIENT_FAMILIES),
+      mcp_by_channel: migrateMcpCountersRecord(existing.mcp_by_channel, FUNNEL_CHANNELS),
+      mcp_by_day: migrateMcpBuckets(existing.mcp_by_day),
+      mcp_by_hour: migrateMcpBuckets(existing.mcp_by_hour),
     };
     if (isFunnelSnapshot(upgraded)) return upgraded;
   }

@@ -285,22 +285,37 @@ test("MCP validates Origin and body size before constructing a server", async ()
   assert.equal(browser.headers.get("Access-Control-Allow-Origin"), "https://playground.ai.cloudflare.com");
 });
 
-test("MCP enforces Streamable HTTP negotiation before recording a valid interaction", async () => {
+test("MCP accepts every SDK-supported negotiated protocol and rejects an unknown one", async () => {
+  const compatibleHeaders = { ...headers, "MCP-Protocol-Version": "2025-06-18" };
+  const initialized = await rpc(29, "initialize", {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "compatibility-client", version: "1.0.0" },
+  }, compatibleHeaders);
+  assert.equal(initialized.status, 200);
+  assert.equal((await initialized.json() as any).result.protocolVersion, "2025-06-18");
+  assert.equal(initialized.headers.get("MCP-Protocol-Version"), null);
+
   const notification = await app.request(`${origin}/mcp`, {
     method: "POST",
-    headers,
+    headers: compatibleHeaders,
     body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
   }, env);
   assert.equal(notification.status, 202);
   assert.equal(await notification.text(), "");
-  assert.equal(notification.headers.get("MCP-Protocol-Version"), "2025-11-25");
+  assert.equal(notification.headers.get("MCP-Protocol-Version"), null);
+
+  const listed = await rpc(30, "tools/list", {}, compatibleHeaders);
+  assert.equal(listed.status, 200);
+  assert.equal((await listed.json() as any).result.tools.length, 6);
 
   const wrongContentType = await rpc(32, "tools/list", {}, { ...headers, "Content-Type": "text/plain" });
   assert.equal(wrongContentType.status, 415);
   const incompleteAccept = await rpc(33, "tools/list", {}, { ...headers, Accept: "application/json" });
   assert.equal(incompleteAccept.status, 406);
-  const wrongProtocol = await rpc(34, "tools/list", {}, { ...headers, "MCP-Protocol-Version": "2024-11-05" });
+  const wrongProtocol = await rpc(34, "tools/list", {}, { ...headers, "MCP-Protocol-Version": "2099-01-01" });
   assert.equal(wrongProtocol.status, 400);
+  assert.match((await wrongProtocol.json() as any).error.message, /Unsupported protocol version/);
   const put = await app.request(`${origin}/mcp`, { method: "PUT", headers, body: "{}" }, env);
   assert.equal(put.status, 405);
 });

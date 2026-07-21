@@ -11,6 +11,7 @@ const demandWatchUrl = new URL("../agent/scripts/demand-watch.ts", import.meta.u
 const demandServiceUrl = new URL("../ops/systemd/bountyverdict-demand-watch.service", import.meta.url);
 const directoryTimerUrl = new URL("../ops/systemd/bountyverdict-directory-monitor.timer", import.meta.url);
 const marketplaceTimerUrl = new URL("../ops/systemd/bountyverdict-marketplace-audit.timer", import.meta.url);
+const geminiExtensionUrl = new URL("../gemini-extension.json", import.meta.url);
 
 test("frequent reporting samples merchant activity without semantic retrieval while full audits establish a drain", async () => {
   const distribution = await readFile(distributionUrl, "utf8");
@@ -187,6 +188,36 @@ test("directory monitoring tracks Kilo review and exact secret-free remote contr
   assert.match(distribution, /kilo_marketplace: state\.kilo_marketplace/);
   assert.match(distribution, /Kilo in-agent marketplace/);
   assert.match(distribution, /exact secret-free remote contract/);
+});
+
+test("directory monitoring tracks Gemini CLI gallery propagation without claiming demand", async () => {
+  const [directory, distribution] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+  ]);
+  assert.match(directory, /const geminiCliGalleryUrl = "https:\/\/geminicli\.com\/extensions\.json"/);
+  assert.match(directory, /async function geminiCliGalleryStatus/);
+  assert.match(directory, /entry\.hasMCP === true/);
+  assert.match(directory, /gemini_cli_gallery: geminiCliGallery/);
+  assert.match(directory, /exact_gemini_cli_gallery_presence_not_search_impressions_installs_tool_calls_purchases_or_revenue/);
+  assert.match(distribution, /gemini_cli_gallery: state\.gemini_cli_gallery/);
+  assert.match(distribution, /Gemini CLI Extensions Gallery/);
+  assert.match(distribution, /catalog presence is never an impression, install, tool call, purchase, or revenue/);
+});
+
+test("Gemini CLI extension exposes only the hosted paid MCP without secrets", async () => {
+  const manifest = JSON.parse(await readFile(geminiExtensionUrl, "utf8"));
+  assert.deepEqual(manifest, {
+    name: "bountyverdict",
+    version: "1.1.0",
+    description: "Paid GitHub bounty selection, CI diagnosis, flaky-run triage, agent-instruction audits, and MCP compatibility checks for autonomous coding agents.",
+    mcpServers: {
+      bountyverdict: {
+        httpUrl: "https://bountyverdict-agent-production.mimirslab.workers.dev/mcp",
+      },
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(manifest), /secret|token|api[_-]?key|env/i);
 });
 
 test("MCP buyer-intent reporting excludes identified directory crawlers but retains them separately", async () => {
