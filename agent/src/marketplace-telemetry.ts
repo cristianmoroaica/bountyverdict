@@ -20,6 +20,7 @@ export type CdpMerchantQualitySnapshot = {
   resource: string;
   observed_at: string;
   last_updated_at: string;
+  quality_available: boolean;
   last_called_at: string | null;
   reported_calls_30d: number;
   reported_unique_payers_30d: number;
@@ -79,13 +80,17 @@ export function normalizeCdpMerchantQuality(
   }
   const resource = value as Record<string, any>;
   if (resource.resource !== expectedResource) throw new Error("CDP merchant resource identity is invalid.");
-  if (!resource.quality || typeof resource.quality !== "object" || Array.isArray(resource.quality)) {
+  if (resource.quality !== null && resource.quality !== undefined &&
+    (!resource.quality || typeof resource.quality !== "object" || Array.isArray(resource.quality))) {
     throw new Error("CDP merchant quality is malformed.");
   }
-  const calls = count(resource.quality.l30DaysTotalCalls, "merchant calls");
-  const payers = count(resource.quality.l30DaysUniquePayers, "merchant unique payers");
+  const qualityAvailable = resource.quality !== null && resource.quality !== undefined;
+  const calls = qualityAvailable ? count(resource.quality.l30DaysTotalCalls, "merchant calls") : 0;
+  const payers = qualityAvailable ? count(resource.quality.l30DaysUniquePayers, "merchant unique payers") : 0;
   if (payers > calls) throw new Error("CDP merchant quality counters are inconsistent.");
-  const lastCalledAt = nullableTimestamp(resource.quality.lastCalledAt, "merchant lastCalledAt");
+  const lastCalledAt = qualityAvailable
+    ? nullableTimestamp(resource.quality.lastCalledAt, "merchant lastCalledAt")
+    : null;
   const previous = previousMerchantQuality(previousValue);
   const deltaCalls = previous ? calls - previous.reported_calls_30d : null;
   const deltaPayers = previous ? payers - previous.reported_unique_payers_30d : null;
@@ -97,6 +102,7 @@ export function normalizeCdpMerchantQuality(
     resource: expectedResource,
     observed_at: timestamp(observedAt, "merchant observation timestamp"),
     last_updated_at: timestamp(resource.lastUpdated, "merchant lastUpdated"),
+    quality_available: qualityAvailable,
     last_called_at: lastCalledAt,
     reported_calls_30d: calls,
     reported_unique_payers_30d: payers,
@@ -128,7 +134,8 @@ export function appendCdpMerchantQualityHistory(
     }
     const rows = existing as CdpMerchantQualitySnapshot[];
     const last = rows.at(-1);
-    const changed = !last || last.reported_calls_30d !== snapshot.reported_calls_30d ||
+    const changed = !last || last.quality_available !== snapshot.quality_available ||
+      last.reported_calls_30d !== snapshot.reported_calls_30d ||
       last.reported_unique_payers_30d !== snapshot.reported_unique_payers_30d ||
       last.last_called_at !== snapshot.last_called_at || last.last_updated_at !== snapshot.last_updated_at;
     return [product, (changed ? [...rows, snapshot] : rows).slice(-maximumEntries)];

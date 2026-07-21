@@ -107,13 +107,25 @@ test("distribution monitoring measures the MCP preview-copy rollout from an immu
   assert.match(distribution, /AbortSignal\.timeout\(timeoutMs\)/);
 });
 
-test("MCPDrift indexing remains owner-attributed and outside purchase accounting", async () => {
+test("MCPDrift activation remains owner-attributed and outside purchase accounting", async () => {
   const distribution = await readFile(distributionUrl, "utf8");
   assert.match(distribution, /CDP MCPDrift indexing path/);
-  assert.match(distribution, /owner marker and revenue exclusion are enforced/);
-  assert.match(distribution, /no early self-payment will be made/);
+  assert.match(distribution, /owner activation settlement completed on 2026-07-21/);
+  assert.match(distribution, /dedicated payer and revenue exclusion are enforced/);
+  assert.match(distribution, /documented asynchronous CDP catalog refresh/);
   assert.match(distribution, /never customer demand, purchase, or revenue/);
+  assert.match(distribution, /representative JSON activation call settled successfully/);
   assert.match(distribution, /strict invalid-input-before-payment behavior remains intact/);
+});
+
+test("marketplace retrieval uses a blind-agent task holdout instead of seller-shaped copy", async () => {
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.doesNotMatch(distribution, /public GitHub bounty worth pursuing/);
+  assert.match(distribution, /GitHub Actions failed workflow run URL root cause analysis/);
+  assert.match(distribution, /scan public repository for AGENTS\.md and nested agent instruction files/);
+  assert.match(distribution, /compare MCP server versions tool names input schemas and output schemas/);
+  assert.match(distribution, /Eight phrases are untouched outputs from three context-isolated agents/);
+  assert.match(distribution, /not observed marketplace query volume/);
 });
 
 test("the monitor turns privacy-safe hits into bounded actionable cohort summaries", async () => {

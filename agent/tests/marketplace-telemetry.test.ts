@@ -74,8 +74,27 @@ test("turns CDP merchant activity changes into reconciliation signals, never rev
   assert.equal(snapshot.delta_unique_payers_30d, 1);
   assert.equal(snapshot.call_recency_advanced, true);
   assert.equal(snapshot.requires_settlement_reconciliation, true);
+  assert.equal(snapshot.quality_available, true);
   assert.equal(snapshot.baseline_owner_contaminated, true);
   assert.equal("revenue" in snapshot, false);
+});
+
+test("accepts newly indexed CDP resources while quality counters are pending", () => {
+  for (const resource of [
+    { ...merchantResource, quality: null },
+    { resource: merchantResource.resource, lastUpdated: merchantResource.lastUpdated },
+  ]) {
+    const pending = normalizeCdpMerchantQuality(
+      resource,
+      merchantResource.resource,
+      "2026-07-21T00:00:00.000Z",
+    );
+    assert.equal(pending.quality_available, false);
+    assert.equal(pending.reported_calls_30d, 0);
+    assert.equal(pending.reported_unique_payers_30d, 0);
+    assert.equal(pending.last_called_at, null);
+    assert.equal(pending.requires_settlement_reconciliation, false);
+  }
 });
 
 test("seeds owner-contaminated CDP baselines and retains only changed history points", () => {

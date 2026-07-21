@@ -116,57 +116,43 @@ const EXPECTED_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "fl
 const MCP_PRODUCTS = EXPECTED_PRODUCTS.filter((product): product is Exclude<ProductKey, "skill"> => product !== "skill");
 const BUYER_QUERY_BENCHMARK: Readonly<Record<ProductKey, readonly string[]>> = Object.freeze({
   single: Object.freeze([
-    "check GitHub bounty",
-    "is this GitHub issue bounty still available",
-    "GitHub bounty claim status",
-    "should my coding agent work on this bounty",
+    "GitHub issue bounty reward claim status",
+    "GitHub issue open assigned pull request maintainer activity",
   ]),
   portfolio: Object.freeze([
-    "rank GitHub bounties",
-    "choose the best GitHub bounty",
-    "compare GitHub bounty issues",
-    "which bounty should my coding agent do",
+    "choose the best among several public GitHub bounty issue URLs",
+    "rank multiple GitHub bounty candidates by claimability and delivery risk",
   ]),
   harness: Object.freeze([
-    "audit agent instructions",
-    "check AGENTS.md before coding",
-    "analyze repository instructions for coding agent",
-    "validate coding agent harness",
+    "scan public repository for AGENTS.md and nested agent instruction files",
+    "audit coding-agent instructions before working in a GitHub repository",
   ]),
   skill: Object.freeze([
-    "scan agent skill before install",
-    "is this SKILL.md safe",
-    "agent skill security audit",
-    "detect credential theft in agent skill",
+    "scan third-party SKILL.md bundle for credential theft before installation",
+    "audit agent skill files for destructive commands and remote execution",
   ]),
   run: Object.freeze([
-    "debug GitHub Actions failure",
-    "why did my GitHub Action fail",
-    "diagnose failed workflow run",
-    "GitHub Actions root cause",
+    "GitHub Actions failed workflow run URL root cause analysis",
+    "CI/CD build log failure diagnosis from public URL",
   ]),
   flake: Object.freeze([
-    "is this GitHub Actions failure flaky",
-    "should I retry this failed workflow",
-    "classify flaky CI failure",
-    "retry or fix GitHub Action",
+    "classify CI failure transient flaky retryable vs deterministic",
+    "should I retry a failed GitHub Actions run or fix it",
   ]),
   mcpdrift: Object.freeze([
-    "compare MCP tool schemas",
-    "will this MCP server update break my agent",
-    "detect MCP tools list drift",
-    "MCP compatibility check",
+    "compare MCP server versions tool names input schemas and output schemas",
+    "MCP server update breaking-change and agent workflow compatibility audit",
   ]),
 });
 const MARKETPLACE_SEARCH_INTENTS: ReadonlyArray<{
   product: "single" | "portfolio" | "harness" | "run" | "flake";
   query: string;
 }> = [
-  { product: "single", query: "public GitHub bounty worth pursuing" },
-  { product: "portfolio", query: "rank GitHub bounty issues" },
-  { product: "harness", query: "coding agent repository instructions" },
-  { product: "run", query: "GitHub Actions diagnosis" },
-  { product: "flake", query: "GitHub Actions failure retry" },
+  { product: "single", query: "GitHub issue bounty reward claim status" },
+  { product: "portfolio", query: "choose the best among several public GitHub bounty issue URLs" },
+  { product: "harness", query: "scan public repository for AGENTS.md and nested agent instruction files" },
+  { product: "run", query: "GitHub Actions failed workflow run URL root cause analysis" },
+  { product: "flake", query: "classify CI failure transient flaky retryable vs deterministic" },
 ];
 function expectedDiscoveryResources(): Record<ProductKey, string> {
   return {
@@ -561,7 +547,7 @@ async function discoveryStatus(
       found_queries: benchmarkRows.reduce((sum, row) => sum + Number(row.found_queries || 0), 0),
       top_three_queries: benchmarkRows.reduce((sum, row) => sum + Number(row.top_three_queries || 0), 0),
       first_place_queries: benchmarkRows.reduce((sum, row) => sum + Number(row.first_place_queries || 0), 0),
-      methodology: "Four unbranded candidate buyer-language queries per product. This measures retrieval robustness, not observed marketplace query volume.",
+      methodology: "Two task descriptions per product. Eight phrases are untouched outputs from three context-isolated agents; six controls provide balanced product coverage. This synthetic holdout measures retrieval robustness, not observed marketplace query volume.",
     },
     query_ranks: queryRanks,
     top_competitors: topCompetitors,
@@ -1479,7 +1465,7 @@ async function marketplaceSearchStatus(): Promise<Record<string, unknown>> {
     measured_cells: ranks.length,
     first_place_cells: ranks.filter((rank) => rank === 1).length,
     queries,
-    note: "Search rank is acquisition telemetry, not a purchase or a production-health signal.",
+    note: "Queries are task descriptions an agent could plausibly generate, not product names or observed marketplace query volume. Search rank is acquisition telemetry, not a purchase or a production-health signal.",
   };
 }
 
@@ -1922,7 +1908,7 @@ function renderMonitorNote(report: Record<string, any>): string {
     ? report.marketplaces.agentic_market.missing_products
     : [];
   const mcpDriftIndexing = agenticMissing.includes("mcpdrift")
-    ? "armed for the next weekly policy-bound owner canary after the seven-day spend interval and frozen experiment boundary; the owner marker and revenue exclusion are enforced, and no early self-payment will be made"
+    ? "owner activation settlement completed on 2026-07-21 and is awaiting the documented asynchronous CDP catalog refresh; the dedicated payer and revenue exclusion are enforced"
     : "indexed in the CDP Bazaar mirror; no owner refresh is pending";
   const totalPurchases = Number(purchases.total || 0) + marketplacePurchases + subscriptionPurchases + nearPurchases + taskmarketPurchases + clawlancerPurchases;
   const skillInstalls = report.acquisition?.skills_sh?.install_counts || {};
@@ -2046,7 +2032,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Clawlancer funded-work canary:** ${clawlancer.available ? `${String(clawlancer.status || "unknown").toUpperCase()}; ${clawlancer.transaction?.fundingTxHash ? "funding transaction reported" : "no funding transaction"}; ${clawlancer.onchain_evidence?.verified ? "release verified on Base and recognized" : "no onchain-verified release, not revenue"}; next action ${clawlancer.action || "unknown"}` : `unavailable (${clawlancer.error || "state not captured"})`} (the pinned deliverable auto-submits only after FUNDED)
 - **Neutral buyer-query retrieval:** ${buyerBenchmarkSummary}
 - **CDP Bazaar activity deltas:** ${cdpMerchantQualityAvailable ? (cdpReconciliationProducts.length ? `${cdpReconciliationProducts.join(", ")} changed and require settlement reconciliation` : "no counter or call-recency advance from the owner-contaminated baseline") : "baseline pending the next audited marketplace observation"} (never revenue by itself)
-- **CDP MCPDrift indexing path:** ${mcpDriftIndexing}; Coinbase's read-only validator sends no representative POST body, so its bodyless 400 is not treated as a product failure and strict invalid-input-before-payment behavior remains intact
+- **CDP MCPDrift indexing path:** ${mcpDriftIndexing}; its representative JSON activation call settled successfully and strict invalid-input-before-payment behavior remains intact
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
 - **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external discovery hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
 - **Latest privacy-safe hit learning:** discovery ${externalDiscoveryCohorts.length ? externalDiscoveryCohorts.join("; ") : "none since the clean boundary"}; paid-route attempts ${externalPaidRouteCohorts.length ? externalPaidRouteCohorts.join("; ") : "none since the clean boundary"} (bounded aggregate categories only; no arguments, URLs, payloads, identities, IPs, or raw user agents retained)
@@ -2152,12 +2138,16 @@ ${EXPECTED_PRODUCTS.map((product) => {
   const worst = result.worst_result === "not_found" ? "not found" : Number.isFinite(Number(result.worst_result)) ? `#${result.worst_result}` : "not found";
   const quality = cdpMerchantQuality[product] || {};
   const cdpStatus = indexed[product]
-    ? (quality.resource ? `indexed; ${Number(quality.reported_calls_30d || 0)} calls / ${Number(quality.reported_unique_payers_30d || 0)} payers` : "indexed; baseline pending")
+    ? (quality.resource
+      ? (quality.quality_available === false
+        ? "indexed; quality counters pending"
+        : `indexed; ${Number(quality.reported_calls_30d || 0)} calls / ${Number(quality.reported_unique_payers_30d || 0)} payers`)
+      : "indexed; baseline pending")
     : "pending";
-  return `| ${name} | ${PRODUCT_CATALOG[product].priceUsd} | ${Number(result.found_queries || 0)} / ${Number(result.query_count || 4)} | ${median} | ${worst} | ${cdpStatus} | ${agenticIndexed[product] ? "indexed" : "pending"} |`;
+  return `| ${name} | ${PRODUCT_CATALOG[product].priceUsd} | ${Number(result.found_queries || 0)} / ${Number(result.query_count || 2)} | ${median} | ${worst} | ${cdpStatus} | ${agenticIndexed[product] ? "indexed" : "pending"} |`;
 }).join("\n")}
 
-The buyer-query benchmark uses four short, unbranded candidate task phrasings per product. It is a retrieval robustness test, not evidence of actual query volume; the exact phrases and ranks are retained in the machine-readable monitor state.
+The buyer-query benchmark uses two task descriptions per product: eight untouched blind-agent outputs and six balanced controls. It is a synthetic retrieval robustness test, not evidence of actual query volume; the exact phrases and ranks are retained in the machine-readable monitor state.
 
 ### Exact buyer-query benchmark
 
