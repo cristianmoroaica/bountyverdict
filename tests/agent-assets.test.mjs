@@ -23,6 +23,51 @@ const assertPortableWithoutMcpRuntime = (skill) => {
   for (const signal of agentPluginsMcpRuntimeSignals) assert.doesNotMatch(body, new RegExp(signal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 };
 
+test("Kiro Power exposes only the secret-free production MCP contract", async () => {
+  const [power, mcp] = await Promise.all([
+    readFile(new URL("../POWER.md", import.meta.url), "utf8"),
+    readJson("../mcp.json"),
+  ]);
+
+  assert.deepEqual(Object.keys(mcp), ["mcpServers"]);
+  assert.deepEqual(Object.keys(mcp.mcpServers), ["bountyverdict"]);
+  assert.deepEqual(mcp.mcpServers.bountyverdict, {
+    url: "https://bountyverdict-agent-production.mimirslab.workers.dev/mcp?source=kiro-power",
+    disabled: false,
+    autoApprove: [],
+    disabledTools: [],
+  });
+
+  assert.match(power, /^---\nname: "bountyverdict"\ndisplayName: "GitHub Agent Decision Gates"\ndescription: ".+"\nkeywords: \[.+\]\nauthor: "Cristian Moroaica"\n---\n/);
+  assert.match(power, /No BountyVerdict account or API key is required/);
+  assert.match(power, /six tools are read-only/i);
+  assert.match(power, /structurally invalid input is rejected before any payment requirement/);
+  assert.match(power, /valid x402 payment/);
+  assert.match(power, /caller has authorized that exact spend/);
+  assert.match(power, /never invent a paid result/);
+  assert.match(power, /Payment identifies the fixed-price tool, not its arguments/);
+  assert.match(power, /service_reuse/);
+  assert.match(power, /Do not submit private, proprietary, credential-bearing, or secret-bearing material/);
+  assert.match(power, /blob\/main\/PRIVACY\.md/);
+  assert.match(power, /bountyverdict\/issues/);
+  assert.match(power, /security\/advisories\/new/);
+
+  const tools = [
+    ["check_github_bounty", "0.05"],
+    ["rank_github_bounties", "0.40"],
+    ["audit_agent_harness", "0.03"],
+    ["diagnose_github_actions_run", "0.04"],
+    ["classify_github_actions_flake", "0.07"],
+    ["check_mcp_tool_drift", "0.02"],
+  ];
+  for (const [tool, price] of tools) {
+    const escapedPrice = price.replace(".", "\\.");
+    assert.match(power, new RegExp("`" + tool + "`[\\s\\S]+?\\$" + escapedPrice + " USDC"));
+  }
+  assert.doesNotMatch(power, /SkillVerdict|preflight_agent_skills|audit_agent_skill/);
+  assert.doesNotMatch(JSON.stringify(mcp), /command|args|env|headers|oauth|secret|token|key/i);
+});
+
 test("agent manifest is honest and links inspectable products", async () => {
   const manifest = await readJson("../agent-manifest.json");
   assert.equal(manifest.release_version, "1.0.1");

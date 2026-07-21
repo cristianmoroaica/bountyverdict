@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "bountyverdict": {
+      "url": "https://bountyverdict-agent-production.mimirslab.workers.dev/mcp?source=kiro-power",
+      "disabled": false,
+      "autoApprove": [],
+      "disabledTools": []
+    }
+  }
+}
