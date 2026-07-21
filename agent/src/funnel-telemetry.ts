@@ -86,6 +86,9 @@ export const FUNNEL_DISCOVERY_SURFACES = Object.freeze([
   "sample_mcpdrift",
   "well_known_x402_probe",
   "well_known_mcp_probe",
+  "well_known_mcp_server_card_probe",
+  "well_known_api_catalog_probe",
+  "well_known_integrations_probe",
   "well_known_agent_probe",
   "well_known_ai_catalog_probe",
   "skill_md_probe",
@@ -276,6 +279,9 @@ const DISCOVERY_SURFACE_BY_PATH = new Map<string, FunnelDiscoverySurface>([
   ["/api/mcp-drift/sample", "sample_mcpdrift"],
   ["/.well-known/x402", "well_known_x402_probe"],
   ["/.well-known/mcp.json", "well_known_mcp_probe"],
+  ["/.well-known/mcp/server-card.json", "well_known_mcp_server_card_probe"],
+  ["/.well-known/api-catalog", "well_known_api_catalog_probe"],
+  ["/.well-known/integrations.json", "well_known_integrations_probe"],
   ["/.well-known/agent.json", "well_known_agent_probe"],
   ["/.well-known/ai-catalog.json", "well_known_ai_catalog_probe"],
   ["/SKILL.md", "skill_md_probe"],
@@ -536,7 +542,7 @@ export function classifyDiscoveryTailEvent(value: unknown): FunnelDiscoveryObser
   const rawUrl = request?.url;
   const method = request?.method;
   const status = tail.event?.response?.status;
-  if (typeof rawUrl !== "string" || method !== "GET" || !Number.isSafeInteger(status)) return null;
+  if (typeof rawUrl !== "string" || (method !== "GET" && method !== "HEAD") || !Number.isSafeInteger(status)) return null;
   let url: URL;
   try {
     url = new URL(rawUrl);

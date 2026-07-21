@@ -38,7 +38,15 @@ import {
 import { PRODUCT_CATALOG } from "./product-catalog.ts";
 import { buildPaymentHandoff } from "./payment-handoff.ts";
 import { createX402ServiceManifest } from "./x402-service-manifest.ts";
-import { createAiCatalog, createMcpWellKnown, createOriginAgentManifest, createOriginSkillMarkdown } from "./origin-discovery.ts";
+import {
+  createAiCatalog,
+  createApiCatalog,
+  createIntegrationsManifest,
+  createMcpServerCard,
+  createMcpWellKnown,
+  createOriginAgentManifest,
+  createOriginSkillMarkdown,
+} from "./origin-discovery.ts";
 import {
   canaryErrorCode,
   isCanaryProduct,
@@ -534,6 +542,9 @@ app.get("/", (c) =>
     llms: "/llms.txt",
     x402_manifest: "/.well-known/x402",
     ai_catalog: "/.well-known/ai-catalog.json",
+    api_catalog: "/.well-known/api-catalog",
+    integrations: "/.well-known/integrations.json",
+    mcp_server_card: "/.well-known/mcp/server-card.json",
     agent_manifest: MANIFEST_URL,
     agent_skill: SKILL_URL,
     distributed_agent_manifest: "/agent-manifest.json",
@@ -570,6 +581,36 @@ app.get("/.well-known/x402", (c) => {
 app.get("/.well-known/mcp.json", (c) => {
   const origin = new URL(c.req.url).origin;
   return c.json(createMcpWellKnown(origin, c.env.X402_NETWORK || TESTNET_NETWORK));
+});
+
+app.get("/.well-known/mcp/server-card.json", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(createMcpServerCard(origin, c.env.X402_NETWORK || TESTNET_NETWORK), 200, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Cache-Control": "public, max-age=3600",
+  });
+});
+
+app.get("/.well-known/integrations.json", (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(createIntegrationsManifest(origin), 200, {
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "public, max-age=3600",
+  });
+});
+
+app.on(["GET", "HEAD"], "/.well-known/api-catalog", (c) => {
+  const origin = new URL(c.req.url).origin;
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "public, max-age=3600",
+    "Content-Type": 'application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"',
+    Link: `<${origin}/.well-known/api-catalog>; rel="api-catalog"`,
+  };
+  if (c.req.method === "HEAD") return new Response(null, { status: 200, headers });
+  return new Response(JSON.stringify(createApiCatalog(origin)), { status: 200, headers });
 });
 
 app.get("/.well-known/ai-catalog.json", (c) => {

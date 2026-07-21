@@ -109,6 +109,8 @@ export function createOriginAgentManifest(originInput: string, network: string, 
     repository: REPOSITORY,
     openapi: `${origin}/openapi.json`,
     llms: `${origin}/llms.txt`,
+    api_catalog: `${origin}/.well-known/api-catalog`,
+    integrations: `${origin}/.well-known/integrations.json`,
     client_setup: `${SITE}/llms-install.md`,
     skill: `${origin}/SKILL.md`,
     payment: {
@@ -149,6 +151,7 @@ export function createOriginAgentManifest(originInput: string, network: string, 
       protocol_version: "2025-11-25",
       stateless: true,
       url: `${origin}/mcp`,
+      server_card: `${origin}/.well-known/mcp/server-card.json`,
       payment: "x402 v2 exact USDC on Base",
       direct_automatic_payment_requires: "@x402/mcp",
       http_payment_handoff_extension: MCP_HTTP_PAYMENT_HANDOFF_EXTENSION,
@@ -200,7 +203,133 @@ export function createMcpWellKnown(originInput: string, network: string) {
       latest: "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest",
     },
     ai_catalog: `${origin}/.well-known/ai-catalog.json`,
+    api_catalog: `${origin}/.well-known/api-catalog`,
+    integrations: `${origin}/.well-known/integrations.json`,
+    server_card: `${origin}/.well-known/mcp/server-card.json`,
     repository: REPOSITORY,
+  };
+}
+
+export function createMcpServerCard(originInput: string, network: string) {
+  const origin = canonicalOrigin(originInput);
+  const paymentNetwork = networkLabel(network);
+  return {
+    version: "1.0",
+    protocolVersion: "2025-11-25",
+    serverInfo: {
+      name: "io.github.cristianmoroaica/bountyverdict",
+      title: "BountyVerdict Agent Decision APIs",
+      version: "1.1.1",
+    },
+    description: AGENT_DECISION_DESCRIPTION,
+    iconUrl: `${SITE}/favicon.svg`,
+    documentationUrl: `${SITE}/agents.html`,
+    url: `${origin}/mcp`,
+    transport: {
+      type: "streamable-http",
+      endpoint: `${origin}/mcp`,
+    },
+    capabilities: {
+      tools: { listChanged: false },
+    },
+    authentication: {
+      required: false,
+      schemes: [],
+    },
+    instructions: "Call tools/list to inspect the six read-only tools and their exact x402 prices. Validate complete input before authorizing a Base USDC payment.",
+    tools: ["dynamic"],
+    _meta: {
+      payment: {
+        protocol: "x402",
+        version: 2,
+        network,
+        networkName: paymentNetwork,
+        currency: "USDC",
+        minimumPriceUsd: 0.02,
+        maximumPriceUsd: 0.40,
+      },
+      mutatesExternalSystems: false,
+      excludedProducts: ["SkillVerdict"],
+    },
+  };
+}
+
+export function createApiCatalog(originInput: string) {
+  const origin = canonicalOrigin(originInput);
+  const catalogUrl = `${origin}/.well-known/api-catalog`;
+  const items = DISTRIBUTED_PRODUCTS.map((product) => ({
+    href: `${origin}${PRODUCT_CATALOG[product].path}`,
+    type: "application/json",
+  }));
+  items.push({ href: `${origin}/mcp`, type: "application/json" });
+  return {
+    linkset: [
+      {
+        anchor: catalogUrl,
+        item: items,
+      },
+      ...DISTRIBUTED_PRODUCTS.map((product) => ({
+        anchor: `${origin}${PRODUCT_CATALOG[product].path}`,
+        "service-doc": [{
+          href: `${SITE}/skills/${PRODUCT_GUIDANCE[product].skill}/SKILL.md`,
+          type: "text/markdown",
+        }],
+        "service-meta": [{
+          href: `${origin}/agent-manifest.json`,
+          type: "application/json",
+        }],
+      })),
+      {
+        anchor: `${origin}/mcp`,
+        "service-desc": [{
+          href: `${origin}/.well-known/mcp/server-card.json`,
+          type: "application/json",
+        }],
+        "service-doc": [{
+          href: `${SITE}/llms-install.md`,
+          type: "text/html",
+        }],
+        "service-meta": [
+          { href: `${origin}/.well-known/mcp.json`, type: "application/json" },
+          {
+            href: "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest",
+            type: "application/json",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export function createIntegrationsManifest(originInput: string) {
+  const origin = canonicalOrigin(originInput);
+  const declaration = `${origin}/.well-known/integrations.json`;
+  const basis = () => ({ via: "declared", source: declaration });
+  const publicAuth = () => ({ status: "none", basis: basis() });
+  return {
+    version: 3,
+    summary: "Six read-only GitHub engineering decision APIs exposed over REST and MCP, paid per successful result with Base USDC via x402; no account or API key required.",
+    surfaces: [
+      ...DISTRIBUTED_PRODUCTS.map((product) => ({
+        slug: `bountyverdict-${product}`,
+        name: PRODUCT_CATALOG[product].service,
+        type: "http",
+        docs: `${SITE}/skills/${PRODUCT_GUIDANCE[product].skill}/SKILL.md`,
+        url: `${origin}${PRODUCT_CATALOG[product].path}`,
+        basis: basis(),
+        auth: publicAuth(),
+      })),
+      {
+        slug: "bountyverdict-mcp",
+        name: "BountyVerdict Agent Decision MCP",
+        type: "mcp",
+        docs: `${SITE}/llms-install.md`,
+        url: `${origin}/mcp`,
+        transports: ["streamable-http"],
+        basis: basis(),
+        auth: publicAuth(),
+      },
+    ],
   };
 }
 
@@ -281,6 +410,9 @@ ${products}
 - OpenAPI: ${origin}/openapi.json
 - x402 resources: ${origin}/.well-known/x402
 - MCP endpoint metadata: ${origin}/.well-known/mcp.json
+- MCP server card: ${origin}/.well-known/mcp/server-card.json
+- RFC 9727 API catalog: ${origin}/.well-known/api-catalog
+- Integration declaration: ${origin}/.well-known/integrations.json
 - Agentic Resource Discovery catalog: ${origin}/.well-known/ai-catalog.json
 - Agent guide: ${origin}/llms.txt
 - Remote MCP server: ${origin}/mcp

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import app from "../src/index.ts";
-import { createAiCatalog, createMcpWellKnown, createOriginAgentManifest, createOriginSkillMarkdown } from "../src/origin-discovery.ts";
+import {
+  createAiCatalog,
+  createApiCatalog,
+  createIntegrationsManifest,
+  createMcpServerCard,
+  createMcpWellKnown,
+  createOriginAgentManifest,
+  createOriginSkillMarkdown,
+} from "../src/origin-discovery.ts";
 import { PRODUCT_CATALOG } from "../src/product-catalog.ts";
 import { MCP_HTTP_PAYMENT_HANDOFF_EXTENSION } from "../src/payment-handoff.ts";
 
@@ -34,6 +42,9 @@ test("origin manifest publishes six exact products without changing SkillVerdict
   assert.equal(manifest.reliability.mutates_external_systems, false);
   assert.equal(manifest.mcp.url, `${origin}/mcp`);
   assert.equal(manifest.mcp.transport, "streamable-http");
+  assert.equal(manifest.mcp.server_card, `${origin}/.well-known/mcp/server-card.json`);
+  assert.equal(manifest.api_catalog, `${origin}/.well-known/api-catalog`);
+  assert.equal(manifest.integrations, `${origin}/.well-known/integrations.json`);
   assert.equal(manifest.client_setup, "https://cristianmoroaica.github.io/bountyverdict/llms-install.md");
   assert.equal(manifest.mcp.direct_automatic_payment_requires, "@x402/mcp");
   assert.equal(manifest.mcp.http_payment_handoff_extension, MCP_HTTP_PAYMENT_HANDOFF_EXTENSION);
@@ -59,6 +70,8 @@ test("origin skill is a truthful six-product payment-safe routing surface", () =
   assert.match(markdown, /network `eip155:8453` \(Base mainnet\)/);
   assert.match(markdown, /0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614/);
   assert.match(markdown, /Remote MCP server: https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/mcp/);
+  assert.match(markdown, /RFC 9727 API catalog: https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/\.well-known\/api-catalog/);
+  assert.match(markdown, /Integration declaration: https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/\.well-known\/integrations\.json/);
 });
 
 test("origin skill uses the runtime testnet instead of inventing mainnet", () => {
@@ -79,6 +92,9 @@ test("well-known MCP metadata resolves the exact paid remote without secrets", a
   assert.equal(metadata.payment.http_payment_handoff_extension, MCP_HTTP_PAYMENT_HANDOFF_EXTENSION);
   assert.equal(metadata.client_setup, "https://cristianmoroaica.github.io/bountyverdict/llms-install.md");
   assert.equal(metadata.ai_catalog, `${origin}/.well-known/ai-catalog.json`);
+  assert.equal(metadata.api_catalog, `${origin}/.well-known/api-catalog`);
+  assert.equal(metadata.integrations, `${origin}/.well-known/integrations.json`);
+  assert.equal(metadata.server_card, `${origin}/.well-known/mcp/server-card.json`);
   assert.doesNotMatch(JSON.stringify(metadata), /secret|private.?key|api.?key/i);
 
   const response = await app.request(`${origin}/.well-known/mcp.json`, {}, { X402_NETWORK: "eip155:8453" });
@@ -125,6 +141,68 @@ test("ARD catalog publishes one semantic MCP entry without inventing an agent ru
   assert.deepEqual(await response.json(), catalog);
 });
 
+test("standard discovery documents expose only the six distributed products and paid MCP", async () => {
+  const apiCatalog = createApiCatalog(origin);
+  assert.equal(apiCatalog.linkset[0].anchor, `${origin}/.well-known/api-catalog`);
+  assert.deepEqual(apiCatalog.linkset[0].item.map(({ href }) => href), [
+    `${origin}/api/verdict`,
+    `${origin}/api/portfolio`,
+    `${origin}/api/harness`,
+    `${origin}/api/run`,
+    `${origin}/api/flake`,
+    `${origin}/api/mcp-drift`,
+    `${origin}/mcp`,
+  ]);
+  assert.doesNotMatch(JSON.stringify(apiCatalog), /SkillVerdict|\/api\/skill/);
+
+  const serverCard = createMcpServerCard(origin, "eip155:8453");
+  assert.equal(serverCard.url, `${origin}/mcp`);
+  assert.deepEqual(serverCard.transport, { type: "streamable-http", endpoint: `${origin}/mcp` });
+  assert.deepEqual(serverCard.authentication, { required: false, schemes: [] });
+  assert.deepEqual(serverCard.tools, ["dynamic"]);
+  assert.equal(serverCard._meta.payment.network, "eip155:8453");
+  assert.deepEqual(serverCard._meta.excludedProducts, ["SkillVerdict"]);
+
+  const integrations = createIntegrationsManifest(origin);
+  assert.equal(integrations.version, 3);
+  assert.equal(integrations.surfaces.length, 7);
+  assert.equal(integrations.surfaces.filter(({ type }) => type === "http").length, 6);
+  assert.equal(integrations.surfaces.filter(({ type }) => type === "mcp").length, 1);
+  assert.ok(integrations.surfaces.every(({ basis, auth }) =>
+    basis.source === `${origin}/.well-known/integrations.json` && auth.status === "none"));
+  assert.doesNotMatch(JSON.stringify(integrations), /SkillVerdict|\/api\/skill/);
+
+  const apiResponse = await app.request(`${origin}/.well-known/api-catalog`);
+  assert.equal(apiResponse.status, 200);
+  assert.equal(apiResponse.headers.get("content-type"), 'application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"');
+  assert.equal(apiResponse.headers.get("link"), `<${origin}/.well-known/api-catalog>; rel="api-catalog"`);
+  assert.equal(apiResponse.headers.get("cache-control"), "public, max-age=3600");
+  assert.equal(apiResponse.headers.get("access-control-allow-origin"), "*");
+  assert.deepEqual(await apiResponse.json(), apiCatalog);
+
+  const headResponse = await app.request(`${origin}/.well-known/api-catalog`, { method: "HEAD" });
+  assert.equal(headResponse.status, 200);
+  assert.equal(headResponse.headers.get("link"), `<${origin}/.well-known/api-catalog>; rel="api-catalog"`);
+  assert.equal(await headResponse.text(), "");
+
+  const cardResponse = await app.request(
+    `${origin}/.well-known/mcp/server-card.json`,
+    {},
+    { X402_NETWORK: "eip155:8453" },
+  );
+  assert.equal(cardResponse.status, 200);
+  assert.match(cardResponse.headers.get("content-type") || "", /^application\/json/);
+  assert.equal(cardResponse.headers.get("access-control-allow-origin"), "*");
+  assert.equal(cardResponse.headers.get("cache-control"), "public, max-age=3600");
+  assert.deepEqual(await cardResponse.json(), serverCard);
+
+  const integrationsResponse = await app.request(`${origin}/.well-known/integrations.json`);
+  assert.equal(integrationsResponse.status, 200);
+  assert.match(integrationsResponse.headers.get("content-type") || "", /^application\/json/);
+  assert.equal(integrationsResponse.headers.get("cache-control"), "public, max-age=3600");
+  assert.deepEqual(await integrationsResponse.json(), integrations);
+});
+
 test("Worker serves origin-native manifest and skill with exact content types", async () => {
   const env = {
     X402_NETWORK: "eip155:8453",
@@ -147,6 +225,9 @@ test("Worker serves origin-native manifest and skill with exact content types", 
   assert.equal(root.distributed_agent_manifest, "/agent-manifest.json");
   assert.equal(root.distributed_agent_skill, "/SKILL.md");
   assert.equal(root.ai_catalog, "/.well-known/ai-catalog.json");
+  assert.equal(root.api_catalog, "/.well-known/api-catalog");
+  assert.equal(root.integrations, "/.well-known/integrations.json");
+  assert.equal(root.mcp_server_card, "/.well-known/mcp/server-card.json");
   assert.equal(root.mcp.endpoint, "/mcp");
 });
 
@@ -155,6 +236,10 @@ test("origin discovery rejects non-origin or non-HTTPS identities", () => {
     assert.throws(() => createOriginAgentManifest(value, "eip155:8453"), /exact HTTPS origin/);
     assert.throws(() => createMcpWellKnown(value, "eip155:8453"), /exact HTTPS origin/);
     assert.throws(() => createAiCatalog(value), /exact HTTPS origin/);
+    assert.throws(() => createApiCatalog(value), /exact HTTPS origin/);
+    assert.throws(() => createMcpServerCard(value, "eip155:8453"), /exact HTTPS origin/);
+    assert.throws(() => createIntegrationsManifest(value), /exact HTTPS origin/);
   }
   assert.throws(() => createMcpWellKnown("https://example.com", "eip155:1"), /supported Base network/);
+  assert.throws(() => createMcpServerCard("https://example.com", "eip155:1"), /supported Base network/);
 });

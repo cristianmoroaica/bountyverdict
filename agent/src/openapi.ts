@@ -514,6 +514,9 @@ export function createLlmsText(origin: string): string {
 - OpenAPI 3.1 contract: ${origin}/openapi.json
 - Remote MCP server: ${origin}/mcp (MCP 2025-11-25 Streamable HTTP; six paid read-only tools; SkillVerdict excluded)
 - MCP endpoint metadata: ${origin}/.well-known/mcp.json
+- MCP server card: ${origin}/.well-known/mcp/server-card.json
+- RFC 9727 API catalog: ${origin}/.well-known/api-catalog
+- Integration declaration: ${origin}/.well-known/integrations.json
 - Agentic Resource Discovery catalog: ${origin}/.well-known/ai-catalog.json (six neutral representative queries; publication is not proof of third-party indexing)
 - MCP Registry name: io.github.cristianmoroaica/bountyverdict
 - Client-specific MCP install and paid-call guide: https://cristianmoroaica.github.io/bountyverdict/llms-install.md

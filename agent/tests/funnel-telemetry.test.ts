@@ -512,6 +512,30 @@ test("classifies ARD well-known catalog fetches as a distinct discovery surface"
   assert.equal(observation.response_preference, "json");
 });
 
+test("separates standard integration discovery documents and RFC HEAD probes", () => {
+  const paths = [
+    ["/.well-known/api-catalog", "well_known_api_catalog_probe", "HEAD"],
+    ["/.well-known/mcp/server-card.json", "well_known_mcp_server_card_probe", "GET"],
+    ["/.well-known/integrations.json", "well_known_integrations_probe", "GET"],
+  ] as const;
+  const snapshot = createFunnelSnapshot("2026-07-20T19:00:00.000Z");
+  for (const [path, surface, method] of paths) {
+    const observation = classifyDiscoveryTailEvent(event(
+      path,
+      200,
+      { "user-agent": "registry-crawler/1.0", accept: "application/json" },
+      method,
+    ));
+    assert.ok(observation);
+    assert.equal(observation.surface, surface);
+    recordDiscoveryObservation(snapshot, observation);
+  }
+  assert.equal(snapshot.by_discovery_surface.well_known_api_catalog_probe.requests, 1);
+  assert.equal(snapshot.by_discovery_surface.well_known_mcp_server_card_probe.requests, 1);
+  assert.equal(snapshot.by_discovery_surface.well_known_integrations_probe.requests, 1);
+  assert.equal(snapshot.discovery_totals.requests, 3);
+});
+
 test("schema enrichment preserves previously learned discovery aggregates", () => {
   const snapshot = createFunnelSnapshot("2026-07-20T19:00:00.000Z") as unknown as Record<string, unknown>;
   const observation = classifyDiscoveryTailEvent(event("/llms.txt", 200, { "user-agent": "Agent402/1.0" }));

@@ -106,6 +106,7 @@ jobs:
               if (value.agent_manifest !== "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json" || value.agent_skill !== "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md") process.exit(1);
               if (value.distributed_agent_manifest !== "/agent-manifest.json" || value.distributed_agent_skill !== "/SKILL.md") process.exit(1);
               if (value.ai_catalog !== "/.well-known/ai-catalog.json") process.exit(1);
+              if (value.api_catalog !== "/.well-known/api-catalog" || value.integrations !== "/.well-known/integrations.json" || value.mcp_server_card !== "/.well-known/mcp/server-card.json") process.exit(1);
             });
           '
           owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/sample" >/dev/null
@@ -149,6 +150,40 @@ jobs:
               if (value.transport !== "streamable-http" || value.protocol_version !== "2025-11-25") process.exit(1);
               if (value.payment?.protocol !== "x402" || value.payment?.network !== "eip155:8453" || value.payment?.currency !== "USDC") process.exit(1);
               if (value.ai_catalog !== `${process.env.PRODUCTION_API_URL}/.well-known/ai-catalog.json`) process.exit(1);
+            });
+          '
+          owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/.well-known/mcp/server-card.json" | node -e '
+            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+              const value = JSON.parse(body);
+              if (value.protocolVersion !== "2025-11-25" || value.url !== `${process.env.PRODUCTION_API_URL}/mcp`) process.exit(1);
+              if (value.transport?.type !== "streamable-http" || value.transport?.endpoint !== `${process.env.PRODUCTION_API_URL}/mcp`) process.exit(1);
+              if (value.authentication?.required !== false || JSON.stringify(value.tools) !== JSON.stringify(["dynamic"])) process.exit(1);
+              if (value._meta?.payment?.protocol !== "x402" || value._meta?.payment?.network !== "eip155:8453") process.exit(1);
+              if (JSON.stringify(value._meta?.excludedProducts) !== JSON.stringify(["SkillVerdict"])) process.exit(1);
+            });
+          '
+          owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/.well-known/integrations.json" | node -e '
+            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+              const value = JSON.parse(body);
+              if (value.version !== 3 || value.surfaces?.length !== 7) process.exit(1);
+              if (value.surfaces.filter(({ type }) => type === "http").length !== 6 || value.surfaces.filter(({ type }) => type === "mcp").length !== 1) process.exit(1);
+              if (value.surfaces.some(({ url }) => url === `${process.env.PRODUCTION_API_URL}/api/skill`)) process.exit(1);
+              if (value.surfaces.some(({ basis, auth }) => basis?.source !== `${process.env.PRODUCTION_API_URL}/.well-known/integrations.json` || auth?.status !== "none")) process.exit(1);
+            });
+          '
+          owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/.well-known/api-catalog" | node -e '
+            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+              const value = JSON.parse(body);
+              const expected = ["/api/verdict", "/api/portfolio", "/api/harness", "/api/run", "/api/flake", "/api/mcp-drift", "/mcp"]
+                .map((path) => `${process.env.PRODUCTION_API_URL}${path}`);
+              if (JSON.stringify(value.linkset?.[0]?.item?.map(({ href }) => href)) !== JSON.stringify(expected)) process.exit(1);
+              if (JSON.stringify(value).includes(`${process.env.PRODUCTION_API_URL}/api/skill`)) process.exit(1);
+            });
+          '
+          owner_curl --fail --silent --show-error --head "$PRODUCTION_API_URL/.well-known/api-catalog" | node -e '
+            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+              if (!/content-type: application\/linkset\+json; profile="https:\/\/www\.rfc-editor\.org\/info\/rfc9727"/i.test(body)) process.exit(1);
+              if (!new RegExp(`link: <${process.env.PRODUCTION_API_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\/.well-known\\/api-catalog>; rel="api-catalog"`, "i").test(body)) process.exit(1);
             });
           '
           owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/.well-known/ai-catalog.json" | node -e '
