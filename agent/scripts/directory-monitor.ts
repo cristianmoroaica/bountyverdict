@@ -38,6 +38,7 @@ import {
   parseTensorBlockSearch,
 } from "../src/mcp-downstreams.ts";
 import { githubPrFields, readGitHubPrStatus, type GitHubPrStatus } from "../src/github-pr-telemetry.ts";
+import { parseToolHiveCatalogEntry } from "../src/toolhive.ts";
 
 if (process.env.BOUNTYVERDICT_AUDITED_ROTATION_ACTIVE !== "directory") {
   throw new Error("Directory retrieval must run through run-audited-monitor.ts after establishing a draining funnel rotation.");
@@ -127,6 +128,10 @@ const agentFinderCatalogEntryPath = "catalog/cristianmoroaica/bountyverdict.json
 const agentFinderCatalogEntryUrl = `https://raw.githubusercontent.com/github/agentfinder-catalog/main/${agentFinderCatalogEntryPath}`;
 const agentFinderSearchUrl = "https://github.com/agentfinder?search=bountyverdict";
 const agentFinderIdentifier = "urn:ai:registry.modelcontextprotocol.io:io.github.cristianmoroaica:bountyverdict";
+const toolHivePrNumber = 1385;
+const toolHivePrUrl = `https://github.com/stacklok/toolhive-catalog/pull/${toolHivePrNumber}`;
+const toolHiveCatalogUrl =
+  "https://raw.githubusercontent.com/stacklok/toolhive-catalog/main/registries/toolhive/servers/bountyverdict/server.json";
 const officialMcpServerName = "io.github.cristianmoroaica/bountyverdict";
 const officialMcpRegistryLatestUrl = "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest";
 const ardCatalogUrl = `${productionOrigin}/.well-known/ai-catalog.json`;
@@ -989,6 +994,72 @@ async function kiloMarketplaceStatus(
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
       measurement: "submission_and_kilo_in_agent_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function toolHiveStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const [review, catalogResponse] = await Promise.all([
+      githubPrStatus("stacklok", "toolhive-catalog", toolHivePrNumber, toolHivePrUrl),
+      fetch(toolHiveCatalogUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    ]);
+    if (![200, 404].includes(catalogResponse.status)) {
+      throw new Error(`ToolHive catalog returned HTTP ${catalogResponse.status}.`);
+    }
+    let catalog: Record<string, unknown> = { listed: false, contract_verified: false };
+    let contractError: string | null = null;
+    if (catalogResponse.status === 200) {
+      const body = await catalogResponse.text();
+      if (body.length > 100_000) throw new Error("ToolHive catalog entry is unbounded.");
+      try {
+        catalog = parseToolHiveCatalogEntry(JSON.parse(body), repository, `${productionOrigin}/mcp`);
+      } catch (error) {
+        catalog = { listed: true, contract_verified: false };
+        contractError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    const prStatus = String(review.status || "unknown");
+    const listed = catalog.listed === true;
+    const contractVerified = catalog.contract_verified === true;
+    const status = contractVerified
+      ? "catalog_listed"
+      : listed
+        ? "catalog_contract_drift"
+        : prStatus === "merged"
+          ? "pr_merged_awaiting_catalog"
+          : prStatus === "open"
+            ? "pr_open"
+            : prStatus === "closed"
+              ? "pr_closed_without_catalog"
+              : "pr_status_unknown";
+    return {
+      url: toolHivePrUrl,
+      catalog_url: toolHiveCatalogUrl,
+      pr_status: prStatus,
+      ...githubPrFields(review),
+      catalog_http_status: catalogResponse.status,
+      ...catalog,
+      contract_error: contractError,
+      status,
+      first_listed_at: contractVerified ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "submission_and_toolhive_in_agent_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: toolHivePrUrl,
+      catalog_url: toolHiveCatalogUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "submission_and_toolhive_in_agent_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue",
     };
   }
 }
@@ -2209,6 +2280,7 @@ const [
   mcpDirectory,
   clineMarketplace,
   kiloMarketplace,
+  toolHive,
   geminiCliGallery,
   agentFinderCatalog,
   ardCatalog,
@@ -2245,6 +2317,7 @@ const [
   mcpDirectoryStatus(previous.mcp_directory || {}, new Date().toISOString()),
   clineMarketplaceStatus(previous.cline_marketplace || {}, new Date().toISOString()),
   kiloMarketplaceStatus(previous.kilo_marketplace || {}, new Date().toISOString()),
+  toolHiveStatus(previous.toolhive || {}, new Date().toISOString()),
   geminiCliGalleryStatus(previous.gemini_cli_gallery || {}, new Date().toISOString()),
   agentFinderCatalogStatus(previous.agent_finder_catalog || {}, new Date().toISOString()),
   ardCatalogStatus(previous.ard_catalog || {}, new Date().toISOString()),
@@ -2312,6 +2385,7 @@ const githubPrChecks = [
   ["docker_mcp_registry", dockerMcpRegistry],
   ["cline_marketplace", clineMarketplace],
   ["kilo_marketplace", kiloMarketplace],
+  ["toolhive", toolHive],
 ] as const;
 const githubPrFailures = githubPrChecks.flatMap(([name, check]) => {
   const normalized = check as Record<string, unknown>;
@@ -2361,6 +2435,7 @@ const state = {
   mcp_directory: mcpDirectory,
   cline_marketplace: clineMarketplace,
   kilo_marketplace: kiloMarketplace,
+  toolhive: toolHive,
   gemini_cli_gallery: geminiCliGallery,
   agent_finder_catalog: agentFinderCatalog,
   ard_catalog: ardCatalog,

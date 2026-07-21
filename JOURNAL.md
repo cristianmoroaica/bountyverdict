@@ -11,6 +11,8 @@ Published patch release `v1.1.1` without changing any paid tool, route, price, o
 
 Submitted the existing remote MCP to ToolHive's agent-facing catalog through issue [#1384](https://github.com/stacklok/toolhive-catalog/issues/1384) and PR [#1385](https://github.com/stacklok/toolhive-catalog/pull/1385). The catalog's complete validation and Go test suite pass locally, the commit carries the required DCO sign-off, and ToolHive needs no secret or API key. Upstream checks currently await the maintainer approval required for a first-time external contributor; the PR is distribution placement only and is not an impression, install, purchase, or revenue event.
 
+Added ToolHive to the authenticated recurring directory monitor instead of leaving its state as a static note. Each audited directory pass now verifies PR identity, mergeability, review state, exact catalog path, release `1.1.1`, Streamable HTTP endpoint, MIT metadata, required discovery tags, and the complete six-tool set. The parser fails closed on identity, endpoint, version, tool, or trust-metadata drift while permitting harmless catalog tag enrichment. This makes review and merge changes actionable without owner polling and without contacting production or treating catalog activity as demand.
+
 Smithery remains publish-ready but unauthenticated: the CLI still reports no API key after the browser login was opened. Publication therefore remains behind the one-time publisher approval and namespace step; no credential was placed in Git.
 
 ## 2026-07-21 — Clean conversion measurement restored

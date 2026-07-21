@@ -291,6 +291,24 @@ test("directory monitoring tracks Kilo review and exact secret-free remote contr
   assert.match(distribution, /mcpKiloMarketplace\.paid_success/);
 });
 
+test("directory monitoring tracks ToolHive review and exact in-agent remote contract without claiming demand", async () => {
+  const [directory, distribution, parser] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+    readFile(new URL("../agent/src/toolhive.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(directory, /const toolHivePrNumber = 1385/);
+  assert.match(directory, /async function toolHiveStatus/);
+  assert.match(directory, /parseToolHiveCatalogEntry/);
+  assert.match(directory, /toolhive: toolHive/);
+  assert.match(directory, /submission_and_toolhive_in_agent_catalog_presence_not_impressions_installs_tool_calls_purchases_or_revenue/);
+  assert.match(distribution, /toolhive: state\.toolhive/);
+  assert.match(distribution, /ToolHive in-agent catalog/);
+  assert.match(distribution, /exact six-tool remote contract/);
+  assert.match(parser, /io\.github\.stacklok\/bountyverdict/);
+  assert.match(parser, /TOOLHIVE_SERVER_VERSION = "1\.1\.1"/);
+});
+
 test("directory monitoring tracks Gemini CLI gallery propagation without claiming demand", async () => {
   const [directory, distribution] = await Promise.all([
     readFile(directoryMonitorUrl, "utf8"),
