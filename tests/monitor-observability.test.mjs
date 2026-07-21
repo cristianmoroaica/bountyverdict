@@ -59,6 +59,28 @@ test("directory monitoring separates Awesome Copilot review and catalog presence
   assert.match(distribution, /default-marketplace presence is not an impression, install, or purchase/);
 });
 
+test("directory monitoring retains MCPRepository validation without calling it demand", async () => {
+  const directory = await readFile(directoryMonitorUrl, "utf8");
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(directory, /async function mcpRepositoryStatus/);
+  assert.match(directory, /mcprepository\.com\/cristianmoroaica\/bountyverdict/);
+  assert.match(directory, /submission_and_catalog_presence_not_impressions_installs_or_purchases/);
+  assert.match(directory, /mcp_repository: mcpRepository/);
+  assert.match(distribution, /MCPRepository:/);
+  assert.match(distribution, /catalog presence is not demand or revenue/);
+});
+
+test("directory monitoring retains AgentNDX review and exact listing state", async () => {
+  const directory = await readFile(directoryMonitorUrl, "utf8");
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(directory, /async function agentNdxStatus/);
+  assert.match(directory, /https:\/\/agentndx\.ai\/api\/servers\.json/);
+  assert.match(directory, /submission_and_catalog_presence_not_search_impressions_tool_calls_or_purchases/);
+  assert.match(directory, /agentndx: agentNdx/);
+  assert.match(distribution, /AgentNDX MCP\/x402 registry/);
+  assert.match(distribution, /catalog presence is never an impression, tool call, purchase, or revenue/);
+});
+
 test("public demand monitoring is scheduled read-only and excluded from commerce accounting", async () => {
   const [distribution, watcher, service] = await Promise.all([
     readFile(distributionUrl, "utf8"),

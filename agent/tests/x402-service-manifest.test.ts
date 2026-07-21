@@ -22,6 +22,9 @@ test("x402 seller manifest exposes exactly the seven paid resources", () => {
   assert.deepEqual(manifest.payment.x402.priceRange, { minimumUsd: 0.02, maximumUsd: 0.4 });
   assert.equal(manifest.discovery.agentManifest, "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json");
   assert.equal(manifest.discovery.agentSkill, "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md");
+  assert.equal(manifest.discovery.mcp, "https://agent.example/mcp");
+  assert.equal(manifest.discovery.mcpMetadata, "https://agent.example/.well-known/mcp.json");
+  assert.equal(manifest.discovery.mcpRegistryLatest, "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest");
   assert.equal(manifest.capabilities.freeSamples.length, 7);
   assert.equal(manifest.capabilities.mutatesExternalSystems, false);
 });

@@ -1240,6 +1240,8 @@ async function acquisitionStatus(): Promise<Record<string, unknown>> {
       checked_at: checkedAt,
       skills_sh: state.skills_sh || null,
       agenttool: state.agenttool || null,
+      mcp_repository: state.mcp_repository || null,
+      agentndx: state.agentndx || null,
       agentskill: state.agentskill || null,
       github_skill: state.github_skill || null,
       security_directory_pr: state.security_directory_pr || null,
@@ -1613,6 +1615,8 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Official MCP Registry:** ${report.acquisition?.mcp_registry?.listed ? `${report.acquisition.mcp_registry.name}@${report.acquisition.mcp_registry.version} listed at the exact production Streamable HTTP endpoint` : `unavailable (${report.acquisition?.mcp_registry?.error || "not checked"})`} (placement only, never a purchase)
 - **GitHub Actions MCP intent page:** ${report.acquisition?.mcp_intent_page?.live ? "live with root-cause and flaky-retry routing" : `unavailable (${report.acquisition?.mcp_intent_page?.error || "not checked"})`} (owner-checked availability, never an impression or purchase)
 - **MCP downstream propagation:** 1MCP ${mcpDownstreams.one_mcp?.status === "confirmed_direct_official_registry_consumer" ? "confirmed" : "unavailable"}; MCPProxy ${mcpDownstreams.mcp_proxy?.status === "direct_official_registry_consumer" ? "available through direct official lookup" : "unavailable"}; mcpub ${mcpDownstreams.mcpub?.listed ? "registered" : "pending registration"}; Qt Creator ${mcpDownstreams.qt_creator?.listed ? "listed" : "pending scheduled mirror"}; Glama ${mcpDownstreams.glama?.listed ? "listed" : "pending registry ingestion"} (bounded owner-run checks, never impressions or purchases)
+- **MCPRepository:** ${report.acquisition?.mcp_repository?.status || "unavailable"} (${report.acquisition?.mcp_repository?.url || "submission not recorded"}; placement is never an impression, install, or purchase)
+- **AgentNDX MCP/x402 registry:** ${report.acquisition?.agentndx?.status || "unavailable"} (${report.acquisition?.agentndx?.listed ? "exact listing active" : "submitted for review"}; catalog presence is never an impression, tool call, purchase, or revenue)
 - **Measurement boundary:** ${funnel.trusted_measurement_eligible === false ? `draining owner-triggered downstream probes; ${Number(funnel.provisional_external_discovery_requests || 0)} discovery and ${Number(funnel.provisional_external_402_challenges || 0)} challenge signals are excluded until a stable new epoch activates` : `epoch ${Number(funnel.trusted_epoch_id || 1)} eligible`}
 - **Current funnel diagnosis:** ${funnel.learning_stage || "unavailable"}
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
@@ -1652,7 +1656,7 @@ The seven-product suite is healthy in production and unattended GitHub-to-Cloudf
 
 1. Keep the SkillVerdict earned-placement experiment isolated through its seven-day exposure window; do not change price or positioning mid-test.
 2. Measure whether agents discover the official MCP Registry entry, mcpub registration, or GitHub Actions intent page, call \`tools/list\`, select a specific tool, and present payment; watch scheduled Qt Creator and Glama propagation plus whether Agent Tools Cloud adds MCPDriftVerdict or broadens its incomplete suite metadata. Do not confuse registry presence, crawler verification, or owner checks with buyer demand.
-3. Monitor GitHub Skill, AgentTool, AgentSkill, Agent Plugins PR/catalog activation, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
+3. Monitor AgentNDX review, MCPRepository validation, GitHub Skill, AgentTool, AgentSkill, Agent Plugins PR/catalog activation, and skills.sh indexing; keep retries bounded and do not generate fake install telemetry.
 4. Monitor the six signed the402 listings, six NEAR services, six PayanAgent offers, Agent402 listing and unbranded retrieval, all seven x402scan routes, six 402 Index listings, x402gle synthesized skills, Monetize Your Agent and 402directory reviews, Agentic Market's automatic mirror, guarded buyer-request feed, edge challenges, and exact receipt attribution.
 5. Use the neutral buyer-query benchmark and edge funnel—not best-case phrase ranks—to decide the next distribution change after the frozen experiment. Do not build an eighth product before ten external purchases are recognized.
 
@@ -1709,6 +1713,8 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Router installs: ${Number(skillInstalls["route-github-agent-checks"] || 0)}
 - SkillVerdict workflow installs: ${Number(skillInstalls["preflight-agent-skills"] || 0)}
 - AgentTool: ${report.acquisition?.agenttool?.status || (report.acquisition?.agenttool?.listed ? "listed" : "unavailable")}
+- MCPRepository: ${report.acquisition?.mcp_repository?.status || "unavailable"} (${report.acquisition?.mcp_repository?.url || "submission not recorded"}; catalog presence is not demand or revenue)
+- AgentNDX MCP/x402 registry: ${report.acquisition?.agentndx?.status || "unavailable"}; ${report.acquisition?.agentndx?.indexed_servers ?? "unavailable"} servers in the free index (${report.acquisition?.agentndx?.url || "submission not recorded"}; placement is not demand or revenue)
 - AgentSkill: ${report.acquisition?.agentskill?.listed_skills ?? 0} / 7 publicly indexed; ${report.acquisition?.agentskill?.status || "unavailable"}; ${report.acquisition?.agentskill?.total_installs ?? 0} installs and ${report.acquisition?.agentskill?.total_ratings ?? 0} ratings retained with per-skill security/quality history (never purchases)
 - GitHub Skill release: ${report.acquisition?.github_skill?.release_verified ? report.acquisition.github_skill.release_tag : "unavailable"}; exact public discovery ${report.acquisition?.github_skill?.listed_skills ?? 0} / 7 (${report.acquisition?.github_skill?.status || "unavailable"}; owner-run retrieval, not impressions)
 - Agent security directory PR: ${report.acquisition?.security_directory_pr?.status || "unavailable"} (${report.acquisition?.security_directory_pr?.url || "not recorded"})

@@ -38,6 +38,10 @@ const directory402SubmissionIds = Object.freeze([50, 51, 52, 53, 54, 55, 56]);
 const index402Api = "https://402index.io/api/v1/services";
 const agentSkillSearchUrl = "https://agentskill.sh/api/agent/search?q=bountyverdict&limit=20";
 const githubSkillReleaseTag = "v1.0.3";
+const mcpRepositoryUrl = "https://mcprepository.com/cristianmoroaica/bountyverdict";
+const mcpRepositorySubmittedAt = "2026-07-21T03:31:45Z";
+const agentNdxIndexUrl = "https://agentndx.ai/api/servers.json";
+const agentNdxSubmittedAt = "2026-07-21T03:33:34Z";
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -272,6 +276,87 @@ async function agentToolStatus(): Promise<Record<string, unknown>> {
     return {
       url: agentToolUrl,
       api_url: apiUrl,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function mcpRepositoryStatus(): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(mcpRepositoryUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const body = await response.text();
+    if (body.length > 1_000_000) throw new Error("MCPRepository listing response is unbounded.");
+    const title = body.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim() || "";
+    const exactRepositoryLink = /href="https:\/\/github\.com\/cristianmoroaica\/bountyverdict(?:\?ref=mcprepository\.com)?"/i.test(body);
+    const listed = response.ok && title.length > 0 && exactRepositoryLink;
+    return {
+      url: mcpRepositoryUrl,
+      http_status: response.status,
+      submitted_at: mcpRepositorySubmittedAt,
+      listed,
+      status: listed ? "listed" : response.ok ? "queued_validation" : "unexpected_response",
+      title: listed ? title : null,
+      measurement: "submission_and_catalog_presence_not_impressions_installs_or_purchases",
+    };
+  } catch (error) {
+    return {
+      url: mcpRepositoryUrl,
+      submitted_at: mcpRepositorySubmittedAt,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function agentNdxStatus(): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(agentNdxIndexUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return {
+        url: "https://agentndx.ai/",
+        index_url: agentNdxIndexUrl,
+        submitted_at: agentNdxSubmittedAt,
+        http_status: response.status,
+        listed: false,
+        status: "unexpected_response",
+      };
+    }
+    const body = await response.text();
+    if (body.length > 5_000_000) throw new Error("AgentNDX index response is unbounded.");
+    const payload = JSON.parse(body) as { servers?: Array<Record<string, unknown>> };
+    if (!Array.isArray(payload.servers) || payload.servers.length > 10_000) {
+      throw new Error("AgentNDX returned malformed or unbounded index telemetry.");
+    }
+    const matching = payload.servers.filter(({ github_url, endpoint }) =>
+      github_url === repository || endpoint === `${productionOrigin}/mcp`
+    );
+    if (matching.length > 1) throw new Error("AgentNDX duplicated the BountyVerdict listing.");
+    const entry = matching[0] || null;
+    return {
+      url: "https://agentndx.ai/",
+      index_url: agentNdxIndexUrl,
+      submitted_at: agentNdxSubmittedAt,
+      http_status: response.status,
+      listed: Boolean(entry),
+      status: entry ? "listed" : "pending_review",
+      indexed_servers: payload.servers.length,
+      entry,
+      measurement: "submission_and_catalog_presence_not_search_impressions_tool_calls_or_purchases",
+    };
+  } catch (error) {
+    return {
+      url: "https://agentndx.ai/",
+      index_url: agentNdxIndexUrl,
+      submitted_at: agentNdxSubmittedAt,
       listed: false,
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
@@ -906,6 +991,8 @@ try {
 const [
   skills,
   agenttool,
+  mcpRepository,
+  agentNdx,
   securityDirectoryPr,
   x402DirectoryPr,
   agentPluginsPr,
@@ -923,6 +1010,8 @@ const [
 ] = await Promise.all([
   skillsShStatus(),
   agentToolStatus(),
+  mcpRepositoryStatus(),
+  agentNdxStatus(),
   githubPrStatus("LLMSecurity", "awesome-agent-skills-security", 38, securityDirectoryPrUrl),
   githubPrStatus("xpaysh", "awesome-x402", 934, x402DirectoryPrUrl),
   githubPrStatus("dmgrok", "agent-plugins", 97, agentPluginsPrUrl),
@@ -984,6 +1073,8 @@ const state = {
   repository,
   skills_sh: skills,
   agenttool,
+  mcp_repository: mcpRepository,
+  agentndx: agentNdx,
   agentskill,
   github_skill: githubSkill,
   security_directory_pr: securityDirectoryPr,

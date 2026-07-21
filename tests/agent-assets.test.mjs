@@ -208,6 +208,12 @@ test("agent landing page exposes all seven self-serve products", async () => {
   assert.match(page, /No account or API key/);
   assert.match(page, /route-github-agent-checks/);
   assert.match(page, /agent-manifest\.json/);
+  assert.match(page, /io\.github\.cristianmoroaica\/bountyverdict/);
+  assert.match(page, /bountyverdict-agent-production\.mimirslab\.workers\.dev\/mcp/);
+  assert.match(page, /call <code>tools\/list<\/code>/);
+  assert.match(page, /six paid, read-only tools/);
+  assert.match(page, /SkillVerdict remains available through its dedicated skill and API, but is intentionally excluded from MCP/);
+  assert.match(page, /registry\.modelcontextprotocol\.io\/v0\.1\/servers\/io\.github\.cristianmoroaica%2Fbountyverdict\/versions\/latest/);
   assert.match(page, /gh skill preview cristianmoroaica\/bountyverdict route-github-agent-checks@v1\.0\.3/);
   assert.match(page, /gh skill install cristianmoroaica\/bountyverdict route-github-agent-checks --pin v1\.0\.3/);
   assert.match(page, /copilot plugin install cristianmoroaica\/bountyverdict/);

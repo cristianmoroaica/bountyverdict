@@ -21,6 +21,11 @@
         <p class="kicker">Seven bounded decisions · x402 · Base USDC</p>
         <h1>Agent tools that answer <em>before</em> you act.</h1>
         <p class="lede">No account or API key. Inspect a free sample and the exact payment challenge, then buy only the result your agent needs. Invalid inputs and upstream failures are not settled.</p>
+        <p class="kicker">Connect the remote MCP</p>
+        <p>Use the official <code>io.github.cristianmoroaica/bountyverdict</code> server for six paid, read-only tools covering bounty checks, portfolio ranking, repository harness audits, GitHub Actions diagnosis, flaky-retry decisions, and MCP schema drift. SkillVerdict remains available through its dedicated skill and API, but is intentionally excluded from MCP.</p>
+        <p class="install-command"><code>{ "mcpServers": { "bountyverdict": { "type": "http", "url": "https://bountyverdict-agent-production.mimirslab.workers.dev/mcp" } } }</code></p>
+        <p>Connect, call <code>tools/list</code>, and select the narrowest tool. Valid calls return an x402 Base USDC payment requirement; invalid input is rejected before payment.</p>
+        <p><a class="agent-link" href="https://registry.modelcontextprotocol.io/v0.1/servers/io.github.cristianmoroaica%2Fbountyverdict/versions/latest">Inspect the official MCP Registry entry ↗</a></p>
         <p class="install-command"><code>npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y</code></p>
         <p class="install-command"><code>gh skill preview cristianmoroaica/bountyverdict route-github-agent-checks@v1.0.3</code></p>
         <p class="install-command"><code>gh skill install cristianmoroaica/bountyverdict route-github-agent-checks --pin v1.0.3</code></p>
