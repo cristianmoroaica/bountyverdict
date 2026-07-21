@@ -121,6 +121,16 @@ test("distribution monitoring measures the MCP preview-copy rollout from an immu
   assert.match(distribution, /AbortSignal\.timeout\(timeoutMs\)/);
 });
 
+test("distribution monitoring reports MCP conversion from the active trusted epoch", async () => {
+  const distribution = await readFile(distributionUrl, "utf8");
+  assert.match(distribution, /trustedMcpDelta\(state, trustedBaseline\.mcp\)/);
+  assert.match(distribution, /trusted_mcp_buyer_candidate/);
+  assert.match(distribution, /trusted_mcp_external_by_product/);
+  assert.match(distribution, /mcp_epoch_baseline_unavailable/);
+  assert.match(distribution, /exact active-epoch deltas/);
+  assert.match(distribution, /Lifetime MCP buyer-candidate capture/);
+});
+
 test("MCPDrift activation remains owner-attributed and outside purchase accounting", async () => {
   const distribution = await readFile(distributionUrl, "utf8");
   assert.match(distribution, /CDP MCPDrift indexing path/);

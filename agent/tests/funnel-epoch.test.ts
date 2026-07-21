@@ -11,10 +11,13 @@ import {
   createFunnelSnapshot,
   recordDiscoveryObservation,
   recordFunnelObservation,
+  recordMcpObservation,
 } from "../src/funnel-telemetry.ts";
 import {
   assertFreshFunnelCollector,
   captureTrustedFunnelBaseline,
+  captureTrustedMcpBaseline,
+  trustedMcpDelta,
   trustedBoundaryFingerprint,
   trustedFunnelBaseline,
 } from "../src/funnel-epoch.ts";
@@ -68,6 +71,74 @@ test("captures an immutable epoch baseline while excluding owner automation", ()
   assert.deepEqual(trustedFunnelBaseline(baseline), baseline);
 });
 
+test("captures exact bounded MCP epoch dimensions and computes monotonic deltas", () => {
+  const state = createFunnelSnapshot("2026-07-21T17:00:00Z");
+  recordMcpObservation(state, {
+    observed_at: "2026-07-21T17:00:01Z",
+    stage: "payment_required",
+    product: "single",
+    source: "owner_automation",
+    client_class: "owner_automation",
+    client_family: "owner_automation",
+    validation_kind: "not_applicable",
+    channel: "owner_automation",
+  });
+  recordMcpObservation(state, {
+    observed_at: "2026-07-21T17:00:02Z",
+    stage: "initialize",
+    product: null,
+    source: "known_directory",
+    client_class: "registry_crawler",
+    client_family: "missing",
+    validation_kind: "not_applicable",
+    channel: "registry_or_directory",
+  });
+  for (const stage of ["initialize", "tools_list", "payment_required"] as const) {
+    recordMcpObservation(state, {
+      observed_at: "2026-07-21T17:00:03Z",
+      stage,
+      product: stage === "payment_required" ? "run" : null,
+      source: "automated_client",
+      client_class: "agent_runtime",
+      client_family: stage === "initialize" ? "codex" : "not_applicable",
+      validation_kind: "not_applicable",
+      channel: "direct_or_hidden",
+    });
+  }
+  const baseline = captureTrustedMcpBaseline(state);
+  assert.equal(baseline.external_totals.events, 4);
+  assert.equal(baseline.external_totals.initialize, 2);
+  assert.equal(baseline.buyer_candidate_totals.events, 3);
+  assert.equal(baseline.buyer_candidate_totals.initialize, 1);
+  assert.equal(baseline.external_by_product.run.payment_required, 1);
+  assert.equal(baseline.external_by_product.single.payment_required, 0);
+  assert.equal(baseline.by_channel.registry_or_directory.initialize, 1);
+  assert.equal(baseline.by_client_family.codex.initialize, 1);
+
+  recordMcpObservation(state, {
+    observed_at: "2026-07-21T17:00:04Z",
+    stage: "validation_error",
+    product: "run",
+    source: "automated_client",
+    client_class: "agent_runtime",
+    client_family: "not_applicable",
+    validation_kind: "invalid_run_or_attempt",
+    channel: "direct_or_hidden",
+  });
+  const delta = trustedMcpDelta(state, baseline);
+  assert.equal(delta.external_totals.events, 1);
+  assert.equal(delta.buyer_candidate_totals.validation_error, 1);
+  assert.equal(delta.external_by_product.run.validation_error, 1);
+  assert.equal(delta.by_channel.direct_or_hidden.validation_error, 1);
+  assert.equal(delta.by_client_class.agent_runtime.validation_error, 1);
+  assert.equal(delta.validation_kinds.invalid_run_or_attempt, 1);
+  assert.equal(baseline.validation_kinds.invalid_run_or_attempt, 0);
+  const futureBaseline = structuredClone(baseline);
+  futureBaseline.external_totals.events += 2;
+  futureBaseline.external_totals.validation_error += 2;
+  assert.throws(() => trustedMcpDelta(state, futureBaseline), /internally inconsistent/);
+});
+
 test("epoch rotation requires a live collector heartbeat", () => {
   const state = createFunnelSnapshot("2026-07-21T17:00:00Z");
   assert.doesNotThrow(() => assertFreshFunnelCollector(state, "2026-07-21T17:00:45Z"));
@@ -90,12 +161,22 @@ test("loads legacy epoch-one baselines and rejects malformed records", () => {
     1,
   ) as any;
   delete baseline.epoch_id;
+  delete baseline.mcp;
   assert.equal(trustedFunnelBaseline(baseline)?.epoch_id, 1);
+  assert.equal(trustedFunnelBaseline(baseline)?.mcp, undefined);
   assert.equal(trustedFunnelBaseline({ ...baseline, schema_version: 2 }), null);
   assert.equal(
     trustedFunnelBaseline({ ...baseline, funnel_collector_heartbeat_at: "not-a-date" })?.funnel_collector_heartbeat_at,
     baseline.funnel_observed_through,
   );
+  const current = captureTrustedFunnelBaseline(
+    createFunnelSnapshot(),
+    "2026-07-20T21:05:00Z",
+    "A sufficiently descriptive clean measurement boundary reason.",
+    2,
+  ) as any;
+  current.mcp.by_channel.direct_or_hidden.unbounded_secret_dimension = 1;
+  assert.equal(trustedFunnelBaseline(current), null);
 });
 
 test("epoch stability ignores owner and unsigned preflight noise but changes on conversion-capable events", () => {
@@ -151,6 +232,23 @@ test("epoch stability ignores owner and unsigned preflight noise but changes on 
   recordFunnelObservation(original, external);
   const afterExternal = captureTrustedFunnelBaseline(original, "2026-07-20T21:02:00Z", "A sufficiently descriptive boundary reason for testing.", 2);
   assert.notEqual(trustedBoundaryFingerprint(afterExternal), trustedBoundaryFingerprint(first));
+});
+
+test("MCP baseline changes do not alter the REST drain fingerprint", () => {
+  const state = createFunnelSnapshot("2026-07-21T17:00:00Z");
+  const first = captureTrustedFunnelBaseline(state, "2026-07-21T17:00:00Z", "A sufficiently descriptive MCP fingerprint reason.", 2);
+  recordMcpObservation(state, {
+    observed_at: "2026-07-21T17:00:01Z",
+    stage: "payment_required",
+    product: "run",
+    source: "automated_client",
+    client_class: "agent_runtime",
+    client_family: "not_applicable",
+    validation_kind: "not_applicable",
+    channel: "direct_or_hidden",
+  });
+  const second = captureTrustedFunnelBaseline(state, "2026-07-21T17:00:02Z", "A sufficiently descriptive MCP fingerprint reason.", 2);
+  assert.equal(trustedBoundaryFingerprint(second), trustedBoundaryFingerprint(first));
 });
 
 test("epoch stability resets on every non-challenge paid-route anomaly", () => {

@@ -1,9 +1,31 @@
 import { PRODUCT_KEYS, type ProductKey } from "./product-catalog.ts";
-import type { FunnelCounters, FunnelSnapshot } from "./funnel-telemetry.ts";
+import {
+  FUNNEL_CHANNELS,
+  FUNNEL_CLIENT_CLASSES,
+  MCP_CLIENT_FAMILIES,
+  MCP_FUNNEL_STAGES,
+  MCP_VALIDATION_KINDS,
+  mcpBuyerCandidateTotals,
+  type FunnelCounters,
+  type FunnelSnapshot,
+  type McpFunnelCounters,
+} from "./funnel-telemetry.ts";
 
 type ProductCounters = Pick<FunnelCounters,
   "requests" | "challenges_402" | "signed_requests" | "signed_successes" |
   "preflight_rejections" | "rate_limited" | "server_errors">;
+
+type McpProduct = Exclude<ProductKey, "skill">;
+
+export type TrustedMcpBaseline = {
+  external_totals: McpFunnelCounters;
+  buyer_candidate_totals: McpFunnelCounters;
+  external_by_product: Record<McpProduct, McpFunnelCounters>;
+  by_channel: FunnelSnapshot["mcp_by_channel"];
+  by_client_class: FunnelSnapshot["mcp_by_client_class"];
+  by_client_family: FunnelSnapshot["mcp_by_client_family"];
+  validation_kinds: FunnelSnapshot["mcp_validation_kinds"];
+};
 
 export type TrustedFunnelBaseline = {
   schema_version: 1;
@@ -15,6 +37,7 @@ export type TrustedFunnelBaseline = {
   funnel_observed_through: string;
   funnel_collector_heartbeat_at: string;
   cohort_capture_started_at: string;
+  mcp?: TrustedMcpBaseline;
   counters: {
     external_discovery_requests: number;
     external_402_challenges: number;
@@ -35,6 +58,118 @@ function subtractOwner(total: number, owner: number, label: string): number {
   const result = total - owner;
   if (!Number.isSafeInteger(result) || result < 0) throw new Error(`${label} is internally inconsistent.`);
   return result;
+}
+
+const MCP_PRODUCTS = PRODUCT_KEYS.filter((product): product is McpProduct => product !== "skill");
+const MCP_COUNTER_KEYS = ["events", ...MCP_FUNNEL_STAGES] as const;
+const TRUSTED_MCP_BASELINE_KEYS = [
+  "external_totals",
+  "buyer_candidate_totals",
+  "external_by_product",
+  "by_channel",
+  "by_client_class",
+  "by_client_family",
+  "validation_kinds",
+] as const;
+
+function emptyMcpCounters(): McpFunnelCounters {
+  return Object.fromEntries(MCP_COUNTER_KEYS.map((key) => [key, 0])) as McpFunnelCounters;
+}
+
+function addMcpCounters(target: McpFunnelCounters, source: McpFunnelCounters): McpFunnelCounters {
+  for (const key of MCP_COUNTER_KEYS) target[key] += source[key];
+  return target;
+}
+
+export function captureTrustedMcpBaseline(state: FunnelSnapshot): TrustedMcpBaseline {
+  const externalTotals = emptyMcpCounters();
+  for (const [source, counters] of Object.entries(state.mcp_by_source)) {
+    if (source !== "owner_automation") addMcpCounters(externalTotals, counters);
+  }
+  const externalByProduct = Object.fromEntries(MCP_PRODUCTS.map((product) => {
+    const totals = emptyMcpCounters();
+    for (const [source, counters] of Object.entries(state.mcp_by_product_source[product])) {
+      if (source !== "owner_automation") addMcpCounters(totals, counters);
+    }
+    return [product, totals];
+  })) as Record<McpProduct, McpFunnelCounters>;
+  return {
+    external_totals: externalTotals,
+    buyer_candidate_totals: mcpBuyerCandidateTotals(state),
+    external_by_product: externalByProduct,
+    by_channel: structuredClone(state.mcp_by_channel),
+    by_client_class: structuredClone(state.mcp_by_client_class),
+    by_client_family: structuredClone(state.mcp_by_client_family),
+    validation_kinds: structuredClone(state.mcp_validation_kinds),
+  };
+}
+
+function monotonicMcpDelta(current: number, baseline: number, label: string): number {
+  const delta = current - baseline;
+  if (!Number.isSafeInteger(delta) || delta < 0) throw new Error(`${label} is internally inconsistent.`);
+  return delta;
+}
+
+function mcpCountersDelta(current: McpFunnelCounters, baseline: McpFunnelCounters, label: string): McpFunnelCounters {
+  return Object.fromEntries(MCP_COUNTER_KEYS.map((key) => [
+    key,
+    monotonicMcpDelta(current[key], baseline[key], `${label} ${key}`),
+  ])) as McpFunnelCounters;
+}
+
+function keyedMcpDelta<K extends string>(
+  current: Record<K, McpFunnelCounters>,
+  baseline: Record<K, McpFunnelCounters>,
+  keys: readonly K[],
+  label: string,
+): Record<K, McpFunnelCounters> {
+  return Object.fromEntries(keys.map((key) => [key, mcpCountersDelta(current[key], baseline[key], `${label} ${key}`)])) as Record<K, McpFunnelCounters>;
+}
+
+export function trustedMcpDelta(state: FunnelSnapshot, baseline: TrustedMcpBaseline): TrustedMcpBaseline {
+  const current = captureTrustedMcpBaseline(state);
+  return {
+    external_totals: mcpCountersDelta(current.external_totals, baseline.external_totals, "External MCP"),
+    buyer_candidate_totals: mcpCountersDelta(current.buyer_candidate_totals, baseline.buyer_candidate_totals, "Buyer-candidate MCP"),
+    external_by_product: keyedMcpDelta(current.external_by_product, baseline.external_by_product, MCP_PRODUCTS, "External MCP product"),
+    by_channel: keyedMcpDelta(current.by_channel, baseline.by_channel, FUNNEL_CHANNELS, "MCP channel"),
+    by_client_class: keyedMcpDelta(current.by_client_class, baseline.by_client_class, FUNNEL_CLIENT_CLASSES, "MCP client class"),
+    by_client_family: keyedMcpDelta(current.by_client_family, baseline.by_client_family, MCP_CLIENT_FAMILIES, "MCP client family"),
+    validation_kinds: Object.fromEntries(MCP_VALIDATION_KINDS.map((kind) => [
+      kind,
+      monotonicMcpDelta(current.validation_kinds[kind], baseline.validation_kinds[kind], `MCP validation kind ${kind}`),
+    ])) as FunnelSnapshot["mcp_validation_kinds"],
+  };
+}
+
+function mcpCountersValid(value: unknown): value is McpFunnelCounters {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length !== MCP_COUNTER_KEYS.length ||
+    !MCP_COUNTER_KEYS.every((key) => Number.isSafeInteger(record[key]) && Number(record[key]) >= 0)) return false;
+  return MCP_FUNNEL_STAGES.reduce((sum, stage) => sum + Number(record[stage]), 0) === Number(record.events);
+}
+
+function keyedMcpCountersValid(value: unknown, keys: readonly string[]): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return Object.keys(record).length === keys.length && keys.every((key) => mcpCountersValid(record[key]));
+}
+
+function trustedMcpBaselineValid(value: unknown): value is TrustedMcpBaseline {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const baseline = value as Partial<TrustedMcpBaseline>;
+  if (Object.keys(value).length !== TRUSTED_MCP_BASELINE_KEYS.length ||
+    !TRUSTED_MCP_BASELINE_KEYS.every((key) => key in value) ||
+    !mcpCountersValid(baseline.external_totals) || !mcpCountersValid(baseline.buyer_candidate_totals) ||
+    !keyedMcpCountersValid(baseline.external_by_product, MCP_PRODUCTS) ||
+    !keyedMcpCountersValid(baseline.by_channel, FUNNEL_CHANNELS) ||
+    !keyedMcpCountersValid(baseline.by_client_class, FUNNEL_CLIENT_CLASSES) ||
+    !keyedMcpCountersValid(baseline.by_client_family, MCP_CLIENT_FAMILIES) ||
+    !baseline.validation_kinds || typeof baseline.validation_kinds !== "object" || Array.isArray(baseline.validation_kinds)) return false;
+  const validationKinds = baseline.validation_kinds as Record<string, unknown>;
+  return Object.keys(validationKinds).length === MCP_VALIDATION_KINDS.length &&
+    MCP_VALIDATION_KINDS.every((kind) => Number.isSafeInteger(validationKinds[kind]) && Number(validationKinds[kind]) >= 0);
 }
 
 export function captureTrustedFunnelBaseline(
@@ -79,6 +214,7 @@ export function captureTrustedFunnelBaseline(
     funnel_observed_through: state.updated_at,
     funnel_collector_heartbeat_at: state.collector_heartbeat_at,
     cohort_capture_started_at: state.cohort_capture_started_at,
+    mcp: captureTrustedMcpBaseline(state),
     counters: {
       external_discovery_requests: subtractOwner(
         state.discovery_totals.requests,
@@ -120,6 +256,7 @@ export function trustedFunnelBaseline(value: unknown): TrustedFunnelBaseline | n
     typeof baseline.initialized_at !== "string" || !Number.isFinite(Date.parse(baseline.initialized_at)) ||
     typeof baseline.reason !== "string" || !baseline.counters || !baseline.external_by_product ||
     !baseline.by_channel || !baseline.by_client_class || !baseline.external_discovery_by_surface) return null;
+  if (baseline.mcp !== undefined && !trustedMcpBaselineValid(baseline.mcp)) return null;
   return {
     ...baseline,
     epoch_id: Number(epochId),

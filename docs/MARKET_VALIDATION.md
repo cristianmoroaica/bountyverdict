@@ -1,6 +1,6 @@
 # Live market validation
 
-Checked against the Coinbase x402 Bazaar semantic-search API on 2026-07-20.
+Checked against the Coinbase x402 Bazaar semantic-search API on 2026-07-20. A broader trailing-30-day successful-payment and payer-breadth census was captured on 2026-07-21 in [Agent-product demand snapshot](BAZAAR_DEMAND_2026-07-21.md).
 
 ## Demand signal
 

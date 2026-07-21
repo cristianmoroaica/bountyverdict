@@ -16,6 +16,12 @@ import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
 import { evaluateEarnedPlacementExperiment } from "../src/acquisition.ts";
 import { loadFunnelSnapshot, mcpBuyerCandidateTotals } from "../src/funnel-telemetry.ts";
 import {
+  captureTrustedFunnelBaseline,
+  trustedFunnelBaseline,
+  trustedMcpDelta,
+  type TrustedFunnelBaseline,
+} from "../src/funnel-epoch.ts";
+import {
   THE402_API,
   THE402_LISTINGS,
   THE402_SUBSCRIPTION_PLAN,
@@ -1735,30 +1741,19 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       signed_payment_attempts: externalSignedRequests,
       successful_signed_responses: externalSignedSuccesses,
     };
-    let trustedBaseline: Record<string, any>;
+    let trustedBaseline: TrustedFunnelBaseline;
     try {
-      trustedBaseline = JSON.parse(await readFile(trustedFunnelBaselineFile, "utf8"));
-      if (trustedBaseline.schema_version !== 1 || typeof trustedBaseline.initialized_at !== "string" ||
-        (trustedBaseline.epoch_id !== undefined && (!Number.isSafeInteger(trustedBaseline.epoch_id) || trustedBaseline.epoch_id < 1)) ||
-        !trustedBaseline.counters || !trustedBaseline.external_by_product || !trustedBaseline.by_channel ||
-        !trustedBaseline.by_client_class || !trustedBaseline.external_discovery_by_surface) {
-        throw new Error("Trusted funnel baseline is malformed.");
-      }
+      const loaded = trustedFunnelBaseline(JSON.parse(await readFile(trustedFunnelBaselineFile, "utf8")));
+      if (!loaded) throw new Error("Trusted funnel baseline is malformed.");
+      trustedBaseline = loaded;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      trustedBaseline = {
-        schema_version: 1,
-        epoch_id: 1,
-        initialized_at: new Date().toISOString(),
-        reason: "Owner release probes were not identifiable before this boundary; earlier external-or-unattributed totals are retained but not used for conversion rates.",
-        counters: currentTrustedCounters,
-        external_by_product: externalByProduct,
-        by_channel: state.by_channel,
-        by_client_class: state.by_client_class,
-        external_discovery_by_surface: externalDiscoveryBySurface,
-        by_cohort: state.by_cohort,
-        by_discovery_cohort: state.by_discovery_cohort,
-      };
+      trustedBaseline = captureTrustedFunnelBaseline(
+        state,
+        new Date().toISOString(),
+        "Owner release probes were not identifiable before this boundary; earlier external-or-unattributed totals are retained but not used for conversion rates.",
+        1,
+      );
       await atomicWrite(trustedFunnelBaselineFile, `${JSON.stringify(trustedBaseline, null, 2)}\n`);
     }
     let epochRotation: Record<string, any> | null = null;
@@ -1777,9 +1772,12 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+    const baselineCounters = trustedBaseline.counters as unknown as Record<string, unknown>;
+    const baselineChannels = trustedBaseline.by_channel as unknown as Record<string, Record<string, unknown>>;
+    const baselineClients = trustedBaseline.by_client_class as unknown as Record<string, Record<string, unknown>>;
     const trustedExternalByProduct = Object.fromEntries(EXPECTED_PRODUCTS.map((product) => {
       const current = externalByProduct[product];
-      const baseline = trustedBaseline.external_by_product?.[product] || {};
+      const baseline = (trustedBaseline.external_by_product?.[product] || {}) as unknown as Record<string, unknown>;
       return [product, Object.fromEntries(Object.entries(current).map(([key, value]) => [
         key,
         monotonicDelta(value, baseline[key], `Product ${product} ${key}`),
@@ -1787,20 +1785,20 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
     }));
     const trusted = Object.fromEntries(Object.entries(currentTrustedCounters).map(([key, value]) => [
       key,
-      monotonicDelta(value, trustedBaseline.counters[key], `Funnel ${key}`),
+      monotonicDelta(value, baselineCounters[key], `Funnel ${key}`),
     ]));
     const trustedByChannel = Object.fromEntries(Object.entries(state.by_channel).map(([channel, current]) => [
       channel,
       Object.fromEntries(Object.entries(current).map(([key, value]) => [
         key,
-        monotonicDelta(value, trustedBaseline.by_channel?.[channel]?.[key], `Channel ${channel} ${key}`),
+        monotonicDelta(value, baselineChannels[channel]?.[key], `Channel ${channel} ${key}`),
       ])),
     ]));
     const trustedByClientClass = Object.fromEntries(Object.entries(state.by_client_class).map(([client, current]) => [
       client,
       Object.fromEntries(Object.entries(current).map(([key, value]) => [
         key,
-        monotonicDelta(value, trustedBaseline.by_client_class?.[client]?.[key], `Client ${client} ${key}`),
+        monotonicDelta(value, baselineClients[client]?.[key], `Client ${client} ${key}`),
       ])),
     ]));
     const trustedExternalDiscoveryBySurface = Object.fromEntries(Object.entries(externalDiscoveryBySurface).map(([surface, count]) => [
@@ -1839,6 +1837,8 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       : Object.fromEntries(Object.keys(trustedExternalDiscoveryBySurface).map((surface) => [surface, 0]));
     const effectiveByCohort = measurementEligible ? trustedByCohort : {};
     const effectiveByDiscoveryCohort = measurementEligible ? trustedByDiscoveryCohort : {};
+    const trustedMcp = trustedBaseline.mcp ? trustedMcpDelta(state, trustedBaseline.mcp) : null;
+    const effectiveTrustedMcp = measurementEligible ? trustedMcp : null;
     const trustedLearningStage = !measurementEligible
       ? "measurement_draining"
       : effectiveTrusted.external_discovery_requests === 0 && effectiveTrusted.external_402_challenges === 0 && effectiveTrusted.signed_payment_attempts === 0
@@ -1850,6 +1850,27 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
         : effectiveTrusted.successful_signed_responses === 0
           ? "signed_payment_friction"
           : "signed_conversion_observed";
+    const trustedMcpLearningStage = !measurementEligible
+      ? "measurement_draining"
+      : !effectiveTrustedMcp
+        ? "mcp_epoch_baseline_unavailable"
+        : Number(effectiveTrustedMcp.buyer_candidate_totals.events || 0) === 0
+          ? "mcp_reach_not_observed"
+          : Number(effectiveTrustedMcp.buyer_candidate_totals.protocol_error || 0) > 0
+            ? "mcp_protocol_negotiation_friction"
+            : Number(effectiveTrustedMcp.buyer_candidate_totals.capacity_rejected || 0) > 0
+              ? "mcp_capacity_friction"
+              : Number(effectiveTrustedMcp.buyer_candidate_totals.tools_list || 0) === 0 &&
+                  Number(effectiveTrustedMcp.buyer_candidate_totals.payment_required || 0) === 0
+                ? "mcp_initialized_without_tool_discovery"
+                : Number(effectiveTrustedMcp.buyer_candidate_totals.payment_required || 0) === 0 &&
+                    Number(effectiveTrustedMcp.buyer_candidate_totals.validation_error || 0) === 0
+                  ? "mcp_catalog_discovery_only"
+                  : Number(effectiveTrustedMcp.buyer_candidate_totals.payment_present || 0) === 0
+                    ? "mcp_tool_interest_without_payment"
+                    : Number(effectiveTrustedMcp.buyer_candidate_totals.paid_success || 0) === 0
+                      ? "mcp_payment_friction"
+                      : "mcp_conversion_observed";
     return {
       available: true,
       capture_started_at: state.capture_started_at,
@@ -1894,8 +1915,17 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       mcp_external: externalMcpTotals,
       mcp_external_by_product: externalMcpByProduct,
       mcp_buyer_candidate: buyerCandidateMcpTotals,
+      trusted_mcp_available: Boolean(effectiveTrustedMcp),
+      trusted_mcp_external: effectiveTrustedMcp?.external_totals || {},
+      trusted_mcp_buyer_candidate: effectiveTrustedMcp?.buyer_candidate_totals || {},
+      trusted_mcp_external_by_product: effectiveTrustedMcp?.external_by_product || {},
+      trusted_mcp_by_channel: effectiveTrustedMcp?.by_channel || {},
+      trusted_mcp_by_client_class: effectiveTrustedMcp?.by_client_class || {},
+      trusted_mcp_by_client_family: effectiveTrustedMcp?.by_client_family || {},
+      trusted_mcp_validation_kinds: effectiveTrustedMcp?.validation_kinds || {},
       mcp_preview_copy_experiment: mcpPreviewCopyExperiment,
       mcp_learning_stage: mcpLearningStage,
+      trusted_mcp_learning_stage: trustedMcpLearningStage,
       mcp_by_source: state.mcp_by_source,
       mcp_by_client_class: state.mcp_by_client_class,
       mcp_by_client_family: state.mcp_by_client_family,
@@ -1984,6 +2014,8 @@ function renderMonitorNote(report: Record<string, any>): string {
     : "unavailable";
   const funnel = report.funnel || {};
   const mcpBuyerCandidate = funnel.mcp_buyer_candidate || {};
+  const trustedMcpBuyerCandidate = funnel.trusted_mcp_buyer_candidate || {};
+  const trustedMcpAvailable = funnel.trusted_mcp_available === true;
   const mcpPreviewCopyExperiment = funnel.mcp_preview_copy_experiment || {};
   const mcpPreviewCopyDelta = mcpPreviewCopyExperiment.delta || {};
   const mcpPreviewCopyRatios = mcpPreviewCopyExperiment.event_ratios || {};
@@ -2281,7 +2313,8 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Agentic Market automatic endpoints: ${report.marketplaces?.agentic_market?.endpoint_count ?? "unavailable"} / 7 (CDP Bazaar mirror; reported quality counters excluded from purchase and revenue accounting)
 - Edge funnel capture: ${funnel.available ? `${Number(funnel.trusted_external_402_challenges || 0)} trusted external challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}; ${Number(funnel.external_402_challenges || 0)} older/lifetime external-or-unattributed challenges retained but excluded from rates` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
 - Discovery-surface capture: ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external since the clean boundary; ${Number(funnel.external_discovery_requests || 0)} lifetime external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
-- MCP buyer-candidate capture: ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initialize, ${Number(mcpBuyerCandidate.tools_list || 0)} tools/list, ${Number(mcpBuyerCandidate.protocol_error || 0)} protocol errors, ${Number(mcpBuyerCandidate.tool_not_found || 0)} unknown-tool calls, ${Number(mcpBuyerCandidate.validation_error || 0)} invalid calls, ${Number(mcpBuyerCandidate.capacity_rejected || 0)} capacity rejections, ${Number(mcpBuyerCandidate.payment_required || 0)} unpaid valid calls, ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations, ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes, ${Number(mcpBuyerCandidate.paid_error || 0)} paid errors` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner, registry, Glama release, and x402 observer channels excluded)
+- Trusted MCP buyer-candidate capture: ${funnel.available && trustedMcpAvailable ? `${Number(trustedMcpBuyerCandidate.initialize || 0)} initialize, ${Number(trustedMcpBuyerCandidate.tools_list || 0)} tools/list, ${Number(trustedMcpBuyerCandidate.protocol_error || 0)} protocol errors, ${Number(trustedMcpBuyerCandidate.tool_not_found || 0)} unknown-tool calls, ${Number(trustedMcpBuyerCandidate.validation_error || 0)} invalid calls, ${Number(trustedMcpBuyerCandidate.capacity_rejected || 0)} capacity rejections, ${Number(trustedMcpBuyerCandidate.payment_required || 0)} unpaid valid calls, ${Number(trustedMcpBuyerCandidate.payment_present || 0)} payment presentations, ${Number(trustedMcpBuyerCandidate.paid_success || 0)} paid successes, ${Number(trustedMcpBuyerCandidate.paid_error || 0)} paid errors` : `unavailable (${funnel.trusted_mcp_learning_stage || "no MCP epoch baseline"})`} (exact active-epoch deltas; owner, registry, Glama release, and x402 observer channels excluded)
+- Lifetime MCP buyer-candidate capture: ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initialize, ${Number(mcpBuyerCandidate.tools_list || 0)} tools/list, ${Number(mcpBuyerCandidate.validation_error || 0)} invalid calls, ${Number(mcpBuyerCandidate.payment_required || 0)} unpaid valid calls, ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations, ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; retained for continuity, not an epoch conversion rate)
 - MCP identified-directory capture: ${funnel.available ? `${Number(mcpRegistryCrawler.initialize || 0)} initialize, ${Number(mcpRegistryCrawler.tools_list || 0)} tools/list, ${Number(mcpRegistryCrawler.payment_required || 0)} unpaid valid calls, ${Number(mcpRegistryCrawler.payment_present || 0)} payment presentations` : "unavailable"} (distribution propagation retained separately from buyer-intent learning)
 - Kiro Power declared-source capture: ${funnel.available ? `${Number(mcpKiroPower.initialize || 0)} initialize, ${Number(mcpKiroPower.tools_list || 0)} tools/list, ${Number(mcpKiroPower.payment_required || 0)} unpaid valid calls, ${Number(mcpKiroPower.payment_present || 0)} payment presentations` : "unavailable"} (allowlisted query marker only; never identity or purchase proof)
 - AgentSkills.in adapter source capture: ${funnel.available ? `${Number(mcpAgentSkillsMarketplace.initialize || 0)} initialize, ${Number(mcpAgentSkillsMarketplace.tools_list || 0)} tools/list, ${Number(mcpAgentSkillsMarketplace.validation_error || 0)} invalid calls, ${Number(mcpAgentSkillsMarketplace.payment_required || 0)} unpaid valid calls, ${Number(mcpAgentSkillsMarketplace.payment_present || 0)} payment presentations, ${Number(mcpAgentSkillsMarketplace.paid_success || 0)} paid successes` : "unavailable"} (allowlisted aggregate marker only; not unique agents, purchases, or revenue)
@@ -2309,16 +2342,16 @@ ${EXPECTED_PRODUCTS.map((product) => {
 
 Input readiness, channel, client class, response preference, x402 header generation, hourly and daily trends, product×source aggregates, and coarse product×channel×client×input×payment×response cohorts are retained in the private machine-readable state. The immutable clean boundary excludes older owner-probe contamination from conversion rates without fabricating a retroactive attribution; lifetime totals remain available and explicitly labeled. No raw request content or visitor identifier is retained.
 
-### Non-owner MCP tool-call activity by product
+### Trusted active-epoch non-owner MCP tool-call activity by product
 
 | Product | Valid unpaid calls | Invalid calls | Payment presented | Paid successes | Paid errors |
 |---|---:|---:|---:|---:|---:|
 ${MCP_PRODUCTS.map((product) => {
-  const row = funnel.mcp_external_by_product?.[product] || {};
+  const row = trustedMcpAvailable ? funnel.trusted_mcp_external_by_product?.[product] || {} : {};
   return `| ${PRODUCT_CATALOG[product].service} | ${Number(row.payment_required || 0)} | ${Number(row.validation_error || 0)} | ${Number(row.payment_present || 0)} | ${Number(row.paid_success || 0)} | ${Number(row.paid_error || 0)} |`;
 }).join("\n")}
 
-MCP telemetry is aggregate and privacy-preserving: it retains only stage, product, coarse validation category, broad source/client/referral class, and bounded hour/day counts. Tool arguments, JSON-RPC payloads, payment payloads, payer addresses, IPs, and full user-agent strings are discarded. Onchain settlement attribution remains authoritative for purchases and revenue.
+The MCP product table is the exact active-epoch non-owner delta and remains zero/unavailable while a drain is active or a legacy baseline lacks MCP fields. MCP telemetry is aggregate and privacy-preserving: it retains only stage, product, coarse validation category, broad source/client/referral class, and bounded hour/day counts. Tool arguments, JSON-RPC payloads, payment payloads, payer addresses, IPs, and full user-agent strings are discarded. Onchain settlement attribution remains authoritative for purchases and revenue.
 - Experiment status: ${experiment.status || "unavailable"}
 - Experiment baseline: 8 total installs, 2 router installs, 1 SkillVerdict workflow install, 0 genuine purchases
 - Experiment delta: ${Number(experiment.delta?.installs?.total || 0)} total installs, ${Number(experiment.delta?.installs?.router || 0)} router installs, ${Number(experiment.delta?.installs?.skillverdict || 0)} SkillVerdict workflow installs, ${Number(experiment.delta?.genuine_purchases || 0)} genuine purchases
