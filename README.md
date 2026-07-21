@@ -54,7 +54,7 @@ MCP-compatible agents can instead connect to the production Streamable HTTP serv
 
 Use the client-specific [`llms-install.md`](llms-install.md) guide for Codex, Claude, Gemini, VS Code, Cursor, Cline, and Kilo. A remote MCP connection does not itself provide a wallet: direct automatic settlement requires an x402-aware MCP client, while standard hosts can use the versioned exact-HTTP handoff included in every valid unpaid tool response with a separately authorized x402 wallet.
 
-Agentic Resource Discovery crawlers can ingest the origin-owned [`ai-catalog.json`](https://bountyverdict-agent-production.mimirslab.workers.dev/.well-known/ai-catalog.json). It advertises the existing MCP server with five unbranded representative buyer queries for semantic retrieval; catalog fetches are measured separately from tool calls, payments, and purchases.
+Agentic Resource Discovery crawlers can ingest the origin-owned [`ai-catalog.json`](https://bountyverdict-agent-production.mimirslab.workers.dev/.well-known/ai-catalog.json). It advertises the existing MCP server with six unbranded representative buyer queries for semantic retrieval; catalog fetches are measured separately from tool calls, payments, and purchases.
 
 For the broad CI use case, the crawlable [GitHub Actions Failure Diagnosis MCP Server](https://cristianmoroaica.github.io/bountyverdict/mcp-github-actions-diagnosis.html) guide compares the root-cause and flaky-retry tools, publishes the remote client configuration, exact prices, free samples, typed outputs, and mutation boundary.
 

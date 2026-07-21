@@ -124,7 +124,8 @@ const ardRepresentativeQueries = Object.freeze([
   "check whether a github bounty issue is still open claimed or worth coding",
   "compare github bounty issues and choose the best candidate",
   "audit repository coding agent instructions before autonomous work",
-  "diagnose a failed github actions workflow and decide whether to fix or retry",
+  "why did this github actions workflow run fail",
+  "should i retry this failed github actions run once or fix it",
   "check whether an mcp tools list schema change will break an agent",
 ]);
 const ardCapabilities = Object.freeze([

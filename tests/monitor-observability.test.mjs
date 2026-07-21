@@ -288,6 +288,8 @@ test("directory monitoring verifies the origin ARD catalog without calling publi
   assert.match(directory, /async function ardCatalogStatus/);
   assert.match(directory, /\.well-known\/ai-catalog\.json/);
   assert.match(directory, /application\/mcp-server-card\+json/);
+  assert.match(directory, /why did this github actions workflow run fail/);
+  assert.match(directory, /should i retry this failed github actions run once or fix it/);
   assert.match(directory, /origin_owned_ard_catalog_availability_not_registry_indexing_impressions_tool_calls_purchases_or_revenue/);
   assert.match(directory, /ard_catalog: ardCatalog/);
   assert.match(distribution, /Agentic Resource Discovery catalog/);

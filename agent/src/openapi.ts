@@ -514,7 +514,7 @@ export function createLlmsText(origin: string): string {
 - OpenAPI 3.1 contract: ${origin}/openapi.json
 - Remote MCP server: ${origin}/mcp (MCP 2025-11-25 Streamable HTTP; six paid read-only tools; SkillVerdict excluded)
 - MCP endpoint metadata: ${origin}/.well-known/mcp.json
-- Agentic Resource Discovery catalog: ${origin}/.well-known/ai-catalog.json (five neutral representative queries; publication is not proof of third-party indexing)
+- Agentic Resource Discovery catalog: ${origin}/.well-known/ai-catalog.json (six neutral representative queries; publication is not proof of third-party indexing)
 - MCP Registry name: io.github.cristianmoroaica/bountyverdict
 - Client-specific MCP install and paid-call guide: https://cristianmoroaica.github.io/bountyverdict/llms-install.md
 - A remote MCP connection does not provide a wallet; direct automatic payment requires an x402-aware MCP client such as @x402/mcp
