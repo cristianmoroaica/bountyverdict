@@ -8,6 +8,82 @@ export type QtMcpRegistryStatus = {
   server_count: number;
 };
 
+export type McpObservatoryStatus = {
+  listed: true;
+  status: "repository_metadata_only" | "agent_ready";
+  server_id: string;
+  repository: string;
+  first_seen: string;
+  last_seen: string;
+  current_version: string | null;
+  release_versions: string[];
+  tags: string[];
+  language: string | null;
+  license: string | null;
+  endpoint_exposed: boolean;
+  tool_schemas_exposed: boolean;
+};
+
+function boundedStrings(value: unknown, limit: number, maxLength: number, label: string): string[] {
+  if (!Array.isArray(value) || value.length > limit ||
+    value.some((entry) => typeof entry !== "string" || !entry || entry.length > maxLength)) {
+    throw new Error(`MCP Observatory ${label} are malformed or unbounded.`);
+  }
+  return value as string[];
+}
+
+export function parseMcpObservatoryDetail(
+  value: unknown,
+  expectedId: string,
+  expectedRepository: string,
+): McpObservatoryStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("MCP Observatory detail is not an object.");
+  }
+  const payload = value as Record<string, any>;
+  const server = payload.server;
+  if (!server || typeof server !== "object" || Array.isArray(server) ||
+    server.id !== expectedId || server.name !== "cristianmoroaica/bountyverdict" ||
+    server.repoUrl !== expectedRepository || server.kind !== "github-only" ||
+    typeof server.firstSeen !== "string" || !Number.isFinite(Date.parse(server.firstSeen)) ||
+    typeof server.lastSeen !== "string" || !Number.isFinite(Date.parse(server.lastSeen)) ||
+    (server.currentVersion !== null && (typeof server.currentVersion !== "string" || !server.currentVersion || server.currentVersion.length > 100))) {
+    throw new Error("MCP Observatory returned mismatched or malformed server metadata.");
+  }
+  const tags = boundedStrings(server.tags, 100, 100, "tags");
+  if (!Array.isArray(payload.releases) || payload.releases.length > 100 ||
+    !payload.releases.every((release: unknown) => release && typeof release === "object" && !Array.isArray(release) &&
+      typeof (release as Record<string, unknown>).version === "string" &&
+      String((release as Record<string, unknown>).version).length <= 100 &&
+      typeof (release as Record<string, unknown>).publishedAt === "string" &&
+      Number.isFinite(Date.parse(String((release as Record<string, unknown>).publishedAt))))) {
+    throw new Error("MCP Observatory releases are malformed or unbounded.");
+  }
+  if (!payload.deps || typeof payload.deps !== "object" || Array.isArray(payload.deps) ||
+    !Array.isArray(payload.deps.out) || payload.deps.out.length > 1_000 ||
+    !Array.isArray(payload.deps.in) || payload.deps.in.length > 1_000 ||
+    !Array.isArray(payload.related) || payload.related.length > 100) {
+    throw new Error("MCP Observatory relationships are malformed or unbounded.");
+  }
+  const endpointExposed = typeof server.endpoint === "string" && server.endpoint.length > 0;
+  const toolSchemasExposed = Array.isArray(server.tools) && server.tools.length > 0;
+  return {
+    listed: true,
+    status: endpointExposed && toolSchemasExposed ? "agent_ready" : "repository_metadata_only",
+    server_id: expectedId,
+    repository: expectedRepository,
+    first_seen: server.firstSeen,
+    last_seen: server.lastSeen,
+    current_version: server.currentVersion,
+    release_versions: [...new Set(payload.releases.map((release: Record<string, unknown>) => String(release.version)))].sort(),
+    tags,
+    language: typeof server.language === "string" && server.language.length <= 100 ? server.language : null,
+    license: typeof server.license === "string" && server.license.length <= 100 ? server.license : null,
+    endpoint_exposed: endpointExposed,
+    tool_schemas_exposed: toolSchemasExposed,
+  };
+}
+
 export function canReuseMcpDownstreamStatus(
   value: unknown,
   expectedName: string,

@@ -1,10 +1,51 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canReuseMcpDownstreamStatus, glamaConnectorStatus, parseMcpubGetResponse, parseOneMcpRegistryShow, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
+import { canReuseMcpDownstreamStatus, glamaConnectorStatus, parseMcpObservatoryDetail, parseMcpubGetResponse, parseOneMcpRegistryShow, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
 
 const name = "io.github.cristianmoroaica/bountyverdict";
 const version = "1.1.0";
 const endpoint = "https://bountyverdict-agent-production.mimirslab.workers.dev/mcp";
+const repository = "https://github.com/cristianmoroaica/bountyverdict";
+
+test("classifies exact MCP Observatory repository metadata without inventing agent readiness", () => {
+  const payload = {
+    server: {
+      id: "github:cristianmoroaica/bountyverdict",
+      name: "cristianmoroaica/bountyverdict",
+      kind: "github-only",
+      repoUrl: repository,
+      firstSeen: "2026-07-20T15:21:42.873Z",
+      lastSeen: "2026-07-21T04:03:14.313Z",
+      currentVersion: null,
+      tags: ["github-actions", "x402"],
+      language: "TypeScript",
+      license: "MIT",
+    },
+    releases: [
+      { version: "v1.0.0", publishedAt: "2026-07-20T20:00:00Z", source: "github" },
+      { version: "v1.0.3", publishedAt: "2026-07-21T01:00:00Z", source: "github" },
+    ],
+    deps: { out: [], in: [] },
+    related: [],
+  };
+  assert.deepEqual(parseMcpObservatoryDetail(payload, payload.server.id, repository), {
+    listed: true,
+    status: "repository_metadata_only",
+    server_id: payload.server.id,
+    repository,
+    first_seen: payload.server.firstSeen,
+    last_seen: payload.server.lastSeen,
+    current_version: null,
+    release_versions: ["v1.0.0", "v1.0.3"],
+    tags: ["github-actions", "x402"],
+    language: "TypeScript",
+    license: "MIT",
+    endpoint_exposed: false,
+    tool_schemas_exposed: false,
+  });
+  assert.throws(() => parseMcpObservatoryDetail({ ...payload, server: { ...payload.server, id: "github:other/repo" } }, payload.server.id, repository));
+  assert.throws(() => parseMcpObservatoryDetail({ ...payload, releases: new Array(101).fill(payload.releases[0]) }, payload.server.id, repository));
+});
 
 test("reuses downstream checks only for the exact registry release coordinates", () => {
   const now = Date.parse("2026-07-21T03:05:00Z");

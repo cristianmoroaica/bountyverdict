@@ -13,6 +13,7 @@ import {
   parseAgentToolsCloudListing,
 } from "../src/agent-tools-cloud.ts";
 import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
+import { parseMcpObservatoryDetail } from "../src/mcp-downstreams.ts";
 
 const repository = "https://github.com/cristianmoroaica/bountyverdict";
 const agentToolUrl = "https://agenttool.sh/tools/bountyverdict-agent-decision-apis";
@@ -42,6 +43,8 @@ const mcpRepositoryUrl = "https://mcprepository.com/cristianmoroaica/bountyverdi
 const mcpRepositorySubmittedAt = "2026-07-21T03:31:45Z";
 const agentNdxIndexUrl = "https://agentndx.ai/api/servers.json";
 const agentNdxSubmittedAt = "2026-07-21T03:33:34Z";
+const mcpObservatoryServerId = "github:cristianmoroaica/bountyverdict";
+const mcpObservatoryUrl = `https://mcpobservatory.com/api/servers/${mcpObservatoryServerId}`;
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -357,6 +360,33 @@ async function agentNdxStatus(): Promise<Record<string, unknown>> {
       url: "https://agentndx.ai/",
       index_url: agentNdxIndexUrl,
       submitted_at: agentNdxSubmittedAt,
+      listed: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function mcpObservatoryStatus(): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(mcpObservatoryUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return { url: mcpObservatoryUrl, http_status: response.status, listed: false, status: "unexpected_response" };
+    }
+    const body = await response.text();
+    if (body.length > 1_000_000) throw new Error("MCP Observatory detail response is unbounded.");
+    return {
+      url: mcpObservatoryUrl,
+      http_status: response.status,
+      ...parseMcpObservatoryDetail(JSON.parse(body), mcpObservatoryServerId, repository),
+      measurement: "automatic_repository_indexing_not_agent_discovery_impressions_tool_calls_or_purchases",
+    };
+  } catch (error) {
+    return {
+      url: mcpObservatoryUrl,
       listed: false,
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
@@ -993,6 +1023,7 @@ const [
   agenttool,
   mcpRepository,
   agentNdx,
+  mcpObservatory,
   securityDirectoryPr,
   x402DirectoryPr,
   agentPluginsPr,
@@ -1012,6 +1043,7 @@ const [
   agentToolStatus(),
   mcpRepositoryStatus(),
   agentNdxStatus(),
+  mcpObservatoryStatus(),
   githubPrStatus("LLMSecurity", "awesome-agent-skills-security", 38, securityDirectoryPrUrl),
   githubPrStatus("xpaysh", "awesome-x402", 934, x402DirectoryPrUrl),
   githubPrStatus("dmgrok", "agent-plugins", 97, agentPluginsPrUrl),
@@ -1075,6 +1107,7 @@ const state = {
   agenttool,
   mcp_repository: mcpRepository,
   agentndx: agentNdx,
+  mcp_observatory: mcpObservatory,
   agentskill,
   github_skill: githubSkill,
   security_directory_pr: securityDirectoryPr,
