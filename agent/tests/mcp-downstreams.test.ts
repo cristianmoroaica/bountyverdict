@@ -3,12 +3,16 @@ import test from "node:test";
 import {
   canReuseMcpDownstreamStatus,
   glamaConnectorStatus,
+  parseAgentageGetResponse,
+  parseAgentageSearchResponse,
   parseAwesomeMcpServersReadme,
   parseMcpObservatoryDetail,
   parseMcpubGetResponse,
   parseMcpubSearchLiveResponse,
   parseOneMcpRegistryShow,
   parseQtMcpRegistry,
+  parseTensorBlockProfile,
+  parseTensorBlockSearch,
 } from "../src/mcp-downstreams.ts";
 
 const name = "io.github.cristianmoroaica/bountyverdict";
@@ -40,6 +44,104 @@ test("recognizes only the exact bounded Awesome MCP Servers contract", () => {
 
   assert.throws(() => parseAwesomeMcpServersReadme(`${entry}\n${entry}\n`, repository, endpoint), /duplicated/);
   assert.throws(() => parseAwesomeMcpServersReadme("x".repeat(2_000_001), repository, endpoint), /unbounded/);
+});
+
+test("recognizes only the exact TensorBlock search entry and remote profile", () => {
+  const id = "github-cristianmoroaica-bountyverdict-038d60c1";
+  const search = parseTensorBlockSearch({
+    count: 1,
+    limit: 20,
+    query: "bountyverdict",
+    filters: { category: null, transport: null, auth: null },
+    servers: [{
+      id,
+      name: "BountyVerdict Agent Decision Tools",
+      primaryUrl: repository,
+      profilePath: `/v1/servers/${id}`,
+      webProfilePath: `https://tensorblock.co/mcp/servers/${id}`,
+      sourcePullRequest: 1312,
+    }],
+  }, id, repository, 1312);
+  assert.equal(search.listed, true);
+  assert.equal(search.source_pull_request, 1312);
+
+  const profile = parseTensorBlockProfile({
+    id,
+    name: "BountyVerdict Agent Decision Tools",
+    category: "Developer Productivity & Utilities",
+    links: { primary: repository, repo: repository, endpoint },
+    transport: ["streamable-http"],
+    auth: { type: "none", notes: [] },
+    license: "MIT",
+  }, id, repository, endpoint);
+  assert.equal(profile.contract_verified, true);
+  assert.equal(parseTensorBlockProfile({
+    id,
+    name: "BountyVerdict Agent Decision Tools",
+    category: "Developer Productivity & Utilities",
+    links: { primary: repository, repo: repository, endpoint: "https://wrong.example/mcp" },
+    transport: ["streamable-http"],
+    auth: { type: "none", notes: [] },
+    license: "MIT",
+  }, id, repository, endpoint).contract_verified, false);
+  assert.equal(parseTensorBlockSearch({ count: 0, limit: 20, query: "bountyverdict", servers: [] }, id, repository, 1312).listed, false);
+  assert.throws(() => parseTensorBlockSearch({ count: 51, limit: 20, query: "bountyverdict", servers: [] }, id, repository, 1312), /malformed/);
+  assert.throws(() => parseTensorBlockSearch({
+    count: 1,
+    limit: 20,
+    query: "bountyverdict",
+    servers: [{
+      id,
+      primaryUrl: repository,
+      profilePath: `/v1/servers/${id}`,
+      webProfilePath: `https://tensorblock.co/mcp/servers/${id}`,
+      sourcePullRequest: 999,
+    }],
+  }, id, repository, 1312), /drifted/);
+});
+
+test("recognizes bounded Agentage official-registry search and detail contracts", () => {
+  const slug = "io-github-cristianmoroaica-bountyverdict";
+  const response = (text: string) => ({
+    jsonrpc: "2.0",
+    id: 1,
+    result: { content: [{ type: "text", text }] },
+  });
+  assert.equal(parseAgentageSearchResponse(response(`No MCP servers matched "bountyverdict".`), slug).listed, false);
+  assert.equal(parseAgentageSearchResponse(response(
+    `1. **BountyVerdict** \`${slug}\` - match 1 · remote\n   https://catalog.agentage.io/mcp/${slug}`,
+  ), slug).listed, true);
+  const detailResponse = (detail: Record<string, unknown>) => ({
+    jsonrpc: "2.0",
+    id: 1,
+    result: {
+      content: [{ type: "text", text: "Formatted detail output may change." }],
+      structuredContent: detail,
+    },
+  });
+  assert.equal(parseAgentageGetResponse(detailResponse({
+    slug,
+    is_official: true,
+    details_url: `https://catalog.agentage.io/mcp/${slug}`,
+    remotes: [{ type: "streamable-http", url: endpoint }],
+  }), slug, endpoint).contract_verified, true);
+  assert.equal(parseAgentageGetResponse(detailResponse({
+    slug,
+    is_official: false,
+    details_url: `https://catalog.agentage.io/mcp/${slug}`,
+    remotes: [{ type: "streamable-http", url: endpoint }],
+  }), slug, endpoint).contract_verified, false);
+  assert.equal(parseAgentageGetResponse({
+    jsonrpc: "2.0",
+    id: 1,
+    result: {
+      content: [{ type: "text", text: "Unknown slug. Use mcp_search to find the right slug." }],
+      isError: true,
+    },
+  }, slug, endpoint).listed, false);
+  assert.throws(() => parseAgentageSearchResponse(response(
+    `\`${slug}\` https://catalog.agentage.io/mcp/${slug}\n\`${slug}\` https://catalog.agentage.io/mcp/${slug}`,
+  ), slug), /duplicated/);
 });
 
 test("classifies exact MCP Observatory repository metadata without inventing agent readiness", () => {

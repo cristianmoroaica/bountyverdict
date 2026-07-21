@@ -90,6 +90,27 @@ test("directory monitoring tracks Awesome MCP Servers without contaminating the 
   assert.doesNotMatch(acquisition, /catalog_listed/);
 });
 
+test("directory monitoring tracks TensorBlock and Agentage as placement-only agent catalogs", async () => {
+  const [directory, distribution] = await Promise.all([
+    readFile(directoryMonitorUrl, "utf8"),
+    readFile(distributionUrl, "utf8"),
+  ]);
+  assert.match(directory, /async function tensorBlockMcpIndexStatus/);
+  assert.match(directory, /const tensorBlockIssueNumber = 1311/);
+  assert.match(directory, /const tensorBlockPrNumber = 1312/);
+  assert.match(directory, /parseTensorBlockSearch/);
+  assert.match(directory, /tensorblock_mcp_index: tensorBlockMcpIndex/);
+  assert.match(directory, /async function agentageStatus/);
+  assert.match(directory, /https:\/\/catalog\.agentage\.io\/mcp/);
+  assert.match(directory, /parseAgentageGetResponse/);
+  assert.doesNotMatch(directory, /await call\(1, "mcp_search"/);
+  assert.match(directory, /agentage,/);
+  assert.match(distribution, /TensorBlock MCP Index/);
+  assert.match(distribution, /Agentage MCP directory/);
+  assert.match(distribution, /agent-ready catalog placement only, never an impression, tool call, purchase, or revenue/);
+  assert.match(distribution, /exact owner-run record lookup only, never an impression, tool call, purchase, or revenue/);
+});
+
 test("directory monitoring retains MCPRepository validation without calling it demand", async () => {
   const directory = await readFile(directoryMonitorUrl, "utf8");
   const distribution = await readFile(distributionUrl, "utf8");

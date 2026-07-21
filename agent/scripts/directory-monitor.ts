@@ -13,7 +13,13 @@ import {
   parseAgentToolsCloudListing,
 } from "../src/agent-tools-cloud.ts";
 import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
-import { parseAwesomeMcpServersReadme, parseMcpObservatoryDetail } from "../src/mcp-downstreams.ts";
+import {
+  parseAgentageGetResponse,
+  parseAwesomeMcpServersReadme,
+  parseMcpObservatoryDetail,
+  parseTensorBlockProfile,
+  parseTensorBlockSearch,
+} from "../src/mcp-downstreams.ts";
 
 const repository = "https://github.com/cristianmoroaica/bountyverdict";
 const agentToolUrl = "https://agenttool.sh/tools/bountyverdict-agent-decision-apis";
@@ -53,6 +59,14 @@ const lobeHubListingUrl = `https://market.lobehub.com/s/plugins/${lobeHubListing
 const awesomeMcpServersPrNumber = 10554;
 const awesomeMcpServersPrUrl = `https://github.com/punkpeye/awesome-mcp-servers/pull/${awesomeMcpServersPrNumber}`;
 const awesomeMcpServersReadmeUrl = "https://raw.githubusercontent.com/punkpeye/awesome-mcp-servers/main/README.md";
+const tensorBlockIssueNumber = 1311;
+const tensorBlockIssueUrl = `https://github.com/TensorBlock/awesome-mcp-servers/issues/${tensorBlockIssueNumber}`;
+const tensorBlockPrNumber = 1312;
+const tensorBlockPrUrl = `https://github.com/TensorBlock/awesome-mcp-servers/pull/${tensorBlockPrNumber}`;
+const tensorBlockIndexApi = "https://mcp-index.tensorblock.co";
+const tensorBlockServerId = "github-cristianmoroaica-bountyverdict-038d60c1";
+const agentageMcpUrl = "https://catalog.agentage.io/mcp";
+const agentageSlug = "io-github-cristianmoroaica-bountyverdict";
 const index402Listings = Object.freeze([
   { product: "single", id: "82c992cc-1a4f-44ea-b742-e798784b6a14", path: "/api/verdict", method: "GET" },
   { product: "portfolio", id: "057ea175-ec64-4c2e-8553-1f747455e6bf", path: "/api/portfolio", method: "POST" },
@@ -397,6 +411,170 @@ async function awesomeMcpServersStatus(
       status: "request_failed",
       error: error instanceof Error ? error.message : String(error),
       measurement: "submission_and_catalog_presence_not_impressions_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function tensorBlockMcpIndexStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  const searchUrl = new URL("/v1/servers", tensorBlockIndexApi);
+  searchUrl.searchParams.set("query", "bountyverdict");
+  searchUrl.searchParams.set("limit", "20");
+  try {
+    const [issueResponse, review, healthResponse, searchResponse] = await Promise.all([
+      fetch(`https://api.github.com/repos/TensorBlock/awesome-mcp-servers/issues/${tensorBlockIssueNumber}`, {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": "bountyverdict-directory-monitor/1.0",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      githubPrStatus("TensorBlock", "awesome-mcp-servers", tensorBlockPrNumber, tensorBlockPrUrl),
+      fetch(`${tensorBlockIndexApi}/health`, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(searchUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    ]);
+    if (!issueResponse.ok || !healthResponse.ok || !searchResponse.ok) {
+      throw new Error(`TensorBlock returned HTTP ${issueResponse.status}/${healthResponse.status}/${searchResponse.status}.`);
+    }
+    const [issueBody, healthBody, searchBody] = await Promise.all([
+      issueResponse.text(),
+      healthResponse.text(),
+      searchResponse.text(),
+    ]);
+    if (issueBody.length > 1_000_000 || healthBody.length > 100_000 || searchBody.length > 2_000_000) {
+      throw new Error("TensorBlock returned an unbounded response.");
+    }
+    const issue = JSON.parse(issueBody) as Record<string, any>;
+    const health = JSON.parse(healthBody) as Record<string, any>;
+    if (issue.number !== tensorBlockIssueNumber || issue.html_url !== tensorBlockIssueUrl ||
+      !["open", "closed"].includes(issue.state) || !Array.isArray(issue.labels) || issue.labels.length > 50 ||
+      health.status !== "ok" || !Number.isSafeInteger(health.catalogEntries) ||
+      health.catalogEntries < 1 || health.catalogEntries > 100_000 ||
+      typeof health.loadedAt !== "string" || !Number.isFinite(Date.parse(health.loadedAt)) ||
+      !health.build || typeof health.build !== "object" || Array.isArray(health.build) ||
+      typeof health.build.commitSha !== "string" || !/^[0-9a-f]{40}$/i.test(health.build.commitSha) ||
+      typeof health.build.builtAt !== "string" || !Number.isFinite(Date.parse(health.build.builtAt))) {
+      throw new Error("TensorBlock returned malformed issue or health telemetry.");
+    }
+    const search = parseTensorBlockSearch(
+      JSON.parse(searchBody),
+      tensorBlockServerId,
+      repository,
+      tensorBlockPrNumber,
+    );
+    let profile: Record<string, unknown> | null = null;
+    if (search.listed) {
+      const profileResponse = await fetch(`${tensorBlockIndexApi}/v1/servers/${tensorBlockServerId}`, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!profileResponse.ok) throw new Error(`TensorBlock profile returned HTTP ${profileResponse.status}.`);
+      const profileBody = await profileResponse.text();
+      if (profileBody.length > 1_000_000) throw new Error("TensorBlock profile response is unbounded.");
+      profile = parseTensorBlockProfile(JSON.parse(profileBody), tensorBlockServerId, repository, `${productionOrigin}/mcp`);
+    }
+    const prStatus = String(review.status || "unknown");
+    const contractVerified = profile?.contract_verified === true;
+    const status = contractVerified
+      ? "catalog_listed"
+      : search.listed
+        ? "catalog_contract_drift"
+        : prStatus === "merged"
+          ? "pr_merged_awaiting_catalog"
+          : prStatus === "open"
+            ? "pr_open"
+            : "submission_pending";
+    return {
+      url: tensorBlockIssueUrl,
+      pr_url: tensorBlockPrUrl,
+      api_url: tensorBlockIndexApi,
+      issue_status: issue.state,
+      issue_labels: issue.labels.map((label: Record<string, unknown>) => String(label.name || "")).filter(Boolean).sort(),
+      pr_status: prStatus,
+      pr_draft: review.draft === true,
+      pr_merged_at: review.merged_at || null,
+      indexed_servers: health.catalogEntries,
+      catalog_loaded_at: health.loadedAt,
+      catalog_build_sha: health.build.commitSha,
+      ...search,
+      profile,
+      contract_verified: contractVerified,
+      status,
+      first_listed_at: contractVerified ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "submission_and_agent_ready_catalog_presence_not_search_impressions_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: tensorBlockIssueUrl,
+      pr_url: tensorBlockPrUrl,
+      api_url: tensorBlockIndexApi,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "submission_and_agent_ready_catalog_presence_not_search_impressions_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
+async function agentageStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  const call = async (id: number, name: string, args: Record<string, unknown>) => {
+    const response = await fetch(agentageMcpUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-11-25",
+        "User-Agent": "bountyverdict-directory-monitor/1.0",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) throw new Error(`Agentage returned HTTP ${response.status}.`);
+    const body = await response.text();
+    if (body.length > 1_000_000) throw new Error("Agentage returned an unbounded response.");
+    return JSON.parse(body) as unknown;
+  };
+  try {
+    const detail = parseAgentageGetResponse(
+      await call(1, "mcp_get", { slug: agentageSlug }),
+      agentageSlug,
+      `${productionOrigin}/mcp`,
+    );
+    const contractVerified = detail?.contract_verified === true;
+    return {
+      url: `https://catalog.agentage.io/mcp/${agentageSlug}`,
+      directory_mcp: agentageMcpUrl,
+      listed: detail.listed === true,
+      slug: agentageSlug,
+      details_url: `https://catalog.agentage.io/mcp/${agentageSlug}`,
+      detail,
+      contract_verified: contractVerified,
+      status: contractVerified ? "catalog_listed" : detail.listed === true ? "catalog_contract_drift" : "pending_official_registry_crawl",
+      first_listed_at: contractVerified ? previousStatus.first_listed_at || observedAt : null,
+      measurement: "owner_run_exact_catalog_record_lookup_not_search_impressions_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: `https://catalog.agentage.io/mcp/${agentageSlug}`,
+      directory_mcp: agentageMcpUrl,
+      listed: false,
+      contract_verified: false,
+      status: "request_failed",
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "owner_run_exact_catalog_record_lookup_not_search_impressions_tool_calls_purchases_or_revenue",
     };
   }
 }
@@ -1169,6 +1347,8 @@ const [
   awesomeCopilot,
   lobeHub,
   awesomeMcpServers,
+  tensorBlockMcpIndex,
+  agentage,
   agent402,
   x402scout,
   x402scan,
@@ -1192,6 +1372,8 @@ const [
   awesomeCopilotStatus(previous.awesome_copilot || {}, new Date().toISOString()),
   lobeHubStatus(previous.lobehub || {}, new Date().toISOString()),
   awesomeMcpServersStatus(previous.awesome_mcp_servers || {}, new Date().toISOString()),
+  tensorBlockMcpIndexStatus(previous.tensorblock_mcp_index || {}, new Date().toISOString()),
+  agentageStatus(previous.agentage || {}, new Date().toISOString()),
   agent402Status(),
   x402ScoutStatus(),
   x402ScanStatus(),
@@ -1261,6 +1443,8 @@ const state = {
   awesome_copilot: awesomeCopilot,
   lobehub: lobeHub,
   awesome_mcp_servers: awesomeMcpServers,
+  tensorblock_mcp_index: tensorBlockMcpIndex,
+  agentage,
   agent402,
   x402scout,
   x402scan,

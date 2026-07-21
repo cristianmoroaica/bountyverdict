@@ -32,6 +32,26 @@ export type AwesomeMcpServersStatus = {
   endpoint: string;
 };
 
+export type TensorBlockSearchStatus = {
+  listed: boolean;
+  status: "listed" | "not_indexed";
+  id: string;
+  repository: string;
+  source_pull_request: number | null;
+  profile_path: string | null;
+  web_profile_url: string | null;
+};
+
+export type TensorBlockProfileStatus = {
+  contract_verified: boolean;
+  id: string;
+  repository: string | null;
+  endpoint: string | null;
+  transport: string[];
+  auth_type: string | null;
+  license: string | null;
+};
+
 export function parseAwesomeMcpServersReadme(
   markdown: unknown,
   expectedRepository: string,
@@ -67,6 +87,182 @@ export function parseAwesomeMcpServersReadme(
     skillverdict_contamination_risk: skillverdictContaminationRisk,
     repository: expectedRepository,
     endpoint: expectedEndpoint,
+  };
+}
+
+export function parseTensorBlockSearch(
+  value: unknown,
+  expectedId: string,
+  expectedRepository: string,
+  expectedSourcePullRequest: number,
+): TensorBlockSearchStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("TensorBlock MCP Index search is not an object.");
+  }
+  const payload = value as Record<string, any>;
+  if (!Number.isSafeInteger(payload.count) || payload.count < 0 || payload.count > 50 ||
+    !Number.isSafeInteger(payload.limit) || payload.limit < 1 || payload.limit > 50 ||
+    payload.query !== "bountyverdict" || !Array.isArray(payload.servers) ||
+    payload.servers.length !== payload.count || payload.servers.length > payload.limit ||
+    payload.servers.some((entry: unknown) => !entry || typeof entry !== "object" || Array.isArray(entry) ||
+      typeof (entry as Record<string, unknown>).id !== "string" || String((entry as Record<string, unknown>).id).length > 200 ||
+      typeof (entry as Record<string, unknown>).primaryUrl !== "string" || String((entry as Record<string, unknown>).primaryUrl).length > 2_048)) {
+    throw new Error("TensorBlock MCP Index search is malformed or unbounded.");
+  }
+  const matching = payload.servers.filter((entry: Record<string, unknown>) =>
+    entry.id === expectedId || entry.primaryUrl === expectedRepository
+  );
+  if (matching.length > 1) throw new Error("TensorBlock MCP Index duplicated the exact BountyVerdict entry.");
+  if (matching.length === 0) {
+    return {
+      listed: false,
+      status: "not_indexed",
+      id: expectedId,
+      repository: expectedRepository,
+      source_pull_request: null,
+      profile_path: null,
+      web_profile_url: null,
+    };
+  }
+  const entry = matching[0];
+  if (entry.id !== expectedId || entry.primaryUrl !== expectedRepository ||
+    entry.profilePath !== `/v1/servers/${expectedId}` ||
+    entry.webProfilePath !== `https://tensorblock.co/mcp/servers/${expectedId}` ||
+    entry.sourcePullRequest !== expectedSourcePullRequest) {
+    throw new Error("TensorBlock MCP Index returned a drifted BountyVerdict search contract.");
+  }
+  return {
+    listed: true,
+    status: "listed",
+    id: expectedId,
+    repository: expectedRepository,
+    source_pull_request: entry.sourcePullRequest,
+    profile_path: entry.profilePath,
+    web_profile_url: entry.webProfilePath,
+  };
+}
+
+export function parseTensorBlockProfile(
+  value: unknown,
+  expectedId: string,
+  expectedRepository: string,
+  expectedEndpoint: string,
+): TensorBlockProfileStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("TensorBlock MCP Index profile is not an object.");
+  }
+  const profile = value as Record<string, any>;
+  if (profile.id !== expectedId || typeof profile.name !== "string" || profile.name.length > 200 ||
+    typeof profile.category !== "string" || profile.category.length > 200 ||
+    !profile.links || typeof profile.links !== "object" || Array.isArray(profile.links) ||
+    !Array.isArray(profile.transport) || profile.transport.length > 10 ||
+    profile.transport.some((entry: unknown) => typeof entry !== "string" || !entry || entry.length > 100) ||
+    !profile.auth || typeof profile.auth !== "object" || Array.isArray(profile.auth) ||
+    typeof profile.auth.type !== "string" || profile.auth.type.length > 100 ||
+    typeof profile.license !== "string" || profile.license.length > 100) {
+    throw new Error("TensorBlock MCP Index profile is malformed or unbounded.");
+  }
+  const repository = typeof profile.links.repo === "string" ? profile.links.repo :
+    typeof profile.links.primary === "string" ? profile.links.primary : null;
+  const endpoint = typeof profile.links.endpoint === "string" ? profile.links.endpoint : null;
+  const transport = [...new Set(profile.transport as string[])].sort();
+  return {
+    contract_verified: repository === expectedRepository && endpoint === expectedEndpoint &&
+      transport.length === 1 && transport[0] === "streamable-http" &&
+      profile.auth.type === "none" && profile.license === "MIT",
+    id: expectedId,
+    repository,
+    endpoint,
+    transport,
+    auth_type: profile.auth.type,
+    license: profile.license,
+  };
+}
+
+function mcpTextResult(value: unknown, label: string): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} response is not an object.`);
+  const response = value as Record<string, any>;
+  const content = response.result?.content;
+  if (response.jsonrpc !== "2.0" || response.result?.isError === true || !Array.isArray(content) || content.length !== 1 ||
+    content[0]?.type !== "text" || typeof content[0]?.text !== "string" || content[0].text.length > 1_000_000) {
+    throw new Error(`${label} response has an invalid MCP result envelope.`);
+  }
+  return content[0].text;
+}
+
+export function parseAgentageSearchResponse(value: unknown, expectedSlug: string): Record<string, unknown> {
+  const text = mcpTextResult(value, "Agentage search");
+  const detailsUrl = `https://catalog.agentage.io/mcp/${expectedSlug}`;
+  const slugMatches = text.split(`\`${expectedSlug}\``).length - 1;
+  const urlMatches = text.split(detailsUrl).length - 1;
+  if (slugMatches > 1 || urlMatches > 1) throw new Error("Agentage duplicated the exact BountyVerdict search result.");
+  if ((slugMatches === 1) !== (urlMatches === 1)) {
+    throw new Error("Agentage returned a drifted BountyVerdict search result.");
+  }
+  return {
+    listed: slugMatches === 1,
+    status: slugMatches === 1 ? "listed" : "not_indexed",
+    slug: expectedSlug,
+    details_url: detailsUrl,
+  };
+}
+
+export function parseAgentageGetResponse(
+  value: unknown,
+  expectedSlug: string,
+  expectedEndpoint: string,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Agentage detail response is not an object.");
+  }
+  const response = value as Record<string, any>;
+  if (response.jsonrpc !== "2.0" || !response.result || typeof response.result !== "object" ||
+    Array.isArray(response.result)) {
+    throw new Error("Agentage detail response has an invalid MCP result envelope.");
+  }
+  if (response.result.isError === true) {
+    const content = response.result.content;
+    if (!Array.isArray(content) || content.length !== 1 || content[0]?.type !== "text" ||
+      content[0]?.text !== "Unknown slug. Use mcp_search to find the right slug.") {
+      throw new Error("Agentage detail returned an unexpected MCP error.");
+    }
+    return {
+      listed: false,
+      status: "not_indexed",
+      contract_verified: false,
+      slug: expectedSlug,
+      endpoint: expectedEndpoint,
+      source: null,
+    };
+  }
+  const text = mcpTextResult(value, "Agentage detail");
+  const detail = response.result.structuredContent;
+  if (!detail || typeof detail !== "object" || Array.isArray(detail) ||
+    typeof detail.slug !== "string" || detail.slug.length > 300 ||
+    typeof detail.is_official !== "boolean" ||
+    typeof detail.details_url !== "string" || detail.details_url.length > 2_048 ||
+    !Array.isArray(detail.remotes) || detail.remotes.length > 20 ||
+    detail.remotes.some((remote: unknown) => !remote || typeof remote !== "object" || Array.isArray(remote) ||
+      typeof (remote as Record<string, unknown>).type !== "string" || String((remote as Record<string, unknown>).type).length > 100 ||
+      typeof (remote as Record<string, unknown>).url !== "string" || String((remote as Record<string, unknown>).url).length > 2_048)) {
+    throw new Error("Agentage detail structured content is malformed or unbounded.");
+  }
+  const exactRemoteMatches = detail.remotes.filter((remote: Record<string, unknown>) =>
+    remote.type === "streamable-http" && remote.url === expectedEndpoint
+  ).length;
+  if (exactRemoteMatches > 1) throw new Error("Agentage duplicated the exact BountyVerdict remote endpoint.");
+  const exactDetailsUrl = `https://catalog.agentage.io/mcp/${expectedSlug}`;
+  const contractVerified = detail.slug === expectedSlug && detail.is_official === true &&
+    detail.details_url === exactDetailsUrl && exactRemoteMatches === 1;
+  return {
+    listed: true,
+    status: "listed",
+    contract_verified: contractVerified,
+    slug: expectedSlug,
+    endpoint: expectedEndpoint,
+    source: detail.is_official === true ? "official_registry" : "unknown",
+    details_url: exactDetailsUrl,
+    response_text_present: text.length > 0,
   };
 }
 
