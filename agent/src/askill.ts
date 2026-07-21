@@ -5,6 +5,8 @@ export const ASKILL_SKILL_NAME = "route-github-agent-decisions";
 export const ASKILL_PATH = `skills/${ASKILL_SKILL_NAME}`;
 export const ASKILL_FILE_PATH = `${ASKILL_PATH}/SKILL.md`;
 export const ASKILL_INSTALL_REF = `gh:${ASKILL_REPOSITORY}@${ASKILL_SKILL_NAME}`;
+export const ASKILL_BUYER_LANGUAGE_DESCRIPTION =
+  "Route GitHub decisions: bounty worth working on; which bounty to choose; audit AGENTS.md/coding-agent readiness; why Actions failed; retry failed Action; will MCP tools/list changes break clients?";
 export const ASKILL_BUYER_QUERIES = Object.freeze([
   "github actions root cause",
   "should I retry failed github action",
@@ -100,8 +102,10 @@ export function parseAskillSearchPayload(value: unknown): Record<string, unknown
     };
   }
   const id = counter(entry.id, "entry ID");
+  const description = boundedString(entry.description, "description", 2_000);
   const updatedAt = boundedString(entry.updatedAt, "updated timestamp", 64);
   if (!Number.isFinite(Date.parse(updatedAt))) throw new Error("askill updated timestamp is malformed.");
+  const buyerLanguageRevisionLive = description === ASKILL_BUYER_LANGUAGE_DESCRIPTION;
   return {
     listed: true,
     listed_skills: 1,
@@ -116,7 +120,8 @@ export function parseAskillSearchPayload(value: unknown): Record<string, unknown
     llm_score: optionalScore(entry.llmScore, "LLM score"),
     tags: [...entry.tags] as string[],
     updated_at: updatedAt,
-    status: "listed",
+    buyer_language_revision_live: buyerLanguageRevisionLive,
+    status: buyerLanguageRevisionLive ? "listed" : "listed_pending_content_refresh",
   };
 }
 

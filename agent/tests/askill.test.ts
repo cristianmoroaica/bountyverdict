@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ASKILL_BUYER_LANGUAGE_DESCRIPTION,
   ASKILL_FILE_PATH,
   ASKILL_BUYER_QUERIES,
   ASKILL_INSTALL_REF,
@@ -17,7 +18,7 @@ const exactEntry = {
   installRef: ASKILL_INSTALL_REF,
   name: ASKILL_SKILL_NAME,
   skillName: ASKILL_SKILL_NAME,
-  description: "Route GitHub decisions.",
+  description: ASKILL_BUYER_LANGUAGE_DESCRIPTION,
   tags: [],
   stars: 0,
   favoriteCount: 0,
@@ -56,10 +57,16 @@ test("recognizes only the exact askill adapter listing", () => {
     llm_score: null,
     tags: [],
     updated_at: "2026-07-21T10:29:35.000Z",
+    buyer_language_revision_live: true,
     status: "listed",
   });
   assert.equal(parseAskillSearchPayload(payload([])).status, "not_indexed");
   assert.equal(parseAskillSearchPayload(payload([{ ...exactEntry, filePath: "SKILL.md" }])).status, "contract_drift");
+  assert.deepEqual(parseAskillSearchPayload(payload([{ ...exactEntry, description: "Older listing copy." }])), {
+    ...parseAskillSearchPayload(payload([exactEntry])),
+    buyer_language_revision_live: false,
+    status: "listed_pending_content_refresh",
+  });
 });
 
 test("rejects duplicate, malformed, and unbounded askill telemetry", () => {
