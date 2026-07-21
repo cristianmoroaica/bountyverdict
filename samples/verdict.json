@@ -12,7 +12,7 @@
   },
   "issue": {
     "url": "https://github.com/typeorm/typeorm/issues/3357",
-    "title": "Example bounty issue",
+    "title": "Migration generation drops and creates columns instead of altering resulting in data loss",
     "state": "open",
     "repository": "typeorm/typeorm"
   },
@@ -21,8 +21,50 @@
       "label": "Reward withdrawal signal",
       "impact": -70,
       "detail": "The discussion contains language indicating that a bounty or reward was removed, withdrawn, or cancelled.",
+      "evidence_url": "https://github.com/typeorm/typeorm/issues/3357#issuecomment-3845555437",
+      "hard_stop": true
+    },
+    {
+      "label": "Maintainer rejection signal",
+      "impact": -60,
+      "detail": "A maintainer comment contains an explicit rejection, spam, or low-quality-contribution warning.",
+      "evidence_url": "https://github.com/typeorm/typeorm/issues/3357#issuecomment-4638034647",
+      "hard_stop": true
+    },
+    {
+      "label": "Discussion is locked",
+      "impact": -55,
+      "detail": "The issue is locked for resolved.",
       "evidence_url": "https://github.com/typeorm/typeorm/issues/3357",
       "hard_stop": true
+    },
+    {
+      "label": "Attempt swarm",
+      "impact": -12,
+      "detail": "4 distinct users posted try, attempt, or claim commands.",
+      "evidence_url": null,
+      "hard_stop": false
+    },
+    {
+      "label": "Repository is active",
+      "impact": 10,
+      "detail": "The repository was pushed to 1 day ago.",
+      "evidence_url": "https://github.com/typeorm/typeorm",
+      "hard_stop": false
+    },
+    {
+      "label": "No linked open PR found",
+      "impact": 10,
+      "detail": "No open pull request appeared in the first 100 timeline events.",
+      "evidence_url": null,
+      "hard_stop": false
+    },
+    {
+      "label": "Issue is open",
+      "impact": 15,
+      "detail": "GitHub currently reports this issue as open.",
+      "evidence_url": "https://github.com/typeorm/typeorm/issues/3357",
+      "hard_stop": false
     }
   ],
   "contribution_policy": {
@@ -35,14 +77,17 @@
     ]
   },
   "coverage": {
-    "comments_scanned": 100,
-    "timeline_events_scanned": 100,
-    "linked_pull_requests_found": 12,
+    "comments_scanned": 96,
+    "timeline_events_scanned": 105,
+    "linked_pull_requests_found": 1,
     "policy_documents_scanned": 1,
-    "github_rate_limit_remaining": 4994
+    "github_rate_limit_remaining": 51
   },
-  "checked_at": "2026-07-20T00:00:00.000Z",
+  "checked_at": "2026-07-21T15:12:05.920Z",
   "limitations": [
-    "A VIABLE verdict is permission to investigate, not a payout guarantee."
+    "A VIABLE verdict is permission to investigate, not a payout guarantee.",
+    "Confirm current reward terms, payout eligibility, contribution policy, and acceptance criteria before coding.",
+    "The check reads at most 300 comments plus the first and newest timeline pages.",
+    "AI-policy detection checks four conventional contribution-document paths and may not find policies stored elsewhere."
   ]
 }

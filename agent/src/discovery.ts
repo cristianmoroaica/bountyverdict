@@ -14,7 +14,7 @@ export const exampleVerdict = {
   service_reuse: SERVICE_REUSE.single,
   issue: {
     url: "https://github.com/typeorm/typeorm/issues/3357",
-    title: "Example bounty issue",
+    title: "Migration generation drops and creates columns instead of altering resulting in data loss",
     state: "open",
     repository: "typeorm/typeorm",
   },
@@ -23,8 +23,50 @@ export const exampleVerdict = {
       label: "Reward withdrawal signal",
       impact: -70,
       detail: "The discussion contains language indicating that a bounty or reward was removed, withdrawn, or cancelled.",
+      evidence_url: "https://github.com/typeorm/typeorm/issues/3357#issuecomment-3845555437",
+      hard_stop: true,
+    },
+    {
+      label: "Maintainer rejection signal",
+      impact: -60,
+      detail: "A maintainer comment contains an explicit rejection, spam, or low-quality-contribution warning.",
+      evidence_url: "https://github.com/typeorm/typeorm/issues/3357#issuecomment-4638034647",
+      hard_stop: true,
+    },
+    {
+      label: "Discussion is locked",
+      impact: -55,
+      detail: "The issue is locked for resolved.",
       evidence_url: "https://github.com/typeorm/typeorm/issues/3357",
       hard_stop: true,
+    },
+    {
+      label: "Attempt swarm",
+      impact: -12,
+      detail: "4 distinct users posted try, attempt, or claim commands.",
+      evidence_url: null,
+      hard_stop: false,
+    },
+    {
+      label: "Repository is active",
+      impact: 10,
+      detail: "The repository was pushed to 1 day ago.",
+      evidence_url: "https://github.com/typeorm/typeorm",
+      hard_stop: false,
+    },
+    {
+      label: "No linked open PR found",
+      impact: 10,
+      detail: "No open pull request appeared in the first 100 timeline events.",
+      evidence_url: null,
+      hard_stop: false,
+    },
+    {
+      label: "Issue is open",
+      impact: 15,
+      detail: "GitHub currently reports this issue as open.",
+      evidence_url: "https://github.com/typeorm/typeorm/issues/3357",
+      hard_stop: false,
     },
   ],
   contribution_policy: {
@@ -37,15 +79,18 @@ export const exampleVerdict = {
     ],
   },
   coverage: {
-    comments_scanned: 100,
-    timeline_events_scanned: 100,
-    linked_pull_requests_found: 12,
+    comments_scanned: 96,
+    timeline_events_scanned: 105,
+    linked_pull_requests_found: 1,
     policy_documents_scanned: 1,
-    github_rate_limit_remaining: 4994,
+    github_rate_limit_remaining: 51,
   },
-  checked_at: "2026-07-20T00:00:00.000Z",
+  checked_at: "2026-07-21T15:12:05.920Z",
   limitations: [
     "A VIABLE verdict is permission to investigate, not a payout guarantee.",
+    "Confirm current reward terms, payout eligibility, contribution policy, and acceptance criteria before coding.",
+    "The check reads at most 300 comments plus the first and newest timeline pages.",
+    "AI-policy detection checks four conventional contribution-document paths and may not find policies stored elsewhere.",
   ],
 };
 
@@ -159,31 +204,88 @@ export const discoveryExtension = addHttpMethod(declareDiscoveryExtension({
   },
 }), "GET");
 
+const portfolioViableVerdict = {
+  product: "BountyVerdict",
+  version: "1.0",
+  verdict: "VIABLE",
+  score: 93,
+  summary: "No obvious public hard stop was found. Confirm reward terms and reproduce the issue before coding.",
+  service_reuse: SERVICE_REUSE.single,
+  issue: {
+    url: "https://github.com/tenstorrent/tt-metal/issues/50522",
+    title: "[Bounty $1500] ModernBERT bring up using TTNN APIs",
+    state: "open",
+    repository: "tenstorrent/tt-metal",
+  },
+  signals: [
+    {
+      label: "Issue is current",
+      impact: 8,
+      detail: "The issue changed 0 days ago.",
+      evidence_url: "https://github.com/tenstorrent/tt-metal/issues/50522",
+      hard_stop: false,
+    },
+    {
+      label: "Repository is active",
+      impact: 10,
+      detail: "The repository was pushed to 0 days ago.",
+      evidence_url: "https://github.com/tenstorrent/tt-metal",
+      hard_stop: false,
+    },
+    {
+      label: "No linked open PR found",
+      impact: 10,
+      detail: "No open pull request appeared in the first 100 timeline events.",
+      evidence_url: null,
+      hard_stop: false,
+    },
+    {
+      label: "Issue is open",
+      impact: 15,
+      detail: "GitHub currently reports this issue as open.",
+      evidence_url: "https://github.com/tenstorrent/tt-metal/issues/50522",
+      hard_stop: false,
+    },
+  ],
+  contribution_policy: {
+    ai_use: "NO_EXPLICIT_RULE_FOUND",
+    documents: [
+      {
+        path: "CONTRIBUTING.md",
+        url: "https://github.com/tenstorrent/tt-metal/blob/main/CONTRIBUTING.md",
+      },
+      {
+        path: ".github/pull_request_template.md",
+        url: "https://github.com/tenstorrent/tt-metal/blob/main/.github/pull_request_template.md",
+      },
+    ],
+  },
+  coverage: {
+    comments_scanned: 2,
+    timeline_events_scanned: 16,
+    linked_pull_requests_found: 0,
+    policy_documents_scanned: 2,
+    github_rate_limit_remaining: 25,
+  },
+  checked_at: "2026-07-21T15:12:56.426Z",
+  limitations: [
+    "A VIABLE verdict is permission to investigate, not a payout guarantee.",
+    "Confirm current reward terms, payout eligibility, contribution policy, and acceptance criteria before coding.",
+    "The check reads at most 300 comments plus the first and newest timeline pages.",
+    "AI-policy detection checks four conventional contribution-document paths and may not find policies stored elsewhere.",
+  ],
+};
+
 export const portfolioExample = {
   product: "BountyVerdict Portfolio",
   version: "1.0",
-  recommendation: "Investigate https://github.com/acme/widget/issues/12 first; it ranked VIABLE with score 88.",
+  recommendation: "Investigate https://github.com/tenstorrent/tt-metal/issues/50522 first; it ranked VIABLE with score 93.",
   service_reuse: SERVICE_REUSE.portfolio,
-  best_candidate: "https://github.com/acme/widget/issues/12",
+  best_candidate: "https://github.com/tenstorrent/tt-metal/issues/50522",
   counts: { submitted: 2, checked: 2, viable: 1, caution: 0, avoid: 1, failed: 0 },
-  ranked: [
-    {
-      ...exampleVerdict,
-      verdict: "VIABLE",
-      score: 88,
-      summary: "No obvious public hard stop was found. Confirm reward terms and reproduce the issue before coding.",
-      issue: {
-        url: "https://github.com/acme/widget/issues/12",
-        title: "Fix bounded widget regression",
-        state: "open",
-        repository: "acme/widget",
-      },
-      signals: [],
-    },
-    exampleVerdict,
-  ],
+  ranked: [portfolioViableVerdict, { ...exampleVerdict, checked_at: "2026-07-21T15:12:56.426Z", coverage: { ...exampleVerdict.coverage, github_rate_limit_remaining: 18 } }],
   failures: [],
-  checked_at: "2026-07-20T00:00:00.000Z",
+  checked_at: "2026-07-21T15:12:56.426Z",
 };
 
 export const portfolioOutputSchema = {

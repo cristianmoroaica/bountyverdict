@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { validateDiscoveryExtension, validateDiscoveryExtensionSpec } from "@x402/extensions/bazaar";
-import { discoveryExtension, portfolioDiscoveryExtension } from "../src/discovery.ts";
+import {
+  discoveryExtension,
+  exampleVerdict,
+  portfolioDiscoveryExtension,
+  portfolioExample,
+} from "../src/discovery.ts";
 import { harnessDiscoveryExtension } from "../src/harness-discovery.ts";
 import { skillDiscoveryExtension } from "../src/skill-discovery.ts";
 import { runDiscoveryExtension } from "../src/run-discovery.ts";
@@ -29,6 +35,25 @@ test("portfolio POST declaration passes Bazaar schema and protocol validation", 
   assert.equal(extension.info.input.bodyType, "json");
   assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
   assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
+});
+
+test("public bounty samples exactly match the real evidence snapshots advertised to agents", async () => {
+  const [single, portfolio] = await Promise.all([
+    readFile(new URL("../../samples/verdict.json", import.meta.url), "utf8"),
+    readFile(new URL("../../samples/portfolio.json", import.meta.url), "utf8"),
+  ]);
+  assert.deepEqual(JSON.parse(single), exampleVerdict);
+  assert.deepEqual(JSON.parse(portfolio), portfolioExample);
+  assert.match(exampleVerdict.issue.title, /Migration generation drops and creates columns/);
+  assert.equal(portfolioExample.best_candidate, "https://github.com/tenstorrent/tt-metal/issues/50522");
+  assert.deepEqual(portfolioExample.counts, {
+    submitted: 2,
+    checked: 2,
+    viable: 1,
+    caution: 0,
+    avoid: 1,
+    failed: 0,
+  });
 });
 
 test("HarnessVerdict GET declaration passes Bazaar schema and protocol validation", () => {

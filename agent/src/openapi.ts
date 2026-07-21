@@ -182,7 +182,7 @@ export function createOpenApi(
                 },
                 example: {
                   issue_urls: [
-                    "https://github.com/acme/widget/issues/12",
+                    "https://github.com/tenstorrent/tt-metal/issues/50522",
                     "https://github.com/typeorm/typeorm/issues/3357",
                   ],
                 },
