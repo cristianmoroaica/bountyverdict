@@ -14,6 +14,7 @@ import {
 } from "../src/agent-tools-cloud.ts";
 import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
 import { parseAgentSkillsInSearchPayload } from "../src/agentskills-in.ts";
+import { parseSkillsMdSearchPayload } from "../src/skillsmd.ts";
 import {
   parseAgentFinderCatalogEntry,
   parseAgentFinderRegistryLatest,
@@ -64,6 +65,10 @@ const agentSkillsInListingUrl = "https://www.agentskills.in/marketplace/%40crist
 const agentSkillsInSubmissionIssueNumber = 23;
 const agentSkillsInSubmissionIssueUrl =
   `https://github.com/Karanjot786/agent-skills-cli/issues/${agentSkillsInSubmissionIssueNumber}`;
+const skillsMdSearchUrl = "https://skillsmd.dev/api/search?q=route-github-agent-decisions";
+const skillsMdRegistryUrl = "https://skillsmd.dev/";
+const skillsMdSubmissionId = "e68e968f-d03d-4808-b36b-5fd3b42b6489";
+const skillsMdSubmittedAt = "2026-07-21T10:26:21Z";
 const githubSkillReleaseTag = "v1.0.3";
 const mcpRepositoryUrl = "https://mcprepository.com/cristianmoroaica/bountyverdict";
 const mcpRepositorySubmittedAt = "2026-07-21T03:31:45Z";
@@ -1924,6 +1929,66 @@ async function agentSkillsInStatus(
   }
 }
 
+async function skillsMdStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  const submission = {
+    id: skillsMdSubmissionId,
+    submitted_at: skillsMdSubmittedAt,
+    accepted: true,
+    http_status: 201,
+    direct_endpoint_attempts: 2,
+    direct_endpoint_result: "transient_404_then_submission_received",
+  };
+  try {
+    const response = await fetch(skillsMdSearchUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return {
+        url: skillsMdRegistryUrl,
+        search_url: skillsMdSearchUrl,
+        http_status: response.status,
+        listed: false,
+        listed_skills: 0,
+        expected_skills: 1,
+        status: "submitted_catalog_unavailable",
+        submission,
+        exposed_at: null,
+        catalog_error: `SkillsMD search returned HTTP ${response.status}.`,
+        measurement: "submission_exact_catalog_presence_and_public_install_counter_not_impressions_tool_calls_purchases_or_revenue",
+      };
+    }
+    const catalog = parseSkillsMdSearchPayload(await response.json());
+    const listed = catalog.listed === true;
+    return {
+      url: skillsMdRegistryUrl,
+      search_url: skillsMdSearchUrl,
+      http_status: response.status,
+      ...catalog,
+      status: listed ? "listed" : catalog.status === "contract_drift" ? "catalog_contract_drift" : "submitted_pending_review",
+      submission,
+      exposed_at: listed ? previousStatus.exposed_at || observedAt : null,
+      measurement: "submission_exact_catalog_presence_and_public_install_counter_not_impressions_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: skillsMdRegistryUrl,
+      search_url: skillsMdSearchUrl,
+      listed: false,
+      listed_skills: 0,
+      expected_skills: 1,
+      status: "submitted_catalog_request_failed",
+      submission,
+      exposed_at: null,
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "submission_exact_catalog_presence_and_public_install_counter_not_impressions_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
 async function githubSkillStatus(previousStatus: Record<string, any>, observedAt: string): Promise<Record<string, unknown>> {
   try {
     const hour = Math.floor(Date.parse(observedAt) / (60 * 60 * 1000));
@@ -2089,6 +2154,7 @@ const [
   index402,
   githubSkill,
   agentSkillsIn,
+  skillsMd,
 ] = await Promise.all([
   skillsShStatus(),
   agentToolStatus(),
@@ -2123,6 +2189,7 @@ const [
   index402Status(),
   githubSkillStatus(previous.github_skill || {}, new Date().toISOString()),
   agentSkillsInStatus(previous.agent_skills_in || {}, new Date().toISOString()),
+  skillsMdStatus(previous.skills_md || {}, new Date().toISOString()),
 ]);
 if (Number(x402scan.listed_resources || 0) > 0) {
   x402scan.exposed_at = previous.x402scan?.exposed_at || new Date().toISOString();
@@ -2176,6 +2243,7 @@ const state = {
   mcpub_crawler_pr: mcpubCrawlerPr,
   agentskill,
   agent_skills_in: agentSkillsIn,
+  skills_md: skillsMd,
   github_skill: githubSkill,
   security_directory_pr: securityDirectoryPr,
   x402_directory_pr: x402DirectoryPr,

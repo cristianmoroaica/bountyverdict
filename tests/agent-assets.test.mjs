@@ -309,6 +309,16 @@ test("human landing page links directly to the measurable router funnel", async 
   assert.match(page, /rel="ai-catalog" href="https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/\.well-known\/ai-catalog\.json"/);
 });
 
+test("canonical README exposes the direct six-tool marketplace adapter before raw MCP setup", async () => {
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  const adapter = "npx skills add cristianmoroaica/bountyverdict-mcp-skill --skill route-github-agent-decisions";
+  const rawEndpoint = "MCP-compatible agents can instead connect to the production Streamable HTTP server";
+  assert.match(readme, new RegExp(adapter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.ok(readme.indexOf(adapter) < readme.indexOf(rawEndpoint));
+  assert.match(readme, /keeps SkillVerdict excluded/);
+  assert.match(readme, /without storing prompts, tool arguments, or caller identities/);
+});
+
 test("public trust disclosures cover payment, retention, and private reporting", async () => {
   const security = await readFile(new URL("../SECURITY.md", import.meta.url), "utf8");
   const privacy = await readFile(new URL("../PRIVACY.md", import.meta.url), "utf8");

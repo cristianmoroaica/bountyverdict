@@ -42,6 +42,14 @@ Then ask, for example:
 
 Task-specific skills are the least-privilege path. Install all seven only when needed with `npx skills add cristianmoroaica/bountyverdict --skill '*' -y`.
 
+For the six-tool remote MCP surface, install the task-first marketplace adapter directly from its public repository while directory indexing is pending:
+
+```bash
+npx skills add cristianmoroaica/bountyverdict-mcp-skill --skill route-github-agent-decisions
+```
+
+That adapter routes GitHub bounty, repository-readiness, GitHub Actions, flaky-retry, and MCP schema-drift requests to one exact tool, keeps SkillVerdict excluded, and uses a coarse source marker without storing prompts, tool arguments, or caller identities. A valid unsigned call is only a free payment preview; an x402-aware client must separately authorize the exact Base USDC amount before receiving a verdict.
+
 MCP-compatible agents can instead connect to the production Streamable HTTP server at `https://bountyverdict-agent-production.mimirslab.workers.dev/mcp`. It exposes six real paid tools matching the independently distributed products; SkillVerdict remains excluded from this channel. `tools/list` publishes task-selection boundaries, canonical input patterns, and compact machine-readable success contracts covering each verdict or action and its reuse rule. Invalid input is rejected before payment, while a valid selected tool returns an exact x402 USDC requirement. The official registry contract is [`server.json`](server.json) under `io.github.cristianmoroaica/bountyverdict`; its publisher metadata includes unbranded task keywords, use cases, prices, and result summaries so downstream MCP aggregators can index what each tool actually solves.
 
 Use the client-specific [`llms-install.md`](llms-install.md) guide for Codex, Claude, Gemini, VS Code, Cursor, Cline, and Kilo. A remote MCP connection does not itself provide a wallet: direct automatic settlement requires an x402-aware MCP client, while standard hosts can use the versioned exact-HTTP handoff included in every valid unpaid tool response with a separately authorized x402 wallet.
