@@ -6,7 +6,8 @@ export const ASKILL_PATH = `skills/${ASKILL_SKILL_NAME}`;
 export const ASKILL_FILE_PATH = `${ASKILL_PATH}/SKILL.md`;
 export const ASKILL_INSTALL_REF = `gh:${ASKILL_REPOSITORY}@${ASKILL_SKILL_NAME}`;
 export const ASKILL_BUYER_LANGUAGE_DESCRIPTION =
-  "Route GitHub decisions: bounty worth working on; which bounty to choose; audit AGENTS.md/coding-agent readiness; why Actions failed; retry failed Action; will MCP tools/list changes break clients?";
+  "Diagnose why a GitHub Actions run failed and find its root cause; decide whether to retry that failed Action once; check or rank GitHub bounties; audit AGENTS.md readiness; detect MCP schema drift.";
+export const ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT = "2026-07-21T15:51:34.000Z";
 export const ASKILL_BUYER_QUERIES = Object.freeze([
   "github actions root cause",
   "should I retry failed github action",
@@ -104,8 +105,11 @@ export function parseAskillSearchPayload(value: unknown): Record<string, unknown
   const id = counter(entry.id, "entry ID");
   const description = boundedString(entry.description, "description", 2_000);
   const updatedAt = boundedString(entry.updatedAt, "updated timestamp", 64);
+  const lastPushed = boundedString(entry.lastPushed, "last-pushed timestamp", 64);
   if (!Number.isFinite(Date.parse(updatedAt))) throw new Error("askill updated timestamp is malformed.");
+  if (!Number.isFinite(Date.parse(lastPushed))) throw new Error("askill last-pushed timestamp is malformed.");
   const buyerLanguageRevisionLive = description === ASKILL_BUYER_LANGUAGE_DESCRIPTION;
+  const adapterRevisionLive = Date.parse(lastPushed) >= Date.parse(ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT);
   return {
     listed: true,
     listed_skills: 1,
@@ -120,8 +124,11 @@ export function parseAskillSearchPayload(value: unknown): Record<string, unknown
     llm_score: optionalScore(entry.llmScore, "LLM score"),
     tags: [...entry.tags] as string[],
     updated_at: updatedAt,
+    last_pushed: lastPushed,
     buyer_language_revision_live: buyerLanguageRevisionLive,
-    status: buyerLanguageRevisionLive ? "listed" : "listed_pending_content_refresh",
+    adapter_revision_live: adapterRevisionLive,
+    required_adapter_revision_pushed_at: ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT,
+    status: buyerLanguageRevisionLive && adapterRevisionLive ? "listed" : "listed_pending_content_refresh",
   };
 }
 

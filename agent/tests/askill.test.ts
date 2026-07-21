@@ -7,6 +7,7 @@ import {
   ASKILL_INSTALL_REF,
   ASKILL_OWNER,
   ASKILL_PATH,
+  ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT,
   ASKILL_REPO,
   ASKILL_SKILL_NAME,
   parseAskillBuyerQueryPayload,
@@ -30,8 +31,8 @@ const exactEntry = {
   repoName: ASKILL_REPO,
   path: ASKILL_PATH,
   filePath: ASKILL_FILE_PATH,
-  updatedAt: "2026-07-21T10:29:35.000Z",
-  lastPushed: "2026-07-21T10:29:35.000Z",
+  updatedAt: ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT,
+  lastPushed: ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT,
   nameUniqueInRepo: true,
   source: "submit",
   publishedSlug: null,
@@ -56,8 +57,11 @@ test("recognizes only the exact askill adapter listing", () => {
     ai_score: null,
     llm_score: null,
     tags: [],
-    updated_at: "2026-07-21T10:29:35.000Z",
+    updated_at: ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT,
+    last_pushed: ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT,
     buyer_language_revision_live: true,
+    adapter_revision_live: true,
+    required_adapter_revision_pushed_at: ASKILL_REQUIRED_ADAPTER_REVISION_PUSHED_AT,
     status: "listed",
   });
   assert.equal(parseAskillSearchPayload(payload([])).status, "not_indexed");
@@ -65,6 +69,19 @@ test("recognizes only the exact askill adapter listing", () => {
   assert.deepEqual(parseAskillSearchPayload(payload([{ ...exactEntry, description: "Older listing copy." }])), {
     ...parseAskillSearchPayload(payload([exactEntry])),
     buyer_language_revision_live: false,
+    status: "listed_pending_content_refresh",
+  });
+  assert.deepEqual(parseAskillSearchPayload(payload([{
+    ...exactEntry,
+    description: "Route GitHub decisions: bounty worth working on; which bounty to choose; audit AGENTS.md/coding-agent readiness; why Actions failed; retry failed Action; will MCP tools/list changes break clients?",
+    updatedAt: "2026-07-21T10:58:06.000Z",
+    lastPushed: "2026-07-21T10:58:06.000Z",
+  }])), {
+    ...parseAskillSearchPayload(payload([exactEntry])),
+    updated_at: "2026-07-21T10:58:06.000Z",
+    last_pushed: "2026-07-21T10:58:06.000Z",
+    buyer_language_revision_live: false,
+    adapter_revision_live: false,
     status: "listed_pending_content_refresh",
   });
 });
@@ -75,6 +92,7 @@ test("rejects duplicate, malformed, and unbounded askill telemetry", () => {
   assert.throws(() => parseAskillSearchPayload({ data: [], pagination: { page: 1, limit: 101, total: 0, hasMore: false } }), /unbounded/);
   assert.throws(() => parseAskillSearchPayload(payload([{ ...exactEntry, favoriteCount: -1 }])), /favorite/);
   assert.throws(() => parseAskillSearchPayload(payload([{ ...exactEntry, tags: new Array(51).fill("tag") }])), /tags/);
+  assert.throws(() => parseAskillSearchPayload(payload([{ ...exactEntry, lastPushed: "not-a-date" }])), /last-pushed/);
 });
 
 test("retains bounded unbranded askill retrieval ranks", () => {
