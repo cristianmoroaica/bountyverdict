@@ -293,6 +293,7 @@ test("schema enrichment preserves previously learned discovery aggregates", () =
   delete snapshot.cohort_capture_started_at;
   delete snapshot.by_cohort;
   delete snapshot.by_discovery_cohort;
+  snapshot.privacy = "legacy privacy wording";
   const loaded = loadFunnelSnapshot(snapshot, "2026-07-21T00:00:00.000Z");
   assert.ok(loaded);
   assert.equal(loaded.discovery_totals.requests, 1);

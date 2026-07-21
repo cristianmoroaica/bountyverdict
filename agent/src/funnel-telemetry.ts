@@ -798,7 +798,7 @@ function migrateCounters(value: Record<string, unknown> | undefined): FunnelCoun
 }
 
 export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString()): FunnelSnapshot | null {
-  if (isFunnelSnapshot(value)) return value;
+  if (isFunnelSnapshot(value)) return value.privacy === FUNNEL_PRIVACY ? value : { ...value, privacy: FUNNEL_PRIVACY };
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if ((value as { schema_version?: unknown }).schema_version === FUNNEL_SCHEMA_VERSION) {
     const existing = value as Record<string, unknown>;
