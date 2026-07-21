@@ -58,6 +58,14 @@ export const TASKMARKET_TRACKED_SUBMISSIONS = Object.freeze([
     reward_atomic: "10000000",
     expected_net_atomic: "9250000",
   }),
+  Object.freeze({
+    task_id: "0x100219baba1f9df11f7f15f226bbd9994c445060ca2bd2ac7ef820bd4f7759f7",
+    submission_id: "7405cc23-ba8c-40d8-9b6d-c3647251d519",
+    submit_tx_hash: "0xe70d286b0b6204bc1413534d9e9238e057e50828ce08d8b2a6cc658e650436eb",
+    reward_atomic: "19000000",
+    expected_net_atomic: "17575000",
+    operator_estimated_net_atomic: "110000",
+  }),
 ]);
 
 type TaskStatus = "open" | "claimed" | "worker_selected" | "pending_approval" | "review" |
@@ -92,6 +100,7 @@ export type TaskmarketTrackedSpecification = Readonly<{
   submit_tx_hash: string;
   reward_atomic: string;
   expected_net_atomic: string;
+  operator_estimated_net_atomic?: string;
   public_proof?: Readonly<{
     service_origin: string;
     note_id: string;
@@ -552,6 +561,13 @@ export function reconcileTaskmarketTracked(input: {
     const expectedReward = atomic(expected.reward_atomic, "Taskmarket expected reward");
     const expectedNet = atomic(expected.expected_net_atomic, "Taskmarket expected net reward");
     if (expectedNet > expectedReward) throw new Error("Taskmarket expected net reward exceeds the task reward.");
+    const potentialNet = atomic(expected.operator_estimated_net_atomic ?? expected.expected_net_atomic, "Taskmarket potential net award");
+    const potentialGross = expected.operator_estimated_net_atomic === undefined
+      ? expectedReward
+      : (potentialNet * expectedReward + expectedNet - 1n) / expectedNet;
+    if (potentialGross > expectedReward || potentialNet > expectedNet || potentialNet > potentialGross) {
+      throw new Error("Taskmarket potential award exceeds the task contract or its gross amount.");
+    }
     const payload = payloads.get(expectedTaskId.toLowerCase());
     if (!payload) throw new Error("Taskmarket tracked task detail is missing.");
     const { task, awards } = parseDetail(payload.detail);
@@ -629,8 +645,8 @@ export function reconcileTaskmarketTracked(input: {
     const submissionState = settled ? "settled_award" : award ? "award_unverified" :
       submission.rejectedAt ? "rejected" : terminalWithoutAward ? "not_awarded" : "pending_award";
     if (submissionState === "pending_award") {
-      pendingGrossAtomic += expectedReward;
-      pendingNetAtomic += expectedNet;
+      pendingGrossAtomic += potentialGross;
+      pendingNetAtomic += potentialNet;
     }
     return {
       task_id: expectedTaskId,
@@ -641,7 +657,11 @@ export function reconcileTaskmarketTracked(input: {
       submission_state: submissionState,
       rejected_at: submission.rejectedAt,
       escrow_reward_usdc: atomicToDecimal(expectedReward),
-      potential_net_usdc: atomicToDecimal(expectedNet),
+      potential_gross_usdc: atomicToDecimal(potentialGross),
+      potential_net_usdc: atomicToDecimal(potentialNet),
+      potential_basis: expected.operator_estimated_net_atomic === undefined
+        ? "full_task_reward_contract"
+        : "operator_estimated_submitted_record_net_scaled_by_task_contract_not_award",
       platform_award: award ? {
         requester_address: task.requester,
         settlement_tx_hash: award.settlementTxHash,

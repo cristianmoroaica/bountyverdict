@@ -35,6 +35,8 @@ import {
 import { loadDistributionMonitorConfiguration } from "../src/monitor-configuration.ts";
 import { canReuseMcpDownstreamStatus, glamaConnectorStatus, parseMcpubGetResponse, parseMcpubSearchLiveResponse, parseOneMcpRegistryShow, parseQtMcpRegistry } from "../src/mcp-downstreams.ts";
 import { TASKMARKET_OWNER_IDENTITIES, TASKMARKET_WORKER_ADDRESS } from "../src/taskmarket-demand.ts";
+import { CLAWLANCER_CANARY, parseClawlancerWorkState } from "../src/clawlancer-work.ts";
+import { verifyClawlancerFunding, verifyClawlancerRelease } from "../src/clawlancer-chain.ts";
 
 const CDP_DISCOVERY = "https://api.cdp.coinbase.com/platform/v2/x402/discovery";
 const AGENTIC_MARKET_SERVICE =
@@ -69,6 +71,8 @@ const payanDemandStateFile = process.env.PAYAN_DEMAND_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/payan-demand.json`;
 const publicDemandStateFile = process.env.DEMAND_WATCH_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/demand-watch.json`;
+const clawlancerWorkStateFile = process.env.CLAWLANCER_WORK_STATE_FILE ||
+  `${homedir()}/.local/state/bountyverdict/clawlancer-work.json`;
 const funnelStateFile = process.env.FUNNEL_STATE_FILE ||
   `${homedir()}/.local/state/bountyverdict/funnel-telemetry.json`;
 const trustedFunnelBaselineFile = process.env.TRUSTED_FUNNEL_BASELINE_FILE ||
@@ -1123,10 +1127,13 @@ async function publicDemandStatus(): Promise<Record<string, any>> {
       !["pending_award", "rejected", "not_awarded", "award_unverified", "settled_award"].includes(record.submission_state)) {
       throw new Error("Taskmarket tracked submission record is malformed.");
     }
-    const recordGrossPotential = taskmarketUsdcAtomic(record.escrow_reward_usdc);
+    const recordEscrowReward = taskmarketUsdcAtomic(record.escrow_reward_usdc);
+    const recordGrossPotential = taskmarketUsdcAtomic(record.potential_gross_usdc);
     const recordNetPotential = taskmarketUsdcAtomic(record.potential_net_usdc);
-    if (recordGrossPotential === null || recordGrossPotential <= 0n || recordNetPotential === null ||
-      recordNetPotential <= 0n || recordNetPotential > recordGrossPotential) {
+    if (recordEscrowReward === null || recordEscrowReward <= 0n || recordGrossPotential === null ||
+      recordGrossPotential <= 0n || recordGrossPotential > recordEscrowReward || recordNetPotential === null ||
+      recordNetPotential <= 0n || recordNetPotential > recordGrossPotential ||
+      !["full_task_reward_contract", "operator_estimated_submitted_record_net_scaled_by_task_contract_not_award"].includes(record.potential_basis)) {
       throw new Error("Taskmarket tracked submission potential amounts are malformed.");
     }
     if (record.submission_state === "pending_award") {
@@ -1229,6 +1236,82 @@ async function publicDemandStatus(): Promise<Record<string, any>> {
     taskmarket,
     excluded: state.sources.excluded || {},
     measurement: "public_inventory_exact_fits_submissions_and_API_awards_are_not_purchases_or_revenue; only non-owner awards with successful Base receipts, exact task topics, and exact Base-USDC worker transfers settle",
+  };
+}
+
+function atomicUsdc(value: string): string {
+  const atomic = BigInt(value);
+  const whole = atomic / 1_000_000n;
+  const fraction = (atomic % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+async function clawlancerWorkStatus(): Promise<Record<string, unknown>> {
+  const persisted = JSON.parse(await readFile(clawlancerWorkStateFile, "utf8")) as unknown;
+  const state = parseClawlancerWorkState(persisted);
+  const ageMs = Date.now() - Date.parse(state.checkedAt);
+  if (ageMs < 0 || ageMs > 30 * 60 * 1000) throw new Error("Clawlancer work state is stale.");
+  const transaction = state.transaction;
+  if (transaction.id !== CLAWLANCER_CANARY.transactionId ||
+    transaction.listingId !== CLAWLANCER_CANARY.listingId ||
+    transaction.buyerAddress.toLowerCase() !== CLAWLANCER_CANARY.buyerAddress.toLowerCase() ||
+    transaction.sellerAddress.toLowerCase() !== CLAWLANCER_CANARY.sellerAddress.toLowerCase() ||
+    transaction.amountAtomic !== CLAWLANCER_CANARY.amountAtomic ||
+    state.artifact.sha256 !== "d212237abd908763276b51baf45efd1421ba9d21eb816ffe7083e60f5432695b") {
+    throw new Error("Clawlancer canary identity, amount, or deliverable drifted.");
+  }
+
+  const buyer = transaction.buyerAddress.toLowerCase();
+  const ownerIdentities = new Set([
+    wallet.toLowerCase(),
+    OWNER_CONTROLLED_CANARY_PAYER.toLowerCase(),
+    TASKMARKET_WORKER_ADDRESS.toLowerCase(),
+    ...TASKMARKET_OWNER_IDENTITIES.map((address) => address.toLowerCase()),
+  ]);
+  let onchainEvidence: Record<string, unknown> = {
+    verified: false,
+    reason: transaction.state === "RELEASED"
+      ? "release_receipt_not_verified"
+      : "transaction_not_released",
+  };
+  let fundingEvidence: Record<string, unknown> | null = null;
+  if (["FUNDED", "DELIVERED"].includes(transaction.state)) {
+    const client = createPublicClient({ chain: base, transport: http(process.env.RPC_URL) });
+    fundingEvidence = await verifyClawlancerFunding(client, transaction);
+  }
+  if (transaction.state === "RELEASED" && transaction.releaseTxHash) {
+    try {
+      if (ownerIdentities.has(buyer) || buyer === transaction.sellerAddress.toLowerCase()) {
+        throw new Error("Clawlancer buyer is owner-controlled or equals the worker.");
+      }
+      const client = createPublicClient({ chain: base, transport: http(process.env.RPC_URL) });
+      onchainEvidence = await verifyClawlancerRelease(client, transaction);
+    } catch (error) {
+      onchainEvidence = {
+        verified: false,
+        release_tx_hash: transaction.releaseTxHash,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  const verified = onchainEvidence.verified === true;
+  const verifiedWorkerAtomic = verified && typeof onchainEvidence.worker_amount_atomic === "string"
+    ? onchainEvidence.worker_amount_atomic
+    : "0";
+  return {
+    available: true,
+    checked_at: state.checkedAt,
+    age_seconds: Math.round(ageMs / 1000),
+    status: state.status,
+    action: state.action,
+    submitted_now: state.submittedNow,
+    transaction,
+    amount_usdc: atomicUsdc(transaction.amountAtomic),
+    funding_evidence: fundingEvidence,
+    onchain_evidence: onchainEvidence,
+    settled_jobs: verified ? 1 : 0,
+    verified_worker_earnings_usdc: atomicUsdc(verifiedWorkerAtomic),
+    accounting_note: "Only a non-owner RELEASED transaction with a successful call to the pinned Clawlancer escrow and one exact Base-USDC transfer to the worker counts as a paid job or revenue.",
   };
 }
 
@@ -1755,7 +1838,9 @@ function renderMonitorNote(report: Record<string, any>): string {
   const nearRevenueValue = Number(report.marketplaces?.near?.earned_usdc_balance || 0);
   const taskmarketTracked = report.acquisition?.public_demand_watch?.taskmarket?.tracked_worker || {};
   const taskmarketRevenueValue = Number(taskmarketTracked.settled_worker_earnings_usdc || 0);
-  const revenueValue = directRevenueValue + marketplaceRevenueValue + nearRevenueValue + taskmarketRevenueValue;
+  const clawlancer = report.marketplaces?.clawlancer || {};
+  const clawlancerRevenueValue = Number(clawlancer.verified_worker_earnings_usdc || 0);
+  const revenueValue = directRevenueValue + marketplaceRevenueValue + nearRevenueValue + taskmarketRevenueValue + clawlancerRevenueValue;
   const costsValue = Number(trackedCostsInput);
   const profitValue = revenueValue - costsValue;
   const purchases = report.revenue?.purchases || {};
@@ -1763,13 +1848,14 @@ function renderMonitorNote(report: Record<string, any>): string {
   const subscriptionPurchases = Number(report.marketplaces?.the402?.subscription_purchases || 0);
   const nearPurchases = Number(report.marketplaces?.near?.completed_external_jobs || 0);
   const taskmarketPurchases = Number(taskmarketTracked.settled_submissions || 0);
+  const clawlancerPurchases = Number(clawlancer.settled_jobs || 0);
   const payanAttributedSales = Number(report.marketplaces?.payan?.delivered_external_sales || 0);
   const payanDemand = report.marketplaces?.payan?.demand_capture || {};
   const agenticIndexed = report.marketplaces?.agentic_market?.indexed_products || {};
   const agenticMissing = Array.isArray(report.marketplaces?.agentic_market?.missing_products)
     ? report.marketplaces.agentic_market.missing_products
     : [];
-  const totalPurchases = Number(purchases.total || 0) + marketplacePurchases + subscriptionPurchases + nearPurchases + taskmarketPurchases;
+  const totalPurchases = Number(purchases.total || 0) + marketplacePurchases + subscriptionPurchases + nearPurchases + taskmarketPurchases + clawlancerPurchases;
   const skillInstalls = report.acquisition?.skills_sh?.install_counts || {};
   const totalSkillInstalls = report.acquisition?.skills_sh?.total_installs;
   const skillsShSearch = report.acquisition?.skills_sh?.search_index || {};
@@ -1820,7 +1906,8 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **Current profit (recognized-USDC basis):** ${money(profitValue)} (customer revenue minus ${money(costsValue)} tracked USD costs)
 - **Historic owner-test gas:** approximately ${historicalTestGasEth} ETH (reported separately; not converted into tracked USD costs)
 - **Distribution milestone:** ${totalPurchases} / 10 genuine external purchases
-- **Pending Taskmarket opportunity (not revenue):** ${Number(taskmarketTracked.pending_submissions || 0)} submissions; $${String(taskmarketTracked.pending_gross_potential_usdc || "0")} gross / $${String(taskmarketTracked.pending_net_potential_usdc || "0")} net if awarded
+- **Pending Taskmarket opportunity estimate (not revenue):** ${Number(taskmarketTracked.pending_submissions || 0)} submissions; $${String(taskmarketTracked.pending_gross_potential_usdc || "0")} gross / $${String(taskmarketTracked.pending_net_potential_usdc || "0")} net if awarded (pool-task net is explicitly operator-estimated from submitted record types; gross is scaled by that task's live reward/net contract, never the full escrow)
+- **Clawlancer funded-work canary:** ${clawlancer.available ? `${String(clawlancer.status || "unknown").toUpperCase()}; ${clawlancer.transaction?.fundingTxHash ? "funding transaction reported" : "no funding transaction"}; ${clawlancer.onchain_evidence?.verified ? "release verified on Base and recognized" : "no onchain-verified release, not revenue"}; next action ${clawlancer.action || "unknown"}` : `unavailable (${clawlancer.error || "state not captured"})`} (the pinned deliverable auto-submits only after FUNDED)
 - **Neutral buyer-query retrieval:** ${buyerBenchmarkSummary}
 - **CDP Bazaar activity deltas:** ${cdpMerchantQualityAvailable ? (cdpReconciliationProducts.length ? `${cdpReconciliationProducts.join(", ")} changed and require settlement reconciliation` : "no counter or call-recency advance from the owner-contaminated baseline") : "baseline pending the next audited marketplace observation"} (never revenue by itself)
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
@@ -2033,6 +2120,7 @@ skills.sh counts are anonymous CLI telemetry with unknown provenance. They are t
 - NEAR Agent Market earned USDC balance: ${money(nearRevenueValue)}
 - PayanAgent delivered receipts: ${payanAttributedSales} (${money(report.marketplaces?.payan?.receipt_revenue_usdc || 0)} already included in direct Base settlements, never added twice)
 - PayanAgent request funnel: ${Number(payanDemand.exact_matches || 0)} exact fits, ${Number(payanDemand.tracked_requests || 0)} bids tracked, ${Number(payanDemand.accepted || 0)} accepted, ${Number(payanDemand.fulfilled || 0)} fulfilled, ${Number(payanDemand.approved || 0)} approved
+- Clawlancer verified paid jobs: ${clawlancerPurchases}; onchain-verified worker revenue: ${money(clawlancerRevenueValue)} (${clawlancer.available ? `${String(clawlancer.status || "unknown").toUpperCase()} transaction ${clawlancer.transaction?.id || "unavailable"}` : "canary unavailable"})
 
 - Single verdict purchases: ${Number(purchases.single || 0)}
 - Portfolio purchases: ${Number(purchases.portfolio || 0)}
@@ -2060,6 +2148,7 @@ let the402: Record<string, unknown> = {};
 let nearMarket: Record<string, unknown> = {};
 let payan: Record<string, unknown> = {};
 let agenticMarket: Record<string, unknown> = {};
+let clawlancer: Record<string, unknown> = {};
 let funnel: Record<string, unknown> = {};
 let previousReport: Record<string, any> = {};
 try {
@@ -2334,6 +2423,26 @@ if (reportOnly) {
   }
 }
 
+try {
+  clawlancer = await clawlancerWorkStatus();
+} catch (error) {
+  clawlancer = {
+    available: false,
+    checked_at: checkedAt,
+    settled_jobs: 0,
+    verified_worker_earnings_usdc: "0",
+    error: error instanceof Error ? error.message : String(error),
+    accounting_note: "Unavailable Clawlancer state is never counted as a paid job or revenue.",
+  };
+  errors.push(`Clawlancer canary: ${clawlancer.error}`);
+}
+
+if (clawlancer.available === true &&
+  (clawlancer.transaction as Record<string, unknown> | undefined)?.state === "RELEASED" &&
+  (clawlancer.onchain_evidence as Record<string, unknown> | undefined)?.verified !== true) {
+  errors.push(`Clawlancer release verification: ${String((clawlancer.onchain_evidence as Record<string, unknown>)?.reason || "release is not onchain verified")}`);
+}
+
 funnel = await funnelStatus();
 
 const taskmarketCommerce = (
@@ -2351,16 +2460,18 @@ const report = {
   health,
   discovery,
   revenue,
-  marketplaces: { the402, near: nearMarket, payan, agentic_market: agenticMarket },
+  marketplaces: { the402, near: nearMarket, payan, agentic_market: agenticMarket, clawlancer },
   commerce: {
     genuine_purchases: Number((revenue.purchases as Record<string, unknown> | undefined)?.total || 0) +
       Number(the402.completed_jobs || 0) + Number(the402.subscription_purchases || 0) +
       Number(nearMarket.completed_external_jobs || 0) +
-      Number(taskmarketCommerce.settled_submissions || 0),
+      Number(taskmarketCommerce.settled_submissions || 0) +
+      Number(clawlancer.settled_jobs || 0),
     customer_revenue_usdc: (
       Number(revenue.recognized_usdc || 0) + Number(the402.settled_usd || 0) +
       Number(nearMarket.earned_usdc_balance || 0) +
-      Number(taskmarketCommerce.settled_worker_earnings_usdc || 0)
+      Number(taskmarketCommerce.settled_worker_earnings_usdc || 0) +
+      Number(clawlancer.verified_worker_earnings_usdc || 0)
     ).toFixed(6).replace(/\.?0+$/, ""),
     tracked_costs_usdc: trackedCostsInput,
   },

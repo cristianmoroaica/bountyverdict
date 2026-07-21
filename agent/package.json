@@ -25,6 +25,8 @@
     "payan:onboard": "node --experimental-strip-types scripts/payan-onboard.ts",
     "payan:demand": "node --experimental-strip-types scripts/payan-demand.ts",
     "demand:watch": "node --experimental-strip-types scripts/demand-watch.ts",
+    "taskmarket:aibtc-submit": "node --experimental-strip-types scripts/taskmarket-aibtc-submit.ts",
+    "clawlancer:work": "node --experimental-strip-types scripts/clawlancer-work.ts",
     "the402:register": "node --env-file-if-exists=.dev.vars --experimental-strip-types scripts/the402-register.ts",
     "canary:production": "node --experimental-strip-types scripts/functional-canary.ts",
     "settlement:provision": "node --env-file-if-exists=.dev.vars --experimental-strip-types scripts/provision-settlement-buyer.ts",

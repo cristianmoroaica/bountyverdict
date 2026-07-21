@@ -112,7 +112,7 @@ const tracked: readonly TaskmarketTrackedSpecification[] = [{
   expected_net_atomic: "138750",
 }];
 
-test("Taskmarket production tracker pins the isolated worker and all four public receipts", () => {
+test("Taskmarket production tracker pins the isolated worker and all five public receipts", () => {
   assert.equal(TASKMARKET_WORKER_ADDRESS, "0xe5E0fe496B7283032d034Dc79C305b384Ad1ee67");
   assert.deepEqual(TASKMARKET_TRACKED_SUBMISSIONS, [
     {
@@ -151,7 +151,63 @@ test("Taskmarket production tracker pins the isolated worker and all four public
       reward_atomic: "10000000",
       expected_net_atomic: "9250000",
     },
+    {
+      task_id: "0x100219baba1f9df11f7f15f226bbd9994c445060ca2bd2ac7ef820bd4f7759f7",
+      submission_id: "7405cc23-ba8c-40d8-9b6d-c3647251d519",
+      submit_tx_hash: "0xe70d286b0b6204bc1413534d9e9238e057e50828ce08d8b2a6cc658e650436eb",
+      reward_atomic: "19000000",
+      expected_net_atomic: "17575000",
+      operator_estimated_net_atomic: "110000",
+    },
   ]);
+});
+
+test("Taskmarket pool submissions report bounded record value instead of the full escrow pool", () => {
+  const poolTracked: readonly TaskmarketTrackedSpecification[] = [{
+    task_id: taskId,
+    submission_id: submissionId,
+    submit_tx_hash: submitTx,
+    reward_atomic: "19000000",
+    expected_net_atomic: "17575000",
+    operator_estimated_net_atomic: "110000",
+  }];
+  const result = reconcileTaskmarketTracked({
+    worker_address: worker,
+    tracked: poolTracked,
+    payloads: [{
+      task_id: taskId,
+      detail: rawTask({ reward: "19000000", netReward: "17575000" }),
+      submissions: [rawSubmission()],
+    }],
+    agent_stats: rawStats(),
+  });
+  assert.equal(result.pending_gross_potential_usdc, "0.118919");
+  assert.equal(result.pending_net_potential_usdc, "0.11");
+  assert.equal((result.submissions as Array<Record<string, unknown>>)[0].escrow_reward_usdc, "19");
+  assert.equal((result.submissions as Array<Record<string, unknown>>)[0].potential_gross_usdc, "0.118919");
+  assert.equal((result.submissions as Array<Record<string, unknown>>)[0].potential_basis, "operator_estimated_submitted_record_net_scaled_by_task_contract_not_award");
+});
+
+test("Taskmarket pool gross estimate derives the task-specific fee ratio", () => {
+  const result = reconcileTaskmarketTracked({
+    worker_address: worker,
+    tracked: [{
+      task_id: taskId,
+      submission_id: submissionId,
+      submit_tx_hash: submitTx,
+      reward_atomic: "1000000",
+      expected_net_atomic: "900000",
+      operator_estimated_net_atomic: "450000",
+    }],
+    payloads: [{
+      task_id: taskId,
+      detail: rawTask({ reward: "1000000", netReward: "900000" }),
+      submissions: [rawSubmission()],
+    }],
+    agent_stats: rawStats(),
+  });
+  assert.equal(result.pending_gross_potential_usdc, "0.5");
+  assert.equal(result.pending_net_potential_usdc, "0.45");
 });
 
 test("Taskmarket open feed validates escrow evidence and strict pagination bounds", () => {

@@ -345,11 +345,31 @@ test("public demand monitoring is read-only and Taskmarket accounting requires B
   assert.match(distribution, /reuse the same receipt transfer evidence/);
   assert.match(distribution, /reported worker earnings do not equal the sum of uniquely verified settlement records/);
   assert.match(distribution, /pending opportunity totals do not equal the pending submission records/);
-  assert.match(distribution, /Pending Taskmarket opportunity \(not revenue\)/);
+  assert.match(distribution, /Pending Taskmarket opportunity estimate \(not revenue\)/);
+  assert.match(distribution, /explicitly operator-estimated from submitted record types/);
   assert.match(distribution, /settled_worker_earnings_usdc/);
   assert.match(distribution, /API award rows alone remain zero purchases and zero revenue/);
   assert.match(distribution, /Public funded-demand watcher/);
   assert.doesNotMatch(service, /EnvironmentFile/);
+});
+
+test("Clawlancer delivery and revenue require exact Base escrow evidence", async () => {
+  const [distribution, worker, chain, lock] = await Promise.all([
+    readFile(distributionUrl, "utf8"),
+    readFile(new URL("../agent/scripts/clawlancer-work.ts", import.meta.url), "utf8"),
+    readFile(new URL("../agent/src/clawlancer-chain.ts", import.meta.url), "utf8"),
+    readFile(new URL("../agent/src/exclusive-run.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(worker, /verifyClawlancerFunding\(client, transaction\)/);
+  assert.match(worker, /acquireExclusiveRun\(LOCK_PATH\)/);
+  assert.match(chain, /event Created\(bytes32 indexed id, address indexed buyer, address indexed seller/);
+  assert.match(chain, /event Released\(bytes32 indexed id, uint256 sellerAmount, uint256 feeAmount\)/);
+  assert.match(chain, /event\.from\.toLowerCase\(\) === CLAWLANCER_CHAIN\.escrowAddress\.toLowerCase\(\)/);
+  assert.match(chain, /event\.sellerAmount \+ event\.feeAmount === expectedAmount/);
+  assert.match(distribution, /verifyClawlancerRelease\(client, transaction\)/);
+  assert.match(distribution, /verified_worker_earnings_usdc/);
+  assert.match(distribution, /errors\.push\(`Clawlancer canary:/);
+  assert.match(lock, /await mkdir\(path, \{ mode: 0o700 \}\)/);
 });
 
 test("directory monitoring validates the organic Agent Tools Cloud placement without calling it revenue", async () => {
