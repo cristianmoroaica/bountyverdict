@@ -82,6 +82,9 @@ function signal(label, impact, detail, evidenceUrl = null, hardStop = false) {
 
 export function analyzeBounty({ issue, repository, comments = [], timeline = [], policyDocuments = [], now = new Date() }) {
   const signals = [];
+  const assignees = Array.isArray(issue.assignees)
+    ? issue.assignees.filter((assignee) => typeof assignee?.login === "string" && assignee.login.trim())
+    : [];
   const pulls = uniquePullRequests(timeline);
   const openPulls = pulls.filter((pull) => pull.state === "open");
   const closedPulls = pulls.filter((pull) => pull.state === "closed");
@@ -110,6 +113,17 @@ export function analyzeBounty({ issue, repository, comments = [], timeline = [],
   if (issue.locked) {
     score -= 55;
     signals.push(signal("Discussion is locked", -55, `The issue is locked${issue.active_lock_reason ? ` for ${issue.active_lock_reason}` : ""}.`, issue.html_url, true));
+  }
+
+  if (assignees.length) {
+    score -= 70;
+    signals.push(signal(
+      "Issue is already assigned",
+      -70,
+      `GitHub currently lists ${assignees.length} assignee${assignees.length === 1 ? "" : "s"}; treat the work as unavailable unless a maintainer explicitly clears parallel work.`,
+      issue.html_url,
+      true,
+    ));
   }
 
   if (repository.archived) {

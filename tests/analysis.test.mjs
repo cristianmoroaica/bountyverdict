@@ -7,6 +7,7 @@ const healthyIssue = {
   state: "open",
   locked: false,
   active_lock_reason: null,
+  assignees: [],
   updated_at: "2026-07-19T12:00:00Z",
   html_url: "https://github.com/acme/widget/issues/4",
   title: "Fix widget alignment",
@@ -38,6 +39,16 @@ test("locked issue is a hard stop", () => {
   const output = analyzeBounty({ issue: { ...healthyIssue, locked: true }, repository: healthyRepo, now });
   assert.equal(output.verdict, "AVOID");
   assert.ok(output.signals.some((item) => item.label === "Discussion is locked" && item.hardStop));
+});
+
+test("assigned issue is a hard stop", () => {
+  const output = analyzeBounty({
+    issue: { ...healthyIssue, assignees: [{ login: "assigned-solver" }] },
+    repository: healthyRepo,
+    now,
+  });
+  assert.equal(output.verdict, "AVOID");
+  assert.ok(output.signals.some((item) => item.label === "Issue is already assigned" && item.hardStop));
 });
 
 test("maintainer AI-slop warning is a hard stop", () => {

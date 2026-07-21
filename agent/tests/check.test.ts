@@ -6,6 +6,7 @@ const issue = {
   state: "open",
   locked: false,
   active_lock_reason: null,
+  assignees: [],
   updated_at: "2026-07-19T12:00:00Z",
   html_url: "https://github.com/acme/widget/issues/4",
   title: "Fix widget alignment",
@@ -20,11 +21,11 @@ const repository = {
   full_name: "acme/widget",
 };
 
-function githubMock(comments: unknown[] = [], policy: string | null = null): typeof fetch {
+function githubMock(comments: unknown[] = [], policy: string | null = null, issueOverride = issue): typeof fetch {
   return async (input) => {
     const url = String(input);
     const headers = { "x-ratelimit-remaining": "4990" };
-    if (/\/issues\/4$/.test(url)) return Response.json(issue, { headers });
+    if (/\/issues\/4$/.test(url)) return Response.json(issueOverride, { headers });
     if (/\/repos\/acme\/widget$/.test(url)) return Response.json(repository, { headers });
     if (/\/comments\?/.test(url)) return Response.json(comments, { headers });
     if (/\/timeline\?/.test(url)) return Response.json([], { headers });
@@ -87,6 +88,18 @@ test("returns AVOID when a maintainer rejects AI bounty work", async () => {
 
   assert.equal(result.verdict, "AVOID");
   assert.ok(result.signals.some((signal) => signal.hard_stop));
+});
+
+test("returns AVOID when GitHub already lists an assignee", async () => {
+  const result = await checkGithubIssue(
+    "https://github.com/acme/widget/issues/4",
+    {},
+    githubMock([], null, { ...issue, assignees: [{ login: "assigned-solver" }] }),
+    new Date("2026-07-20T12:00:00Z"),
+  );
+
+  assert.equal(result.verdict, "AVOID");
+  assert.ok(result.signals.some((signal) => signal.label === "Issue is already assigned" && signal.hard_stop));
 });
 
 test("rejects a non-issue URL before making an upstream request", async () => {

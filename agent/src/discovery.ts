@@ -20,6 +20,13 @@ export const exampleVerdict = {
   },
   signals: [
     {
+      label: "Issue is already assigned",
+      impact: -70,
+      detail: "GitHub currently lists 1 assignee; treat the work as unavailable unless a maintainer explicitly clears parallel work.",
+      evidence_url: "https://github.com/typeorm/typeorm/issues/3357",
+      hard_stop: true,
+    },
+    {
       label: "Reward withdrawal signal",
       impact: -70,
       detail: "The discussion contains language indicating that a bounty or reward was removed, withdrawn, or cancelled.",
@@ -83,9 +90,9 @@ export const exampleVerdict = {
     timeline_events_scanned: 105,
     linked_pull_requests_found: 1,
     policy_documents_scanned: 1,
-    github_rate_limit_remaining: 51,
+    github_rate_limit_remaining: 38,
   },
-  checked_at: "2026-07-21T15:12:05.920Z",
+  checked_at: "2026-07-21T20:19:51.393Z",
   limitations: [
     "A VIABLE verdict is permission to investigate, not a payout guarantee.",
     "Confirm current reward terms, payout eligibility, contribution policy, and acceptance criteria before coding.",
@@ -205,12 +212,12 @@ export const discoveryExtension = addHttpMethod(declareDiscoveryExtension({
   bodyType: "json",
 }), "POST");
 
-const portfolioViableVerdict = {
+const portfolioAssignedVerdict = {
   product: "BountyVerdict",
   version: "1.0",
-  verdict: "VIABLE",
-  score: 93,
-  summary: "No obvious public hard stop was found. Confirm reward terms and reproduce the issue before coding.",
+  verdict: "AVOID",
+  score: 23,
+  summary: "A public hard stop or severe risk signal makes this issue an unsafe bounty target.",
   service_reuse: SERVICE_REUSE.single,
   issue: {
     url: "https://github.com/tenstorrent/tt-metal/issues/50522",
@@ -219,6 +226,13 @@ const portfolioViableVerdict = {
     repository: "tenstorrent/tt-metal",
   },
   signals: [
+    {
+      label: "Issue is already assigned",
+      impact: -70,
+      detail: "GitHub currently lists 1 assignee; treat the work as unavailable unless a maintainer explicitly clears parallel work.",
+      evidence_url: "https://github.com/tenstorrent/tt-metal/issues/50522",
+      hard_stop: true,
+    },
     {
       label: "Issue is current",
       impact: 8,
@@ -262,13 +276,13 @@ const portfolioViableVerdict = {
     ],
   },
   coverage: {
-    comments_scanned: 2,
-    timeline_events_scanned: 16,
+    comments_scanned: 3,
+    timeline_events_scanned: 19,
     linked_pull_requests_found: 0,
     policy_documents_scanned: 2,
-    github_rate_limit_remaining: 25,
+    github_rate_limit_remaining: 40,
   },
-  checked_at: "2026-07-21T15:12:56.426Z",
+  checked_at: "2026-07-21T20:19:51.393Z",
   limitations: [
     "A VIABLE verdict is permission to investigate, not a payout guarantee.",
     "Confirm current reward terms, payout eligibility, contribution policy, and acceptance criteria before coding.",
@@ -280,13 +294,13 @@ const portfolioViableVerdict = {
 export const portfolioExample = {
   product: "BountyVerdict Portfolio",
   version: "1.0",
-  recommendation: "Investigate https://github.com/tenstorrent/tt-metal/issues/50522 first; it ranked VIABLE with score 93.",
+  recommendation: "Do not start any submitted bounty; every successfully checked candidate ranked AVOID.",
   service_reuse: SERVICE_REUSE.portfolio,
-  best_candidate: "https://github.com/tenstorrent/tt-metal/issues/50522",
-  counts: { submitted: 2, checked: 2, viable: 1, caution: 0, avoid: 1, failed: 0 },
-  ranked: [portfolioViableVerdict, { ...exampleVerdict, checked_at: "2026-07-21T15:12:56.426Z", coverage: { ...exampleVerdict.coverage, github_rate_limit_remaining: 18 } }],
+  best_candidate: null,
+  counts: { submitted: 2, checked: 2, viable: 0, caution: 0, avoid: 2, failed: 0 },
+  ranked: [portfolioAssignedVerdict, exampleVerdict],
   failures: [],
-  checked_at: "2026-07-21T15:12:56.426Z",
+  checked_at: "2026-07-21T20:19:51.393Z",
 };
 
 export const portfolioOutputSchema = {

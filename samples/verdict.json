@@ -18,6 +18,13 @@
   },
   "signals": [
     {
+      "label": "Issue is already assigned",
+      "impact": -70,
+      "detail": "GitHub currently lists 1 assignee; treat the work as unavailable unless a maintainer explicitly clears parallel work.",
+      "evidence_url": "https://github.com/typeorm/typeorm/issues/3357",
+      "hard_stop": true
+    },
+    {
       "label": "Reward withdrawal signal",
       "impact": -70,
       "detail": "The discussion contains language indicating that a bounty or reward was removed, withdrawn, or cancelled.",
@@ -81,9 +88,9 @@
     "timeline_events_scanned": 105,
     "linked_pull_requests_found": 1,
     "policy_documents_scanned": 1,
-    "github_rate_limit_remaining": 51
+    "github_rate_limit_remaining": 38
   },
-  "checked_at": "2026-07-21T15:12:05.920Z",
+  "checked_at": "2026-07-21T20:19:51.393Z",
   "limitations": [
     "A VIABLE verdict is permission to investigate, not a payout guarantee.",
     "Confirm current reward terms, payout eligibility, contribution policy, and acceptance criteria before coding.",

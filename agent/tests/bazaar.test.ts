@@ -65,13 +65,13 @@ test("public bounty samples exactly match the real evidence snapshots advertised
   assert.deepEqual(JSON.parse(single), exampleVerdict);
   assert.deepEqual(JSON.parse(portfolio), portfolioExample);
   assert.match(exampleVerdict.issue.title, /Migration generation drops and creates columns/);
-  assert.equal(portfolioExample.best_candidate, "https://github.com/tenstorrent/tt-metal/issues/50522");
+  assert.equal(portfolioExample.best_candidate, null);
   assert.deepEqual(portfolioExample.counts, {
     submitted: 2,
     checked: 2,
-    viable: 1,
+    viable: 0,
     caution: 0,
-    avoid: 1,
+    avoid: 2,
     failed: 0,
   });
 });
