@@ -334,6 +334,7 @@ const flakeDiscoveryOutputSchema = {
 };
 
 export const flakeDiscoveryExtension = addHttpMethod(declareDiscoveryExtension({
+  bodyType: "json",
   input: {
     run_url: "https://github.com/acme/widget/actions/runs/123456789",
     attempt: 2,
@@ -356,4 +357,4 @@ export const flakeDiscoveryExtension = addHttpMethod(declareDiscoveryExtension({
     additionalProperties: false,
   },
   output: { example: flakeDiscoveryExample, schema: flakeDiscoveryOutputSchema },
-}), "GET");
+}), "POST");

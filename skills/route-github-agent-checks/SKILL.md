@@ -14,10 +14,10 @@ Choose exactly one bounded live check, validate its unpaid x402 challenge, and u
 |---|---|---|---:|---|
 | Assess one public bounty issue | BountyVerdict | `POST /api/bounty-preflight` | 50,000 atomic USDC | `preflight-github-bounties` |
 | Rank 2–10 public bounty issues | BountyVerdict Portfolio | `POST /api/portfolio` | 400,000 atomic USDC | `preflight-github-bounties` |
-| Audit repository coding-agent instructions | HarnessVerdict | `GET /api/harness` | 30,000 atomic USDC | `audit-agent-harness` |
+| Audit repository coding-agent instructions | HarnessVerdict | `POST /api/repository-agent-instructions-audit` | 30,000 atomic USDC | `audit-agent-harness` |
 | Audit one public skill before installation | SkillVerdict | `GET /api/skill` | 60,000 atomic USDC | `preflight-agent-skills` |
-| Diagnose one public GitHub Actions run | RunVerdict | `GET /api/run` | 40,000 atomic USDC | `diagnose-github-actions` |
-| Decide whether one completed failed run merits a retry | FlakeVerdict | `GET /api/flake` | 70,000 atomic USDC | `classify-github-flakes` |
+| Diagnose one public GitHub Actions run | RunVerdict | `POST /api/github-actions-run-diagnosis` | 40,000 atomic USDC | `diagnose-github-actions` |
+| Decide whether one completed failed run merits a retry | FlakeVerdict | `POST /api/github-actions-flake-retry-gate` | 70,000 atomic USDC | `classify-github-flakes` |
 | Gate a tools/list catalog change | MCPDriftVerdict | `POST /api/mcp-drift` | 20,000 atomic USDC | `check-mcp-tool-drift` |
 
 Use RunVerdict when the root cause or next repair action is unknown. Use FlakeVerdict only for the narrower retry-versus-investigate decision. Use MCPDriftVerdict only with complete inline 2025-11-25 protocol snapshots; never use it to connect to or invoke a catalog-serving endpoint. If no row fits, do not purchase; find a more relevant service.

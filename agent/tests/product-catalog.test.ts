@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   PRODUCT_CATALOG,
   PRODUCT_KEYS,
+  LEGACY_GET_PATHS,
   productForAtomicAmount,
   productForTransport,
 } from "../src/product-catalog.ts";
@@ -14,14 +15,24 @@ test("product catalog has unique service, route, sample, and accounting price", 
   }
 });
 
-test("canonical POST and legacy GET transports remain one BountyVerdict product", () => {
-  assert.equal(PRODUCT_CATALOG.single.path, "/api/bounty-preflight");
-  assert.equal(PRODUCT_CATALOG.single.method, "POST");
-  assert.equal(productForTransport("/api/bounty-preflight", "POST"), "single");
-  assert.equal(productForTransport("/api/verdict", "GET"), "single");
-  assert.equal(productForTransport("/api/bounty-preflight", "GET"), null);
-  assert.equal(productForTransport("/api/verdict", "POST"), null);
-  assert.equal(productForTransport("/api/bounty-preflight", "PUT"), null);
+test("fresh canonical POST and legacy GET transports remain one accounting product", () => {
+  const transports = [
+    ["single", "/api/bounty-preflight", "/api/verdict"],
+    ["harness", "/api/repository-agent-instructions-audit", "/api/harness"],
+    ["run", "/api/github-actions-run-diagnosis", "/api/run"],
+    ["flake", "/api/github-actions-flake-retry-gate", "/api/flake"],
+  ] as const;
+
+  for (const [product, canonicalPath, legacyPath] of transports) {
+    assert.equal(PRODUCT_CATALOG[product].path, canonicalPath);
+    assert.equal(PRODUCT_CATALOG[product].method, "POST");
+    assert.equal(LEGACY_GET_PATHS[product], legacyPath);
+    assert.equal(productForTransport(canonicalPath, "POST"), product);
+    assert.equal(productForTransport(legacyPath, "GET"), product);
+    assert.equal(productForTransport(canonicalPath, "GET"), null);
+    assert.equal(productForTransport(legacyPath, "POST"), null);
+    assert.equal(productForTransport(canonicalPath, "PUT"), null);
+  }
 });
 
 test("product catalog preserves all public payment contracts", () => {

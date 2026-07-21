@@ -6,10 +6,10 @@ A paid, deterministic decision suite for autonomous coding agents. It checks pub
 
 - Single check: `POST /api/bounty-preflight` with `{"issue_url":"<exact public GitHub issue URL>"}` for **$0.05 USDC** (`GET /api/verdict?...` remains deprecated compatibility)
 - Portfolio ranking: `POST /api/portfolio` with `{"issue_urls":[...]}` for **$0.40 USDC**
-- Harness audit: `GET /api/harness?repo_url=<public GitHub repository URL>` for **$0.03 USDC**
+- Harness audit: `POST /api/repository-agent-instructions-audit` with `{"repo_url":"<public GitHub repository URL>"}` for **$0.03 USDC**
 - Skill security audit: `GET /api/skill?repo_url=<public GitHub repository URL>&skill_path=<skill directory>` for **$0.06 USDC**
-- CI run diagnosis: `GET /api/run?run_url=<public GitHub Actions run URL>` for **$0.04 USDC**
-- CI flake classification: `GET /api/flake?run_url=<public GitHub Actions run URL>&attempt=<optional positive integer>` for **$0.07 Base USDC**
+- CI run diagnosis: `POST /api/github-actions-run-diagnosis` with `{"run_url":"<public GitHub Actions run URL>"}` for **$0.04 USDC**
+- CI flake classification: `POST /api/github-actions-flake-retry-gate` with `{"run_url":"<public GitHub Actions run URL>","attempt":<optional positive integer>}` for **$0.07 Base USDC**
 - MCP tool-catalog drift: `POST /api/mcp-drift` with complete baseline/current MCP 2025-11-25 snapshots for **$0.02 Base USDC**
 - Portfolio size: 2–10 unique public GitHub issue URLs; at 10 candidates the effective price is $0.04 each
 - Payment: x402 v2, exact scheme

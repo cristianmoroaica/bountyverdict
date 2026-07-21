@@ -129,8 +129,10 @@ export const harnessOutputSchema = {
 };
 
 export const harnessDiscoveryExtension = addHttpMethod(declareDiscoveryExtension({
+  bodyType: "json",
   input: { repo_url: "https://github.com/openai/codex" },
   inputSchema: {
+    type: "object",
     properties: {
       repo_url: {
         type: "string",
@@ -142,4 +144,4 @@ export const harnessDiscoveryExtension = addHttpMethod(declareDiscoveryExtension
     additionalProperties: false,
   },
   output: { example: harnessExample, schema: harnessOutputSchema },
-}), "GET");
+}), "POST");

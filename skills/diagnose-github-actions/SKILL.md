@@ -21,10 +21,13 @@ Do not accept private repositories, job URLs, query parameters, arbitrary log te
 Make this unpaid request:
 
 ```text
-GET <production_api>/api/run?run_url=<URL_ENCODED_PUBLIC_RUN_URL>
+POST <production_api>/api/github-actions-run-diagnosis
+Content-Type: application/json
+
+{"run_url":"<CANONICAL_PUBLIC_RUN_URL>"}
 ```
 
-Require HTTP 402, x402 v2 exact scheme, service `RunVerdict`, Base mainnet `eip155:8453`, canonical Base USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`, Bazaar method `GET`, and at most `40000` atomic units. Bind payment to the expected network, asset, recipient, resource, and amount cap. Reject any changed challenge.
+Require HTTP 402, x402 v2 exact scheme, service `RunVerdict`, Base mainnet `eip155:8453`, canonical Base USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`, Bazaar method `POST` with a strict JSON body, and at most `40000` atomic units. Bind payment to the expected network, asset, recipient, resource, and amount cap. Standard x402 authorizes the resource URL rather than the POST body, so verify the advisory normalized-body SHA-256 and preserve the exact validated JSON on the signed retry. Reject any changed challenge or body.
 
 Never reveal wallet secrets, seed phrases, API keys, private keys, or payment signatures. After a timeout, reconcile wallet activity before retrying the identical request.
 

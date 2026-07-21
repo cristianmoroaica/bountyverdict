@@ -23,14 +23,19 @@ function assertObjectSchemasAreClosed(schema: unknown, path = "output"): void {
   if (record.items) assertObjectSchemasAreClosed(record.items, `${path}[]`);
 }
 
-test("FlakeVerdict publishes valid strict GET discovery metadata", () => {
+test("FlakeVerdict publishes valid strict POST discovery metadata", () => {
   const extension = flakeDiscoveryExtension.bazaar;
-  const querySchema = extension.schema.properties.input.properties.queryParams;
-  assert.equal(extension.info.input.method, "GET");
-  assert.deepEqual(querySchema.required, ["run_url"]);
-  assert.equal(querySchema.properties.attempt.minimum, 1);
-  assert.equal(querySchema.properties.attempt.maximum, undefined);
-  assert.equal(querySchema.additionalProperties, false);
+  const bodySchema = extension.schema.properties.input.properties.body;
+  assert.equal(extension.info.input.method, "POST");
+  assert.equal(extension.info.input.bodyType, "json");
+  assert.deepEqual(extension.info.input.body, {
+    run_url: "https://github.com/acme/widget/actions/runs/123456789",
+    attempt: 2,
+  });
+  assert.deepEqual(bodySchema.required, ["run_url"]);
+  assert.equal(bodySchema.properties.attempt.minimum, 1);
+  assert.equal(bodySchema.properties.attempt.maximum, undefined);
+  assert.equal(bodySchema.additionalProperties, false);
   assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
   assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
   assert.ok(

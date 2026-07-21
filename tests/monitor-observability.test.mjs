@@ -170,7 +170,10 @@ test("the monitor turns privacy-safe hits into bounded actionable cohort summari
   assert.match(distribution, /trusted_by_discovery_cohort/);
   assert.match(distribution, /trusted_by_cohort/);
   assert.match(distribution, /\.slice\(0, 5\)/);
-  assert.match(distribution, /Latest privacy-safe hit learning/);
+  assert.match(distribution, /Latest privacy-safe buyer-candidate learning/);
+  assert.match(distribution, /isBuyerCandidateDiscoveryCohort/);
+  assert.match(distribution, /trusted_buyer_candidate_discovery_requests/);
+  assert.match(distribution, /raw external discovery\/health hits/);
   assert.match(distribution, /no arguments, URLs, payloads, identities, IPs, or raw user agents retained/);
 });
 

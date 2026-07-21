@@ -52,6 +52,15 @@ export const MCP_NON_BUYER_CHANNELS = Object.freeze([
   "x402_observer",
   "registry_or_directory",
 ] as const satisfies readonly FunnelChannel[]);
+const DISCOVERY_NON_BUYER_CHANNELS = new Set<FunnelChannel>([
+  "owner_automation",
+  "x402_observer",
+  "registry_or_directory",
+]);
+const AGENT402_HEALTH_SURFACES = new Set<FunnelDiscoverySurface>([
+  "openapi",
+  "well_known_x402_probe",
+]);
 export const FUNNEL_INPUT_PROFILES = Object.freeze([
   "complete_expected",
   "missing_required",
@@ -334,6 +343,32 @@ export function mcpBuyerCandidateTotals(snapshot: FunnelSnapshot): McpFunnelCoun
   for (const channel of FUNNEL_CHANNELS) {
     if (excluded.has(channel)) continue;
     for (const key of keys) totals[key] += snapshot.mcp_by_channel[channel][key];
+  }
+  return totals;
+}
+
+export function isBuyerCandidateDiscoveryCohort(cohort: string): boolean {
+  const [surface, channel, client, response, ...extra] = cohort.split("|");
+  if (extra.length > 0 || !surface || !channel || !client || !response ||
+    !FUNNEL_DISCOVERY_SURFACES.includes(surface as FunnelDiscoverySurface) ||
+    !FUNNEL_CHANNELS.includes(channel as FunnelChannel) ||
+    !FUNNEL_CLIENT_CLASSES.includes(client as FunnelClientClass) ||
+    !FUNNEL_RESPONSE_PREFERENCES.includes(response as FunnelResponsePreference)) return false;
+  if (DISCOVERY_NON_BUYER_CHANNELS.has(channel as FunnelChannel)) return false;
+  // Agent402 continuously refreshes only these origin contracts as directory
+  // health checks. Preserve its other surfaces as candidate reach so a future
+  // routed agent interaction is not hidden by a broad client exclusion.
+  if (channel === "agent402" && AGENT402_HEALTH_SURFACES.has(surface as FunnelDiscoverySurface)) return false;
+  return true;
+}
+
+export function discoveryBuyerCandidateTotals(
+  snapshot: Pick<FunnelSnapshot, "by_discovery_cohort">,
+): FunnelCounters {
+  const totals = emptyCounters();
+  for (const [cohort, counters] of Object.entries(snapshot.by_discovery_cohort)) {
+    if (!isBuyerCandidateDiscoveryCohort(cohort)) continue;
+    for (const key of COUNTER_KEYS) totals[key] += counters[key];
   }
   return totals;
 }

@@ -30,8 +30,9 @@ const cases = [
   },
   {
     product: "HarnessVerdict",
-    url: "/api/harness?repo_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo",
-    method: "GET",
+    url: "/api/repository-agent-instructions-audit",
+    method: "POST",
+    body: { repo_url: "https://github.com/owner/repo" },
     decisions: ["READY", "REVIEW", "REPAIR"],
     skill: "audit-agent-harness",
   },
@@ -44,15 +45,17 @@ const cases = [
   },
   {
     product: "RunVerdict",
-    url: "/api/run?run_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo%2Factions%2Fruns%2F1",
-    method: "GET",
+    url: "/api/github-actions-run-diagnosis",
+    method: "POST",
+    body: { run_url: "https://github.com/owner/repo/actions/runs/1" },
     decisions: ["PASS", "WAIT", "RETRY", "FIX", "INVESTIGATE"],
     skill: "diagnose-github-actions",
   },
   {
     product: "FlakeVerdict",
-    url: "/api/flake?run_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo%2Factions%2Fruns%2F1&attempt=1",
-    method: "GET",
+    url: "/api/github-actions-flake-retry-gate",
+    method: "POST",
+    body: { run_url: "https://github.com/owner/repo/actions/runs/1", attempt: 1 },
     decisions: ["CONFIRMED_FLAKE", "LIKELY_FLAKE", "RECURRING_FAILURE", "NEW_FAILURE", "INCONCLUSIVE", "NOT_FAILED"],
     skill: "classify-github-flakes",
   },
@@ -146,6 +149,22 @@ test("legacy BountyVerdict GET remains a payable compatibility transport", async
   assert.equal(body.payment.authorization_scope, "resource_url");
 });
 
+test("migrated legacy GET routes remain payable compatibility transports", async () => {
+  const legacyCases = [
+    ["/api/harness?repo_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo", "HarnessVerdict"],
+    ["/api/run?run_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo%2Factions%2Fruns%2F1", "RunVerdict"],
+    ["/api/flake?run_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo%2Factions%2Fruns%2F1&attempt=1", "FlakeVerdict"],
+  ] as const;
+  for (const [url, product] of legacyCases) {
+    const response = await app.request(url, {}, env);
+    assert.equal(response.status, 402);
+    const body = await response.json() as any;
+    assert.equal(body.product, product);
+    assert.equal(body.payment.exact_request.method, "GET");
+    assert.equal(body.payment.authorization_scope, "resource_url");
+  }
+});
+
 test("invalid GET inputs are rejected before any payable challenge", async () => {
   const invalidCases = [
     ["/api/verdict", "BountyVerdict", ["issue_url"]],
@@ -222,6 +241,28 @@ test("canonical BountyVerdict POST rejects malformed bodies before payment", asy
   }
 });
 
+test("migrated canonical POST routes reject malformed bodies before payment", async () => {
+  const invalidCases = [
+    ["/api/repository-agent-instructions-audit", { repo_url: "https://github.com/owner/repo", extra: true }],
+    ["/api/github-actions-run-diagnosis", { run_url: "https://github.com/owner/repo/actions/runs/1", extra: true }],
+    ["/api/github-actions-flake-retry-gate", { run_url: "https://github.com/owner/repo/actions/runs/1", attempt: "1" }],
+    ["/api/github-actions-flake-retry-gate", { run_url: "https://github.com/owner/repo/actions/runs/1", attempt: 0 }],
+  ] as const;
+  for (const [url, body] of invalidCases) {
+    const response = await app.request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }, env);
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.has("payment-required"), false);
+    const error = await response.json() as any;
+    assert.equal(error.payment_challenge_issued, false);
+    assert.equal(error.payment_verified, false);
+    assert.equal(error.payment_settled, false);
+  }
+});
+
 test("invalid signed input and exhausted Flake capacity cannot reach payment verification", async () => {
   const invalidSigned = await app.request("/api/bounty-preflight", {
     method: "POST",
@@ -237,8 +278,12 @@ test("invalid signed input and exhausted Flake capacity cannot reach payment ver
 
   let capacityChecks = 0;
   const rateLimited = await app.request(
-    "/api/flake?run_url=https%3A%2F%2Fgithub.com%2Fowner%2Frepo%2Factions%2Fruns%2F1",
-    { headers: { "Payment-Signature": "invalid-but-present" } },
+    "/api/github-actions-flake-retry-gate",
+    {
+      method: "POST",
+      headers: { "Payment-Signature": "invalid-but-present", "Content-Type": "application/json" },
+      body: JSON.stringify({ run_url: "https://github.com/owner/repo/actions/runs/1" }),
+    },
     {
       ...env,
       FLAKE_RATE_LIMITER: {

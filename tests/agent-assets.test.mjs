@@ -113,8 +113,15 @@ test("agent manifest is honest and links inspectable products", async () => {
     assert.match(product.install_command, /^npx skills add cristianmoroaica\/bountyverdict --skill [a-z0-9-]+ -y$/);
   }
   const flake = manifest.products.find((product) => product.name === "FlakeVerdict");
-  assert.equal(flake.method, "GET");
-  assert.equal(flake.path, "/api/flake");
+  assert.equal(flake.method, "POST");
+  assert.equal(flake.path, "/api/github-actions-flake-retry-gate");
+  assert.deepEqual(Object.keys(flake.body), ["run_url", "attempt"]);
+  const harness = manifest.products.find((product) => product.name === "HarnessVerdict");
+  assert.equal(harness.method, "POST");
+  assert.equal(harness.path, "/api/repository-agent-instructions-audit");
+  const run = manifest.products.find((product) => product.name === "RunVerdict");
+  assert.equal(run.method, "POST");
+  assert.equal(run.path, "/api/github-actions-run-diagnosis");
   assert.equal(flake.bounds.mutates_ci, false);
   assert.equal(flake.bounds.maximum_earlier_comparable_runs, 12);
   assert.equal(flake.reuse_guidance, flakeReuseGuidance);

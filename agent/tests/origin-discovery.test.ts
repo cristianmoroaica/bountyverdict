@@ -149,9 +149,9 @@ test("standard discovery documents expose only the six distributed products and 
   assert.deepEqual(apiCatalog.linkset[0].item.map(({ href }) => href), [
     `${origin}/api/bounty-preflight`,
     `${origin}/api/portfolio`,
-    `${origin}/api/harness`,
-    `${origin}/api/run`,
-    `${origin}/api/flake`,
+    `${origin}/api/repository-agent-instructions-audit`,
+    `${origin}/api/github-actions-run-diagnosis`,
+    `${origin}/api/github-actions-flake-retry-gate`,
     `${origin}/api/mcp-drift`,
     `${origin}/mcp`,
   ]);

@@ -5,6 +5,7 @@ import {
   MCP_CLIENT_FAMILIES,
   MCP_FUNNEL_STAGES,
   MCP_VALIDATION_KINDS,
+  discoveryBuyerCandidateTotals,
   mcpBuyerCandidateTotals,
   type FunnelCounters,
   type FunnelSnapshot,
@@ -16,6 +17,10 @@ type ProductCounters = Pick<FunnelCounters,
   "preflight_rejections" | "rate_limited" | "server_errors">;
 
 type McpProduct = Exclude<ProductKey, "skill">;
+const FUNNEL_COUNTER_KEYS = [
+  "requests", "challenges_402", "signed_requests", "signed_successes", "unsigned_successes",
+  "preflight_rejections", "rate_limited", "server_errors", "other",
+] as const satisfies readonly (keyof FunnelCounters)[];
 
 export type TrustedMcpBaseline = {
   external_totals: McpFunnelCounters;
@@ -38,6 +43,7 @@ export type TrustedFunnelBaseline = {
   funnel_collector_heartbeat_at: string;
   cohort_capture_started_at: string;
   mcp?: TrustedMcpBaseline;
+  buyer_candidate_discovery_totals: FunnelCounters;
   counters: {
     external_discovery_requests: number;
     external_402_challenges: number;
@@ -58,6 +64,21 @@ function subtractOwner(total: number, owner: number, label: string): number {
   const result = total - owner;
   if (!Number.isSafeInteger(result) || result < 0) throw new Error(`${label} is internally inconsistent.`);
   return result;
+}
+
+function funnelCountersDelta(current: FunnelCounters, baseline: FunnelCounters, label: string): FunnelCounters {
+  return Object.fromEntries(FUNNEL_COUNTER_KEYS.map((key) => {
+    const value = current[key] - baseline[key];
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${label} ${key} is internally inconsistent.`);
+    return [key, value];
+  })) as FunnelCounters;
+}
+
+function funnelCountersValid(value: unknown): value is FunnelCounters {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return Object.keys(record).length === FUNNEL_COUNTER_KEYS.length &&
+    FUNNEL_COUNTER_KEYS.every((key) => Number.isSafeInteger(record[key]) && Number(record[key]) >= 0);
 }
 
 const MCP_PRODUCTS = PRODUCT_KEYS.filter((product): product is McpProduct => product !== "skill");
@@ -142,6 +163,17 @@ export function trustedMcpDelta(state: FunnelSnapshot, baseline: TrustedMcpBasel
   };
 }
 
+export function trustedBuyerCandidateDiscoveryDelta(
+  state: FunnelSnapshot,
+  baseline: TrustedFunnelBaseline,
+): FunnelCounters {
+  return funnelCountersDelta(
+    discoveryBuyerCandidateTotals(state),
+    baseline.buyer_candidate_discovery_totals,
+    "Buyer-candidate discovery",
+  );
+}
+
 function mcpCountersValid(value: unknown): value is McpFunnelCounters {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
@@ -215,6 +247,7 @@ export function captureTrustedFunnelBaseline(
     funnel_collector_heartbeat_at: state.collector_heartbeat_at,
     cohort_capture_started_at: state.cohort_capture_started_at,
     mcp: captureTrustedMcpBaseline(state),
+    buyer_candidate_discovery_totals: discoveryBuyerCandidateTotals(state),
     counters: {
       external_discovery_requests: subtractOwner(
         state.discovery_totals.requests,
@@ -257,6 +290,8 @@ export function trustedFunnelBaseline(value: unknown): TrustedFunnelBaseline | n
     typeof baseline.reason !== "string" || !baseline.counters || !baseline.external_by_product ||
     !baseline.by_channel || !baseline.by_client_class || !baseline.external_discovery_by_surface) return null;
   if (baseline.mcp !== undefined && !trustedMcpBaselineValid(baseline.mcp)) return null;
+  if (baseline.buyer_candidate_discovery_totals !== undefined &&
+    !funnelCountersValid(baseline.buyer_candidate_discovery_totals)) return null;
   return {
     ...baseline,
     epoch_id: Number(epochId),
@@ -278,6 +313,8 @@ export function trustedFunnelBaseline(value: unknown): TrustedFunnelBaseline | n
     by_discovery_client_class: baseline.by_discovery_client_class || {} as FunnelSnapshot["by_discovery_client_class"],
     by_cohort: baseline.by_cohort || {},
     by_discovery_cohort: baseline.by_discovery_cohort || {},
+    buyer_candidate_discovery_totals: baseline.buyer_candidate_discovery_totals ||
+      discoveryBuyerCandidateTotals({ by_discovery_cohort: baseline.by_discovery_cohort || {} }),
   } as TrustedFunnelBaseline;
 }
 

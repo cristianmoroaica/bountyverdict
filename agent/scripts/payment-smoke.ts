@@ -29,43 +29,43 @@ const issueUrls = process.env.ISSUE_URLS
 const contract = PRODUCT_CATALOG[product];
 const ownerProbeUserAgent = "bountyverdict-payment-smoke/1.0";
 const url = new URL(contract.path, baseUrl);
-if (product === "harness") url.searchParams.set("repo_url", process.env.REPO_URL || defaultRepo);
+const harnessRepo = process.env.REPO_URL || defaultRepo;
 if (product === "skill") {
   url.searchParams.set("repo_url", process.env.SKILL_REPO_URL || "https://github.com/coinbase/agentic-wallet-skills");
   url.searchParams.set("skill_path", process.env.SKILL_PATH || "skills/agentic-wallet");
 }
-if (product === "run") url.searchParams.set("run_url", process.env.RUN_URL || defaultRun);
+const runUrl = process.env.RUN_URL || defaultRun;
+const flakeRunUrl = process.env.FLAKE_RUN_URL || defaultFlakeRun;
+let flakeAttempt: number | undefined;
 if (product === "flake") {
-  url.searchParams.set("run_url", process.env.FLAKE_RUN_URL || defaultFlakeRun);
   const attempt = process.env.FLAKE_ATTEMPT || process.env.ATTEMPT;
   if (attempt) {
     if (!/^[1-9][0-9]*$/.test(attempt) || !Number.isSafeInteger(Number(attempt))) {
       throw new Error("FLAKE_ATTEMPT must be a positive safe integer.");
     }
-    url.searchParams.set("attempt", attempt);
+    flakeAttempt = Number(attempt);
   }
 }
-const requestInit: RequestInit = product === "single"
-  ? {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": ownerProbeUserAgent },
-      body: JSON.stringify({ issue_url: issueUrl }),
-      redirect: "error",
-    }
+const postBody: unknown = product === "single"
+  ? { issue_url: issueUrl }
   : product === "portfolio"
+    ? { issue_urls: issueUrls }
+    : product === "harness"
+      ? { repo_url: harnessRepo }
+      : product === "run"
+        ? { run_url: runUrl }
+        : product === "flake"
+          ? { run_url: flakeRunUrl, ...(flakeAttempt === undefined ? {} : { attempt: flakeAttempt }) }
+          : product === "mcpdrift"
+            ? mcpDriftExampleInput
+            : undefined;
+const requestInit: RequestInit = postBody !== undefined
   ? {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": ownerProbeUserAgent },
-      body: JSON.stringify({ issue_urls: issueUrls }),
+      body: JSON.stringify(postBody),
       redirect: "error",
     }
-  : product === "mcpdrift"
-    ? {
-        method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": ownerProbeUserAgent },
-        body: JSON.stringify(mcpDriftExampleInput),
-        redirect: "error",
-      }
     : { headers: { Accept: "application/json", "User-Agent": ownerProbeUserAgent }, redirect: "error" };
 
 function decodeHeader(value: string): any {

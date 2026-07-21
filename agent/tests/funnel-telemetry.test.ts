@@ -5,7 +5,9 @@ import {
   classifyDiscoveryTailEvent,
   classifyMcpTailEvents,
   createFunnelSnapshot,
+  discoveryBuyerCandidateTotals,
   isFunnelSnapshot,
+  isBuyerCandidateDiscoveryCohort,
   loadFunnelSnapshot,
   mcpBuyerCandidateTotals,
   MCP_VALIDATION_KINDS,
@@ -84,6 +86,52 @@ test("canonical POST and legacy GET aggregate as one BountyVerdict product", () 
     "POST",
   ));
   assert.equal(owner?.source, "owner_automation");
+});
+
+test("migrated canonical POST and legacy GET transports share product accounting", () => {
+  const transports = [
+    {
+      product: "harness",
+      canonical: "/api/repository-agent-instructions-audit",
+      legacy: "/api/harness?repo_url=https%3A%2F%2Fgithub.com%2Fopenai%2Fcodex",
+    },
+    {
+      product: "run",
+      canonical: "/api/github-actions-run-diagnosis",
+      legacy: "/api/run?run_url=https%3A%2F%2Fgithub.com%2Fopenai%2Fcodex%2Factions%2Fruns%2F29728148711",
+    },
+    {
+      product: "flake",
+      canonical: "/api/github-actions-flake-retry-gate",
+      legacy: "/api/flake?run_url=https%3A%2F%2Fgithub.com%2Factions%2Frunner%2Factions%2Fruns%2F29423388605&attempt=1",
+    },
+  ] as const;
+  const snapshot = createFunnelSnapshot("2026-07-20T19:00:00.000Z");
+  for (const transport of transports) {
+    const canonical = classifyFunnelTailEvent(event(
+      transport.canonical,
+      402,
+      { "user-agent": "bountyverdict-payment-smoke/1.0" },
+      "POST",
+    ));
+    const legacy = classifyFunnelTailEvent(event(
+      transport.legacy,
+      402,
+      { "user-agent": "undici" },
+    ));
+    assert.equal(canonical?.product, transport.product);
+    assert.equal(canonical?.input_profile, "body_unobservable");
+    assert.equal(canonical?.source, "owner_automation");
+    assert.equal(legacy?.product, transport.product);
+    assert.equal(legacy?.input_profile, "complete_expected");
+    recordFunnelObservation(snapshot, canonical!);
+    recordFunnelObservation(snapshot, legacy!);
+  }
+  assert.equal(snapshot.by_product.harness.requests, 2);
+  assert.equal(snapshot.by_product.run.requests, 2);
+  assert.equal(snapshot.by_product.flake.requests, 2);
+  assert.equal(snapshot.totals.requests, 6);
+  assert.equal(snapshot.by_source.owner_automation.requests, 3);
 });
 
 test("learns MCP conversion stages without retaining tool arguments or request identity", () => {
@@ -535,6 +583,34 @@ test("Glama release probes remain distribution evidence and never enter the buye
   assert.equal(snapshot.mcp_by_channel.glama.tools_list, 1);
   assert.equal(snapshot.mcp_totals.tools_list, 2);
   assert.equal(mcpBuyerCandidateTotals(snapshot).tools_list, 1);
+});
+
+test("buyer-candidate discovery excludes directory health without hiding real acquisition channels", () => {
+  const snapshot = createFunnelSnapshot();
+  const observations = [
+    event("/openapi.json", 200, { "user-agent": "Agent402/1.0" }),
+    event("/.well-known/x402", 200, { "user-agent": "Agent402/1.0" }),
+    event("/openapi.json", 200, { "user-agent": "x402-observer/1.0" }),
+    event("/agent-manifest.json", 200, { "user-agent": "OpenDexter/1.0" }),
+    event("/llms.txt", 200, { "user-agent": "bountyverdict-owner-audit/1.0" }),
+    // Preserve an Agent402 visit outside its known OpenAPI/manifest health loop.
+    event("/api/sample", 200, { "user-agent": "Agent402/1.0" }),
+    event("/llms.txt", 200, { "user-agent": "curl/8.14.1" }),
+    event("/openapi.json", 200, { referer: "https://github.com/acme/repo" }),
+    event("/.well-known/x402", 200, { referer: "https://x402scan.com/resource/example" }),
+  ].map(classifyDiscoveryTailEvent);
+  assert.ok(observations.every(Boolean));
+  for (const observation of observations) recordDiscoveryObservation(snapshot, observation!);
+
+  const buyerCandidate = discoveryBuyerCandidateTotals(snapshot);
+  assert.equal(snapshot.discovery_totals.requests, 9);
+  assert.equal(buyerCandidate.requests, 4);
+  assert.equal(buyerCandidate.unsigned_successes, 4);
+  assert.equal(isBuyerCandidateDiscoveryCohort("openapi|agent402|agent402|unspecified_or_other"), false);
+  assert.equal(isBuyerCandidateDiscoveryCohort("well_known_x402_probe|agent402|agent402|unspecified_or_other"), false);
+  assert.equal(isBuyerCandidateDiscoveryCohort("sample_single|agent402|agent402|unspecified_or_other"), true);
+  assert.equal(isBuyerCandidateDiscoveryCohort("openapi|github|unknown|unspecified_or_other"), true);
+  assert.equal(isBuyerCandidateDiscoveryCohort("invalid|direct_or_hidden|unknown|json"), false);
 });
 
 test("ignores irrelevant discovery paths and non-GET probes", () => {

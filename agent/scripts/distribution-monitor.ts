@@ -11,12 +11,18 @@ import {
   summarizeRevenue,
   type SettlementTransfer,
 } from "../src/revenue.ts";
-import { LEGACY_SINGLE_PATH, PRODUCT_CATALOG, productForAtomicAmount, productForTransport, type ProductKey } from "../src/product-catalog.ts";
+import { LEGACY_GET_PATHS, PRODUCT_CATALOG, productForAtomicAmount, productForTransport, type ProductKey } from "../src/product-catalog.ts";
 import { mcpDriftExampleInput } from "../src/mcp-drift-discovery.ts";
 import { evaluateEarnedPlacementExperiment } from "../src/acquisition.ts";
-import { loadFunnelSnapshot, mcpBuyerCandidateTotals } from "../src/funnel-telemetry.ts";
+import {
+  discoveryBuyerCandidateTotals,
+  isBuyerCandidateDiscoveryCohort,
+  loadFunnelSnapshot,
+  mcpBuyerCandidateTotals,
+} from "../src/funnel-telemetry.ts";
 import {
   captureTrustedFunnelBaseline,
+  trustedBuyerCandidateDiscoveryDelta,
   trustedFunnelBaseline,
   trustedMcpDelta,
   type TrustedFunnelBaseline,
@@ -413,19 +419,9 @@ function decodeChallenge(header: string): any {
 async function inspectChallenge(
   product: ProductKey,
 ): Promise<Record<string, unknown>> {
-  const url = product === "single"
-    ? `${api}${PRODUCT_CATALOG.single.path}`
-    : product === "harness"
-      ? `${api}/api/harness?repo_url=${encodeURIComponent("https://github.com/openai/codex")}`
-      : product === "skill"
+  const url = product === "skill"
         ? `${api}/api/skill?repo_url=${encodeURIComponent("https://github.com/coinbase/agentic-wallet-skills")}&skill_path=${encodeURIComponent("skills/agentic-wallet")}`
-        : product === "run"
-          ? `${api}/api/run?run_url=${encodeURIComponent("https://github.com/openai/codex/actions/runs/29728148711")}`
-          : product === "flake"
-            ? `${api}/api/flake?run_url=${encodeURIComponent("https://github.com/actions/runner/actions/runs/29423388605")}&attempt=1`
-            : product === "mcpdrift"
-              ? `${api}/api/mcp-drift`
-              : `${api}/api/portfolio`;
+        : `${api}${PRODUCT_CATALOG[product].path}`;
   const response = await monitoredFetch(url, product === "single"
     ? {
         method: "POST",
@@ -443,6 +439,27 @@ async function inspectChallenge(
           ],
         }),
       }
+    : product === "harness"
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repo_url: "https://github.com/openai/codex" }),
+        }
+    : product === "run"
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ run_url: "https://github.com/openai/codex/actions/runs/29728148711" }),
+        }
+    : product === "flake"
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            run_url: "https://github.com/actions/runner/actions/runs/29423388605",
+            attempt: 1,
+          }),
+        }
     : product === "mcpdrift"
       ? {
           method: "POST",
@@ -456,6 +473,12 @@ async function inspectChallenge(
   const header = response.headers.get("payment-required");
   if (!header) throw new Error(`${product} endpoint omitted PAYMENT-REQUIRED.`);
   const challenge = decodeChallenge(header);
+  if (
+    challenge.resource?.url !== url ||
+    challenge.resource?.serviceName !== PRODUCT_CATALOG[product].service
+  ) {
+    throw new Error(`${product} payment challenge resource identity changed.`);
+  }
   const expectedAmount = PRODUCT_CATALOG[product].amountAtomic;
   const requirement = validatePaymentChallenge(challenge, {
     maximumAtomic: expectedAmount,
@@ -476,8 +499,8 @@ async function inspectChallenge(
   if (method !== expectedMethod) {
     throw new Error(`${product} Bazaar method is ${method || "missing"}; expected ${expectedMethod}.`);
   }
-  if (product === "mcpdrift" && challenge.extensions?.bazaar?.info?.input?.bodyType !== "json") {
-    throw new Error("mcpdrift Bazaar bodyType is missing or not json.");
+  if (PRODUCT_CATALOG[product].method === "POST" && challenge.extensions?.bazaar?.info?.input?.bodyType !== "json") {
+    throw new Error(`${product} Bazaar bodyType is missing or not json.`);
   }
   return {
     status: response.status,
@@ -485,6 +508,7 @@ async function inspectChallenge(
     asset: requirement.asset,
     amount_atomic: requirement.amount,
     pay_to: requirement.payTo,
+    resource: challenge.resource.url,
     bazaar_method: method,
   };
 }
@@ -630,7 +654,7 @@ async function agenticMarketStatus(): Promise<Record<string, unknown>> {
     service.domain !== new URL(api).hostname ||
     !Array.isArray(service.endpoints) ||
     service.endpoints.length === 0 ||
-    service.endpoints.length > EXPECTED_PRODUCTS.length + 1
+    service.endpoints.length > EXPECTED_PRODUCTS.length + Object.keys(LEGACY_GET_PATHS).length
   ) {
     throw new Error("automatic service group identity or endpoint count is invalid.");
   }
@@ -639,7 +663,9 @@ async function agenticMarketStatus(): Promise<Record<string, unknown>> {
   const quality: Record<string, ReturnType<typeof normalizeAgenticMarketQuality>> = {};
   const seenCanonical = new Set<ProductKey>();
   const seenTransports = new Set<string>();
-  let legacySingleIndexed = false;
+  const legacyGetIndexed = Object.fromEntries(
+    Object.keys(LEGACY_GET_PATHS).map((product) => [product, false]),
+  ) as Record<keyof typeof LEGACY_GET_PATHS, boolean>;
   for (const endpoint of service.endpoints as Array<Record<string, any>>) {
     let endpointUrl: URL;
     try {
@@ -672,9 +698,13 @@ async function agenticMarketStatus(): Promise<Record<string, unknown>> {
       seenCanonical.add(product);
       indexedProducts[product] = true;
       quality[product] = endpointQuality;
-    } else if (product === "single" && endpointUrl.pathname === LEGACY_SINGLE_PATH && method === "GET") {
-      legacySingleIndexed = true;
-      quality.single_legacy_get = endpointQuality;
+    } else if (
+      method === "GET" && product in LEGACY_GET_PATHS &&
+      endpointUrl.pathname === LEGACY_GET_PATHS[product as keyof typeof LEGACY_GET_PATHS]
+    ) {
+      const legacyProduct = product as keyof typeof LEGACY_GET_PATHS;
+      legacyGetIndexed[legacyProduct] = true;
+      quality[`${legacyProduct}_legacy_get`] = endpointQuality;
     } else {
       throw new Error("automatic directory contains an unrecognized compatibility transport.");
     }
@@ -685,7 +715,8 @@ async function agenticMarketStatus(): Promise<Record<string, unknown>> {
     service_id: service.id,
     endpoint_count: seenTransports.size,
     canonical_endpoint_count: seenCanonical.size,
-    legacy_single_get_indexed: legacySingleIndexed,
+    legacy_single_get_indexed: legacyGetIndexed.single,
+    legacy_get_indexed: legacyGetIndexed,
     exact_contracts_verified: true,
     indexed_products: indexedProducts,
     missing_products: missingProducts,
@@ -1698,6 +1729,7 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       .reduce((sum, counters) => sum + counters.challenges_402, 0);
     const discoveryOwner = state.by_discovery_source.owner_automation;
     const externalDiscoveryRequests = state.discovery_totals.requests - discoveryOwner.requests;
+    const buyerCandidateDiscoveryTotals = discoveryBuyerCandidateTotals(state);
     const externalDiscoveryBySurface = Object.fromEntries(Object.entries(state.by_discovery_surface_source).map(([surface, sources]) => [
       surface,
       Object.entries(sources).filter(([source]) => source !== "owner_automation")
@@ -1861,9 +1893,13 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
     const effectiveByDiscoveryCohort = measurementEligible ? trustedByDiscoveryCohort : {};
     const trustedMcp = trustedBaseline.mcp ? trustedMcpDelta(state, trustedBaseline.mcp) : null;
     const effectiveTrustedMcp = measurementEligible ? trustedMcp : null;
+    const trustedBuyerCandidateDiscovery = trustedBuyerCandidateDiscoveryDelta(state, trustedBaseline);
+    const effectiveBuyerCandidateDiscovery = measurementEligible
+      ? trustedBuyerCandidateDiscovery
+      : Object.fromEntries(Object.keys(trustedBuyerCandidateDiscovery).map((key) => [key, 0]));
     const trustedLearningStage = !measurementEligible
       ? "measurement_draining"
-      : effectiveTrusted.external_discovery_requests === 0 && effectiveTrusted.external_402_challenges === 0 && effectiveTrusted.signed_payment_attempts === 0
+      : Number(effectiveBuyerCandidateDiscovery.requests || 0) === 0 && effectiveTrusted.external_402_challenges === 0 && effectiveTrusted.signed_payment_attempts === 0
       ? "reach_not_observed"
       : effectiveTrusted.external_402_challenges === 0 && effectiveTrusted.signed_payment_attempts === 0
         ? "discovery_surface_without_paid_route"
@@ -1902,6 +1938,8 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       paid_route_requests: state.totals.requests,
       discovery_surface_requests: state.discovery_totals.requests,
       external_discovery_requests: externalDiscoveryRequests,
+      buyer_candidate_discovery: buyerCandidateDiscoveryTotals,
+      buyer_candidate_discovery_requests: buyerCandidateDiscoveryTotals.requests,
       external_discovery_by_surface: externalDiscoveryBySurface,
       external_402_challenges: externalChallenges,
       enhanced_external_402_challenges: enhancedExternalChallenges,
@@ -1912,6 +1950,8 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       trusted_measurement_eligible: measurementEligible,
       trusted_epoch_rotation: epochRotation,
       trusted_external_discovery_requests: effectiveTrusted.external_discovery_requests,
+      trusted_buyer_candidate_discovery: effectiveBuyerCandidateDiscovery,
+      trusted_buyer_candidate_discovery_requests: Number(effectiveBuyerCandidateDiscovery.requests || 0),
       trusted_external_402_challenges: effectiveTrusted.external_402_challenges,
       trusted_signed_payment_attempts: effectiveTrusted.signed_payment_attempts,
       trusted_successful_signed_responses: effectiveTrusted.successful_signed_responses,
@@ -1922,6 +1962,8 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       trusted_by_cohort: effectiveByCohort,
       trusted_by_discovery_cohort: effectiveByDiscoveryCohort,
       provisional_external_discovery_requests: trusted.external_discovery_requests,
+      provisional_buyer_candidate_discovery: trustedBuyerCandidateDiscovery,
+      provisional_buyer_candidate_discovery_requests: trustedBuyerCandidateDiscovery.requests,
       provisional_external_402_challenges: trusted.external_402_challenges,
       provisional_signed_payment_attempts: trusted.signed_payment_attempts,
       provisional_successful_signed_responses: trusted.successful_signed_responses,
@@ -2106,7 +2148,7 @@ function renderMonitorNote(report: Record<string, any>): string {
     .sort((left, right) => Number(right[1] || 0) - Number(left[1] || 0));
   const externalDiscoveryCohorts = Object.entries(funnel.trusted_by_discovery_cohort || {})
     .filter(([cohort, counters]: [string, any]) =>
-      !cohort.includes("|owner_automation|") && Number(counters?.requests || 0) > 0
+      isBuyerCandidateDiscoveryCohort(cohort) && Number(counters?.requests || 0) > 0
     )
     .sort((left: [string, any], right: [string, any]) =>
       Number(right[1]?.requests || 0) - Number(left[1]?.requests || 0)
@@ -2151,8 +2193,8 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **CDP Bazaar activity deltas:** ${cdpMerchantQualityAvailable ? (cdpReconciliationProducts.length ? `${cdpReconciliationProducts.join(", ")} changed and require settlement reconciliation` : "no counter or call-recency advance from the owner-contaminated baseline") : "baseline pending the next audited marketplace observation"} (never revenue by itself)
 - **CDP MCPDrift indexing path:** ${mcpDriftIndexing}; its representative JSON activation call settled successfully and strict invalid-input-before-payment behavior remains intact
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
-- **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external discovery hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
-- **Latest privacy-safe hit learning:** discovery ${externalDiscoveryCohorts.length ? externalDiscoveryCohorts.join("; ") : "none since the clean boundary"}; paid-route attempts ${externalPaidRouteCohorts.length ? externalPaidRouteCohorts.join("; ") : "none since the clean boundary"} (bounded aggregate categories only; no arguments, URLs, payloads, identities, IPs, or raw user agents retained)
+- **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_buyer_candidate_discovery_requests || 0)} trusted buyer-candidate discovery hits; ${Number(funnel.trusted_external_discovery_requests || 0)} raw external discovery/health hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
+- **Latest privacy-safe buyer-candidate learning:** discovery ${externalDiscoveryCohorts.length ? externalDiscoveryCohorts.join("; ") : "none since the clean boundary"}; paid-route attempts ${externalPaidRouteCohorts.length ? externalPaidRouteCohorts.join("; ") : "none since the clean boundary"} (Agent402 OpenAPI/x402 health, owner automation, x402 observer, and registry crawlers remain visible as raw reach but are excluded here; bounded aggregate categories only; no arguments, URLs, payloads, identities, IPs, or raw user agents retained)
 - **MCP buyer-candidate funnel:** ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initializations; ${Number(mcpBuyerCandidate.tools_list || 0)} tool-list requests; ${Number(mcpBuyerCandidate.protocol_error || 0)} protocol errors; ${Number(mcpBuyerCandidate.capacity_rejected || 0)} capacity rejections; ${Number(mcpBuyerCandidate.payment_required || 0)} valid unpaid tool calls; ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations; ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner, registry, Glama release, and x402 observer channels excluded)
 - **MCP preview-copy rollout:** ${funnel.available ? `${mcpPreviewCopyExperiment.status || "unavailable"} since ${mcpPreviewCopyExperiment.started_at || "unknown"} at ${String(mcpPreviewCopyExperiment.release_commit || "unknown").slice(0, 7)}; delta ${Number(mcpPreviewCopyDelta.initialize || 0)} initialize / ${Number(mcpPreviewCopyDelta.tools_list || 0)} tools/list / ${Number(mcpPreviewCopyDelta.validation_error || 0)} invalid / ${Number(mcpPreviewCopyDelta.payment_required || 0)} valid unpaid / ${Number(mcpPreviewCopyDelta.payment_present || 0)} payment presented / ${Number(mcpPreviewCopyDelta.paid_success || 0)} paid success; list-to-valid ${ratio(mcpPreviewCopyRatios.valid_call_per_tools_list_percent)}, invalid share ${ratio(mcpPreviewCopyRatios.invalid_call_share_percent)}, valid-to-payment ${ratio(mcpPreviewCopyRatios.payment_present_per_valid_call_percent)}` : "unavailable"} (aggregate event deltas, not unique agents or purchase proof)
 - **MCP invalid-call learning:** ${funnel.available ? mcpValidationSummary : "unavailable"} (coarse categories only; no arguments, URLs, payloads, identities, or raw client names retained; pre-upgrade events remain legacy-unclassified)
@@ -2172,7 +2214,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **MCPRepository:** ${report.acquisition?.mcp_repository?.status || "unavailable"} (${report.acquisition?.mcp_repository?.url || "submission not recorded"}; placement is never an impression, install, or purchase)
 - **AgentNDX MCP/x402 registry:** ${report.acquisition?.agentndx?.status || "unavailable"} (${report.acquisition?.agentndx?.listed ? "exact listing active" : "submitted for review"}; catalog presence is never an impression, tool call, purchase, or revenue)
 - **MCP Observatory:** ${report.acquisition?.mcp_observatory?.status || "unavailable"} (${report.acquisition?.mcp_observatory?.status === "repository_metadata_only" ? "repository metadata only; remote endpoint and tool schemas absent" : report.acquisition?.mcp_observatory?.status === "agent_ready" ? "remote endpoint and tool schemas exposed" : "exact propagation check pending"}; automatic indexing is never an impression, tool call, purchase, or revenue)
-- **Measurement boundary:** ${funnel.trusted_measurement_eligible === false ? `draining owner-triggered downstream probes; ${Number(funnel.provisional_external_discovery_requests || 0)} discovery and ${Number(funnel.provisional_external_402_challenges || 0)} challenge signals are excluded until a stable new epoch activates` : `epoch ${Number(funnel.trusted_epoch_id || 1)} eligible`}
+- **Measurement boundary:** ${funnel.trusted_measurement_eligible === false ? `draining owner-triggered downstream probes; ${Number(funnel.provisional_buyer_candidate_discovery_requests || 0)} buyer-candidate discovery, ${Number(funnel.provisional_external_discovery_requests || 0)} raw external discovery/health, and ${Number(funnel.provisional_external_402_challenges || 0)} challenge signals are excluded until a stable new epoch activates` : `epoch ${Number(funnel.trusted_epoch_id || 1)} eligible`}
 - **Measurement policy:** every hit remains in privacy-safe lifetime/provisional telemetry; only conversion-capable paid-route events reset the clean-epoch quiet window
 - **Current funnel diagnosis:** ${funnel.learning_stage || "unavailable"}
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
@@ -2334,7 +2376,8 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - PayanAgent offers: ${report.marketplaces?.payan?.offer_count ?? "unavailable"} / 6 (Base x402 proxy; SkillVerdict excluded); exact-fit request automation ${report.marketplaces?.payan?.demand_capture?.healthy ? "healthy" : "unavailable"}
 - Agentic Market automatic endpoints: ${report.marketplaces?.agentic_market?.endpoint_count ?? "unavailable"} / 7 (CDP Bazaar mirror; reported quality counters excluded from purchase and revenue accounting)
 - Edge funnel capture: ${funnel.available ? `${Number(funnel.trusted_external_402_challenges || 0)} trusted external challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}; ${Number(funnel.external_402_challenges || 0)} older/lifetime external-or-unattributed challenges retained but excluded from rates` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
-- Discovery-surface capture: ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external since the clean boundary; ${Number(funnel.external_discovery_requests || 0)} lifetime external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
+- Buyer-candidate discovery capture: ${funnel.available ? `${Number(funnel.trusted_buyer_candidate_discovery_requests || 0)} trusted since the clean boundary; ${Number(funnel.buyer_candidate_discovery_requests || 0)} lifetime` : "unavailable"} (direct/hidden, marketplace, web/GitHub, and other non-health discovery retained; Agent402 OpenAPI/x402 health, owner automation, x402 observer, and registry crawlers excluded)
+- Raw external discovery/health capture: ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted raw external since the clean boundary; ${Number(funnel.external_discovery_requests || 0)} lifetime raw external` : "unavailable"} (directory health and buyer-candidate reach retained together for distribution visibility, never purchase proof)
 - Trusted MCP buyer-candidate capture: ${funnel.available && trustedMcpAvailable ? `${Number(trustedMcpBuyerCandidate.initialize || 0)} initialize, ${Number(trustedMcpBuyerCandidate.tools_list || 0)} tools/list, ${Number(trustedMcpBuyerCandidate.protocol_error || 0)} protocol errors, ${Number(trustedMcpBuyerCandidate.tool_not_found || 0)} unknown-tool calls, ${Number(trustedMcpBuyerCandidate.validation_error || 0)} invalid calls, ${Number(trustedMcpBuyerCandidate.capacity_rejected || 0)} capacity rejections, ${Number(trustedMcpBuyerCandidate.payment_required || 0)} unpaid valid calls, ${Number(trustedMcpBuyerCandidate.payment_present || 0)} payment presentations, ${Number(trustedMcpBuyerCandidate.paid_success || 0)} paid successes, ${Number(trustedMcpBuyerCandidate.paid_error || 0)} paid errors` : `unavailable (${funnel.trusted_mcp_learning_stage || "no MCP epoch baseline"})`} (exact active-epoch deltas; owner, registry, Glama release, and x402 observer channels excluded)
 - Lifetime MCP buyer-candidate capture: ${funnel.available ? `${Number(mcpBuyerCandidate.initialize || 0)} initialize, ${Number(mcpBuyerCandidate.tools_list || 0)} tools/list, ${Number(mcpBuyerCandidate.validation_error || 0)} invalid calls, ${Number(mcpBuyerCandidate.payment_required || 0)} unpaid valid calls, ${Number(mcpBuyerCandidate.payment_present || 0)} payment presentations, ${Number(mcpBuyerCandidate.paid_success || 0)} paid successes` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; retained for continuity, not an epoch conversion rate)
 - MCP identified-directory capture: ${funnel.available ? `${Number(mcpRegistryCrawler.initialize || 0)} initialize, ${Number(mcpRegistryCrawler.tools_list || 0)} tools/list, ${Number(mcpRegistryCrawler.payment_required || 0)} unpaid valid calls, ${Number(mcpRegistryCrawler.payment_present || 0)} payment presentations` : "unavailable"} (distribution propagation retained separately from buyer-intent learning)
@@ -2344,7 +2387,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Kilo marketplace source capture: ${funnel.available ? `${Number(mcpKiloMarketplace.initialize || 0)} initialize, ${Number(mcpKiloMarketplace.tools_list || 0)} tools/list, ${Number(mcpKiloMarketplace.validation_error || 0)} invalid calls, ${Number(mcpKiloMarketplace.payment_required || 0)} unpaid valid calls, ${Number(mcpKiloMarketplace.payment_present || 0)} payment presentations, ${Number(mcpKiloMarketplace.paid_success || 0)} paid successes` : "unavailable"} (allowlisted aggregate marker only; not an install, identity, unique agent, purchase, or revenue)
 - Glama release source capture: ${funnel.available ? `${Number(mcpGlama.initialize || 0)} initialize, ${Number(mcpGlama.tools_list || 0)} tools/list, ${Number(mcpGlama.payment_required || 0)} unpaid valid calls, ${Number(mcpGlama.payment_present || 0)} payment presentations` : "unavailable"} (allowlisted aggregate marker only; not unique agents, purchases, or revenue)
 - MCP initialize client families: ${activeMcpClientFamilies.length ? activeMcpClientFamilies.map(([family, counters]: [string, any]) => `${family} (${Number(counters.initialize || 0)})`).join(", ") : "none identified yet"} (allowlisted aggregates only; raw names and versions discarded)
-- External discovery surfaces observed: ${externalDiscoverySurfaces.length ? externalDiscoverySurfaces.map(([surface, count]) => `${surface} (${Number(count)})`).join(", ") : "none yet"}
+- Raw external discovery surfaces observed: ${externalDiscoverySurfaces.length ? externalDiscoverySurfaces.map(([surface, count]) => `${surface} (${Number(count)})`).join(", ") : "none yet"} (includes directory health)
 - Enhanced learning dimensions active since: ${funnel.enhanced_capture_started_at || "unavailable"}
 - Cross-dimensional product/channel/input/payment cohorts active since: ${funnel.cohort_capture_started_at || "unavailable"}
 - External channels observed: ${activeChannels.length ? activeChannels.map(([channel, counters]: [string, any]) => `${channel} (${Number(counters.requests || 0)})`).join(", ") : "none yet"}

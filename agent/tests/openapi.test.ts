@@ -13,7 +13,7 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
     mcpdrift: "$0.02",
   });
   assert.match(spec.info.title, /Agent Decision APIs/);
-  assert.equal(spec.info.version, "1.0.2");
+  assert.equal(spec.info.version, "1.0.3");
   assert.match(spec.info.description, /Seven bounded/);
   assert.match(spec.info["x-guidance"], /service_reuse/);
   assert.equal(spec.tags.length, 7);
@@ -31,10 +31,10 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   const paidOperations = [
     spec.paths["/api/bounty-preflight"].post,
     spec.paths["/api/portfolio"].post,
-    spec.paths["/api/harness"].get,
+    spec.paths["/api/repository-agent-instructions-audit"].post,
     spec.paths["/api/skill"].get,
-    spec.paths["/api/run"].get,
-    spec.paths["/api/flake"].get,
+    spec.paths["/api/github-actions-run-diagnosis"].post,
+    spec.paths["/api/github-actions-flake-retry-gate"].post,
     spec.paths["/api/mcp-drift"].post,
   ];
   for (const paid of paidOperations) {
@@ -53,15 +53,22 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.equal(operation["x-payment-info"].price.amount, "0.050000");
   assert.equal(spec.paths["/api/portfolio"].post["x-x402"].price, "$0.40");
   assert.equal(spec.paths["/api/portfolio"].post.requestBody.content["application/json"].schema.properties.issue_urls.maxItems, 10);
-  assert.equal(spec.paths["/api/harness"].get["x-x402"].price, "$0.03");
-  assert.ok(spec.paths["/api/harness"].get.parameters.some((parameter) => parameter.name === "repo_url"));
+  const harness = spec.paths["/api/repository-agent-instructions-audit"].post;
+  assert.equal(harness["x-x402"].price, "$0.03");
+  assert.deepEqual(harness.requestBody.content["application/json"].schema.required, ["repo_url"]);
+  assert.equal(harness.requestBody.content["application/json"].schema.additionalProperties, false);
+  assert.equal(spec.paths["/api/harness"].get.deprecated, true);
   assert.equal(spec.paths["/api/skill"].get["x-x402"].price, "$0.06");
   assert.deepEqual(spec.paths["/api/skill"].get.parameters.map((parameter) => parameter.name), ["repo_url", "skill_path"]);
-  assert.equal(spec.paths["/api/run"].get["x-x402"].price, "$0.04");
-  assert.deepEqual(spec.paths["/api/run"].get.parameters.map((parameter) => parameter.name), ["run_url"]);
-  assert.equal(spec.paths["/api/flake"].get["x-x402"].price, "$0.07");
-  assert.deepEqual(spec.paths["/api/flake"].get.parameters.map((parameter) => parameter.name), ["run_url", "attempt"]);
-  assert.equal(spec.paths["/api/flake"].get.responses["429"].description.includes("not settled"), true);
+  const run = spec.paths["/api/github-actions-run-diagnosis"].post;
+  assert.equal(run["x-x402"].price, "$0.04");
+  assert.deepEqual(run.requestBody.content["application/json"].schema.required, ["run_url"]);
+  assert.equal(spec.paths["/api/run"].get.deprecated, true);
+  const flake = spec.paths["/api/github-actions-flake-retry-gate"].post;
+  assert.equal(flake["x-x402"].price, "$0.07");
+  assert.deepEqual(Object.keys(flake.requestBody.content["application/json"].schema.properties), ["run_url", "attempt"]);
+  assert.equal(flake.responses["429"].description.includes("not settled"), true);
+  assert.equal(spec.paths["/api/flake"].get.deprecated, true);
   assert.equal(spec.paths["/api/mcp-drift"].post["x-x402"].price, "$0.02");
   assert.match(spec.paths["/api/mcp-drift"].post.summary, /MCP schema drift/i);
   assert.match(spec.paths["/api/mcp-drift"].post.description, /MCP tools\/list compatibility/i);

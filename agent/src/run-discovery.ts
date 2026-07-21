@@ -139,8 +139,10 @@ export const runOutputSchema = {
 };
 
 export const runDiscoveryExtension = addHttpMethod(declareDiscoveryExtension({
+  bodyType: "json",
   input: { run_url: "https://github.com/openai/codex/actions/runs/29728148711" },
   inputSchema: {
+    type: "object",
     properties: {
       run_url: {
         type: "string",
@@ -152,4 +154,4 @@ export const runDiscoveryExtension = addHttpMethod(declareDiscoveryExtension({
     additionalProperties: false,
   },
   output: { example: runExample, schema: runOutputSchema },
-}), "GET");
+}), "POST");

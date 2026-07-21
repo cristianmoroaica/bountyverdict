@@ -35,7 +35,10 @@ function paymentRequired(product: SettlementCanaryProduct): Record<string, unkno
       amount: fixture.amountAtomic,
       payTo: SETTLEMENT_CANARY_PAYEE,
     }],
-    extensions: { bazaar: { info: { input: { method: fixture.method } } } },
+    extensions: { bazaar: { info: { input: {
+      method: fixture.method,
+      ...(fixture.method === "POST" ? { bodyType: "json" } : {}),
+    } } } },
   };
 }
 
@@ -100,7 +103,7 @@ test("settlement fixtures are exact production-only resources", () => {
     assert.equal(url.username, "");
     assert.equal(url.password, "");
     assert.equal(url.hash, "");
-    assert.match(url.pathname, /^\/api\/(?:bounty-preflight|portfolio|harness|skill|run|flake|mcp-drift)$/);
+    assert.match(url.pathname, /^\/api\/(?:bounty-preflight|portfolio|repository-agent-instructions-audit|skill|github-actions-run-diagnosis|github-actions-flake-retry-gate|mcp-drift)$/);
   }
   const single = getSettlementCanaryFixture("single");
   assert.equal(single.method, "POST");
@@ -108,6 +111,35 @@ test("settlement fixtures are exact production-only resources", () => {
   assert.deepEqual(JSON.parse(single.body || "null"), {
     issue_url: "https://github.com/typeorm/typeorm/issues/3357",
   });
+  assert.deepEqual(
+    ["harness", "run", "flake"].map((product) => {
+      const fixture = getSettlementCanaryFixture(product as SettlementCanaryProduct);
+      return { product, method: fixture.method, path: new URL(fixture.url).pathname, body: JSON.parse(fixture.body || "null") };
+    }),
+    [
+      {
+        product: "harness",
+        method: "POST",
+        path: "/api/repository-agent-instructions-audit",
+        body: { repo_url: "https://github.com/openai/codex" },
+      },
+      {
+        product: "run",
+        method: "POST",
+        path: "/api/github-actions-run-diagnosis",
+        body: { run_url: "https://github.com/openai/codex/actions/runs/29728148711" },
+      },
+      {
+        product: "flake",
+        method: "POST",
+        path: "/api/github-actions-flake-retry-gate",
+        body: {
+          run_url: "https://github.com/actions/runner/actions/runs/29423388605",
+          attempt: 1,
+        },
+      },
+    ],
+  );
   assert.throws(
     () => selectSettlementCanaryProduct("https://attacker.invalid", new Date()),
     /INVALID_PRODUCT_SELECTION/,
@@ -162,6 +194,7 @@ test("challenge validation pins every economic and resource field", () => {
     ["ASSET_CHANGED", value => { value.accepts[0].asset = "0x0000000000000000000000000000000000000001"; }],
     ["PAYEE_CHANGED", value => { value.accepts[0].payTo = "0x0000000000000000000000000000000000000001"; }],
     ["METHOD_CHANGED", value => { value.extensions.bazaar.info.input.method = "GET"; }],
+    ["BODY_TYPE_CHANGED", value => { value.extensions.bazaar.info.input.bodyType = "form"; }],
   ];
   for (const [code, mutate] of mutations) {
     const challenge = paymentRequired("single");

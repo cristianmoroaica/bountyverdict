@@ -60,7 +60,7 @@ export function createOpenApi(
     openapi: "3.1.0",
     info: {
       title: "BountyVerdict Agent Decision APIs",
-      version: "1.0.2",
+      version: "1.0.3",
       description: "Seven bounded decision APIs for coding agents: evidence-linked GitHub due diligence and diagnostics plus deterministic MCP tool-catalog compatibility and security gates. Payment uses x402 v2 and Base USDC.",
       "x-guidance": "Choose the narrowest operation for the decision at hand, inspect its free sample and unpaid x402 challenge, then pay only when the challenge matches the documented price, Base USDC asset, and operation. Reuse a successful result only according to its service_reuse field.",
       license: { name: "MIT", identifier: "MIT" },
@@ -274,8 +274,8 @@ export function createOpenApi(
           },
         },
       },
-      "/api/harness": {
-        get: {
+      "/api/repository-agent-instructions-audit": {
+        post: {
           summary: "Audit a public repository's coding-agent instruction stack",
           description: "Pins the repository default branch to a commit and audits recognized AGENTS.md, CLAUDE.md, GEMINI.md, Copilot, Cursor, and SKILL.md files for structural reliability, portability, stale references, context size, and secret-like material.",
           operationId: "checkHarnessVerdict",
@@ -286,24 +286,26 @@ export function createOpenApi(
             useWhen: "Audit AGENTS.md, CLAUDE.md, and other repository instructions before autonomous coding.",
             reuse: SERVICE_REUSE.harness,
           }),
-          parameters: [{
-            name: "repo_url",
-            in: "query",
+          requestBody: {
             required: true,
-            description: "Canonical public GitHub repository URL",
-            schema: {
-              type: "string",
-              pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$",
-            },
-            example: "https://github.com/openai/codex",
-          }],
+            content: { "application/json": {
+              schema: {
+                type: "object",
+                properties: { repo_url: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$" } },
+                required: ["repo_url"],
+                additionalProperties: false,
+              },
+              example: { repo_url: "https://github.com/openai/codex" },
+            } },
+          },
           responses: {
             "200": {
               description: "Commit-pinned evidence-linked harness audit after x402 settlement",
               content: { "application/json": { schema: { type: "object", ...harnessOutputSchema } } },
             },
-            "402": { description: "Payment required; inspect the PAYMENT-REQUIRED header" },
-            "400": { description: "Invalid repository URL; verified payment is not settled" },
+            "402": { description: "Payment required; standard x402 authorizes this resource URL, not the POST body; resend the exact validated body" },
+            "400": { description: "Invalid JSON or repository URL; no payment challenge is issued" },
+            "413": { description: "Request body exceeds 4,096 bytes; no payment challenge is issued" },
             "404": { description: "Public repository not found; verified payment is not settled" },
             "502": { description: "GitHub upstream failure; verified payment is not settled" },
             "503": { description: "Temporary capacity or service configuration failure" },
@@ -315,6 +317,29 @@ export function createOpenApi(
             price: prices.harness,
             currency: "USDC",
           },
+          "x-payment-info": paymentInfo(prices.harness),
+        },
+      },
+      "/api/harness": {
+        get: {
+          summary: "Audit a public repository's coding-agent instruction stack (legacy GET transport)",
+          description: "Deprecated compatibility transport. New agents should call POST /api/repository-agent-instructions-audit.",
+          operationId: "checkHarnessVerdictLegacyGet",
+          deprecated: true,
+          ...agentMetadata(origin, {
+            tags: ["agent-instructions"], samplePath: "/api/harness/sample", skill: "audit-agent-harness",
+            useWhen: "Use only for compatibility; prefer the canonical POST transport.", reuse: SERVICE_REUSE.harness,
+          }),
+          parameters: [{
+            name: "repo_url", in: "query", required: true,
+            schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(\\.git)?$" },
+          }],
+          responses: {
+            "200": { description: "Commit-pinned audit after x402 settlement", content: { "application/json": { schema: { type: "object", ...harnessOutputSchema } } } },
+            "402": { description: "Payment required" },
+            "400": { description: "Invalid repository URL; no payment challenge is issued" },
+          },
+          "x-x402": { version: 2, scheme: "exact", network, price: prices.harness, currency: "USDC" },
           "x-payment-info": paymentInfo(prices.harness),
         },
       },
@@ -393,8 +418,8 @@ export function createOpenApi(
           },
         },
       },
-      "/api/run": {
-        get: {
+      "/api/github-actions-run-diagnosis": {
+        post: {
           summary: "Diagnose a public GitHub Actions workflow run",
           description: "Find why one public GitHub Actions workflow failed and what the agent should do next. Reads exact-attempt jobs and bounded failed-job logs, separates primary failures from downstream summaries, and returns root cause, retryability, redacted evidence, and concrete next actions without rerunning code.",
           operationId: "diagnoseRunVerdict",
@@ -405,24 +430,49 @@ export function createOpenApi(
             useWhen: "Find why one public GitHub Actions workflow failed and what the agent should do next.",
             reuse: SERVICE_REUSE.run,
           }),
-          parameters: [{
-            name: "run_url",
-            in: "query",
+          requestBody: {
             required: true,
-            description: "Canonical public GitHub Actions workflow run URL",
-            schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" },
-            example: "https://github.com/openai/codex/actions/runs/29728148711",
-          }],
+            content: { "application/json": {
+              schema: {
+                type: "object",
+                properties: { run_url: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" } },
+                required: ["run_url"],
+                additionalProperties: false,
+              },
+              example: { run_url: "https://github.com/openai/codex/actions/runs/29728148711" },
+            } },
+          },
           responses: {
             "200": {
               description: "Bounded evidence-linked run diagnosis after x402 settlement",
               content: { "application/json": { schema: { type: "object", ...runOutputSchema } } },
             },
-            "402": { description: "Payment required; inspect the PAYMENT-REQUIRED header" },
-            "400": { description: "Invalid workflow run URL; verified payment is not settled" },
+            "402": { description: "Payment required; standard x402 authorizes this resource URL, not the POST body; resend the exact validated body" },
+            "400": { description: "Invalid JSON or workflow run URL; no payment challenge is issued" },
+            "413": { description: "Request body exceeds 4,096 bytes; no payment challenge is issued" },
             "404": { description: "Public workflow run not found; verified payment is not settled" },
             "502": { description: "GitHub upstream failure; verified payment is not settled" },
             "503": { description: "Temporary capacity or service configuration failure" },
+          },
+          "x-x402": { version: 2, scheme: "exact", network, price: prices.run, currency: "USDC" },
+          "x-payment-info": paymentInfo(prices.run),
+        },
+      },
+      "/api/run": {
+        get: {
+          summary: "Diagnose a public GitHub Actions workflow run (legacy GET transport)",
+          description: "Deprecated compatibility transport. New agents should call POST /api/github-actions-run-diagnosis.",
+          operationId: "diagnoseRunVerdictLegacyGet",
+          deprecated: true,
+          ...agentMetadata(origin, {
+            tags: ["ci-diagnosis"], samplePath: "/api/run/sample", skill: "diagnose-github-actions",
+            useWhen: "Use only for compatibility; prefer the canonical POST transport.", reuse: SERVICE_REUSE.run,
+          }),
+          parameters: [{ name: "run_url", in: "query", required: true, schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" } }],
+          responses: {
+            "200": { description: "Run diagnosis after x402 settlement", content: { "application/json": { schema: { type: "object", ...runOutputSchema } } } },
+            "402": { description: "Payment required" },
+            "400": { description: "Invalid workflow run URL; no payment challenge is issued" },
           },
           "x-x402": { version: 2, scheme: "exact", network, price: prices.run, currency: "USDC" },
           "x-payment-info": paymentInfo(prices.run),
@@ -440,8 +490,8 @@ export function createOpenApi(
           },
         },
       },
-      "/api/flake": {
-        get: {
+      "/api/github-actions-flake-retry-gate": {
+        post: {
           summary: "Classify a public GitHub Actions failure before retrying",
           description: "Decide whether a completed GitHub Actions failure is flaky and should be retried once, or is recurring or new and needs a fix. Compares exact workflow attempts, same-commit outcomes, failed-step fingerprints, and bounded historical runs, then returns a retry-or-fix decision without rerunning CI.",
           operationId: "classifyFlakeVerdict",
@@ -452,35 +502,57 @@ export function createOpenApi(
             useWhen: "Decide whether a completed GitHub Actions failure is flaky: retry once or fix it.",
             reuse: FLAKE_SERVICE_REUSE,
           }),
-          parameters: [
-            {
-              name: "run_url",
-              in: "query",
-              required: true,
-              description: "Canonical public GitHub Actions workflow run URL",
-              schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" },
-              example: "https://github.com/actions/runner/actions/runs/29423388605",
-            },
-            {
-              name: "attempt",
-              in: "query",
-              required: false,
-              description: "Exact positive run attempt; omit to classify the current attempt",
-              schema: { type: "integer", minimum: 1 },
-              example: 1,
-            },
-          ],
+          requestBody: {
+            required: true,
+            content: { "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  run_url: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" },
+                  attempt: { type: "integer", minimum: 1 },
+                },
+                required: ["run_url"],
+                additionalProperties: false,
+              },
+              example: { run_url: "https://github.com/actions/runner/actions/runs/29423388605", attempt: 1 },
+            } },
+          },
           responses: {
             "200": {
               description: "Bounded evidence-linked flake classification after x402 settlement",
               content: { "application/json": { schema: flakeOutputSchema } },
             },
-            "402": { description: "Payment required; inspect the PAYMENT-REQUIRED header" },
-            "400": { description: "Invalid workflow run URL or attempt; verified payment is not settled" },
+            "402": { description: "Payment required; standard x402 authorizes this resource URL, not the POST body; resend the exact validated body" },
+            "400": { description: "Invalid JSON, workflow run URL, or attempt; no payment challenge is issued" },
+            "413": { description: "Request body exceeds 4,096 bytes; no payment challenge is issued" },
             "404": { description: "Public workflow run or requested attempt not found; verified payment is not settled" },
             "429": { description: "Bounded upstream capacity exhausted; verified payment is not settled" },
             "502": { description: "GitHub upstream failure; verified payment is not settled" },
             "503": { description: "Temporary capacity, deadline, or service configuration failure; verified payment is not settled" },
+          },
+          "x-x402": { version: 2, scheme: "exact", network, price: prices.flake, currency: "USDC" },
+          "x-payment-info": paymentInfo(prices.flake),
+        },
+      },
+      "/api/flake": {
+        get: {
+          summary: "Classify a public GitHub Actions failure before retrying (legacy GET transport)",
+          description: "Deprecated compatibility transport. New agents should call POST /api/github-actions-flake-retry-gate.",
+          operationId: "classifyFlakeVerdictLegacyGet",
+          deprecated: true,
+          ...agentMetadata(origin, {
+            tags: ["ci-flake-gate"], samplePath: "/api/flake/sample", skill: "classify-github-flakes",
+            useWhen: "Use only for compatibility; prefer the canonical POST transport.", reuse: FLAKE_SERVICE_REUSE,
+          }),
+          parameters: [
+            { name: "run_url", in: "query", required: true, schema: { type: "string", pattern: "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$" } },
+            { name: "attempt", in: "query", required: false, schema: { type: "integer", minimum: 1 } },
+          ],
+          responses: {
+            "200": { description: "Flake classification after x402 settlement", content: { "application/json": { schema: flakeOutputSchema } } },
+            "402": { description: "Payment required" },
+            "400": { description: "Invalid workflow run URL or attempt; no payment challenge is issued" },
+            "429": { description: "Bounded upstream capacity exhausted; verified payment is not settled" },
           },
           "x-x402": { version: 2, scheme: "exact", network, price: prices.flake, currency: "USDC" },
           "x-payment-info": paymentInfo(prices.flake),
@@ -587,7 +659,8 @@ export function createLlmsText(origin: string): string {
 - Portfolio size: 2 to 10 unique public GitHub issue URLs
 - Verdicts: AVOID, CAUTION, VIABLE
 - Free HarnessVerdict sample: ${origin}/api/harness/sample
-- Paid HarnessVerdict: GET ${origin}/api/harness?repo_url=<PUBLIC_GITHUB_REPOSITORY_URL>
+- Paid HarnessVerdict: POST ${origin}/api/repository-agent-instructions-audit with {"repo_url":"<PUBLIC_GITHUB_REPOSITORY_URL>"}
+- Deprecated HarnessVerdict transport: GET ${origin}/api/harness?repo_url=<PUBLIC_GITHUB_REPOSITORY_URL>
 - HarnessVerdict price: $0.03 USDC per successful commit-pinned audit
 - Harness verdicts: READY, REVIEW, REPAIR
 - Free SkillVerdict sample: ${origin}/api/skill/sample
@@ -595,11 +668,13 @@ export function createLlmsText(origin: string): string {
 - SkillVerdict price: $0.06 USDC per successful commit-pinned pre-install audit
 - Skill verdicts: LOW_RISK, REVIEW, BLOCK
 - Free RunVerdict sample: ${origin}/api/run/sample
-- Paid RunVerdict: GET ${origin}/api/run?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>
+- Paid RunVerdict: POST ${origin}/api/github-actions-run-diagnosis with {"run_url":"<PUBLIC_GITHUB_ACTIONS_RUN_URL>"}
+- Deprecated RunVerdict transport: GET ${origin}/api/run?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>
 - RunVerdict price: $0.04 USDC per bounded exact-attempt diagnosis
 - Run verdicts: PASS, WAIT, RETRY, FIX, INVESTIGATE
 - Free FlakeVerdict sample: ${origin}/api/flake/sample
-- Paid FlakeVerdict: GET ${origin}/api/flake?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>&attempt=<OPTIONAL_EXACT_ATTEMPT>
+- Paid FlakeVerdict: POST ${origin}/api/github-actions-flake-retry-gate with {"run_url":"<PUBLIC_GITHUB_ACTIONS_RUN_URL>","attempt":<OPTIONAL_EXACT_ATTEMPT>}
+- Deprecated FlakeVerdict transport: GET ${origin}/api/flake?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>&attempt=<OPTIONAL_EXACT_ATTEMPT>
 - FlakeVerdict price: $0.07 USDC per bounded historical retry decision
 - Flake verdicts: CONFIRMED_FLAKE, LIKELY_FLAKE, RECURRING_FAILURE, NEW_FAILURE, INCONCLUSIVE, NOT_FAILED
 - Free MCPDriftVerdict sample: ${origin}/api/mcp-drift/sample

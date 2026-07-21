@@ -129,11 +129,11 @@ const FIXTURES: Readonly<Record<SettlementCanaryProduct, SettlementCanaryFixture
       product: "harness",
       service: "HarnessVerdict",
       amountAtomic: "30000",
-      method: "GET",
-      url: fixtureUrl("/api/harness", [[
-        "repo_url",
-        "https://github.com/openai/codex",
-      ]]),
+      method: "POST",
+      url: fixtureUrl(PRODUCT_CATALOG.harness.path),
+      body: JSON.stringify({
+        repo_url: "https://github.com/openai/codex",
+      }),
     }),
     skill: Object.freeze({
       product: "skill",
@@ -149,21 +149,22 @@ const FIXTURES: Readonly<Record<SettlementCanaryProduct, SettlementCanaryFixture
       product: "run",
       service: "RunVerdict",
       amountAtomic: "40000",
-      method: "GET",
-      url: fixtureUrl("/api/run", [[
-        "run_url",
-        "https://github.com/openai/codex/actions/runs/29728148711",
-      ]]),
+      method: "POST",
+      url: fixtureUrl(PRODUCT_CATALOG.run.path),
+      body: JSON.stringify({
+        run_url: "https://github.com/openai/codex/actions/runs/29728148711",
+      }),
     }),
     flake: Object.freeze({
       product: "flake",
       service: "FlakeVerdict",
       amountAtomic: "70000",
-      method: "GET",
-      url: fixtureUrl("/api/flake", [
-        ["run_url", "https://github.com/actions/runner/actions/runs/29423388605"],
-        ["attempt", "1"],
-      ]),
+      method: "POST",
+      url: fixtureUrl(PRODUCT_CATALOG.flake.path),
+      body: JSON.stringify({
+        run_url: "https://github.com/actions/runner/actions/runs/29423388605",
+        attempt: 1,
+      }),
     }),
     mcpdrift: Object.freeze({
       product: "mcpdrift",
@@ -319,6 +320,7 @@ export function decodeAndValidatePaymentRequired(
   const input = isRecord(info) ? info.input : undefined;
   if (!isRecord(input)) fail("BAZAAR_INPUT_INVALID");
   exactValue(input.method, fixture.method, "METHOD_CHANGED");
+  if (fixture.method === "POST") exactValue(input.bodyType, "json", "BODY_TYPE_CHANGED");
   return challenge;
 }
 

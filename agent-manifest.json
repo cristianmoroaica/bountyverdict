@@ -78,8 +78,11 @@
     },
     {
       "name": "HarnessVerdict",
-      "method": "GET",
-      "path": "/api/harness",
+      "method": "POST",
+      "path": "/api/repository-agent-instructions-audit",
+      "body": {
+        "repo_url": "required canonical public GitHub repository URL"
+      },
       "price_usdc": "0.03",
       "reusable": true,
       "use_when": "Audit a public repository's coding-agent instruction stack before autonomous coding.",
@@ -100,8 +103,11 @@
     },
     {
       "name": "RunVerdict",
-      "method": "GET",
-      "path": "/api/run",
+      "method": "POST",
+      "path": "/api/github-actions-run-diagnosis",
+      "body": {
+        "run_url": "required canonical public GitHub Actions run URL"
+      },
       "price_usdc": "0.04",
       "reusable": true,
       "use_when": "Diagnose the root cause and next action for one public GitHub Actions run.",
@@ -111,9 +117,9 @@
     },
     {
       "name": "FlakeVerdict",
-      "method": "GET",
-      "path": "/api/flake",
-      "query": {
+      "method": "POST",
+      "path": "/api/github-actions-flake-retry-gate",
+      "body": {
         "run_url": "required canonical public GitHub Actions run URL",
         "attempt": "optional positive integer selecting a run attempt"
       },

@@ -19,7 +19,10 @@ Use HarnessVerdict as a deterministic repository preflight. Treat the result as 
 Make an unpaid request first:
 
 ```text
-GET <production_api>/api/harness?repo_url=<URL_ENCODED_GITHUB_REPOSITORY_URL>
+POST <production_api>/api/repository-agent-instructions-audit
+Content-Type: application/json
+
+{"repo_url":"<CANONICAL_GITHUB_REPOSITORY_URL>"}
 ```
 
 Require all of these from the x402 challenge:
@@ -29,11 +32,11 @@ Require all of these from the x402 challenge:
 - Base mainnet `eip155:8453`;
 - canonical Base USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`;
 - amount no greater than `30000` atomic units;
-- Bazaar method `GET` and a `repo_url` input matching the intended repository.
+- Bazaar method `POST`, JSON body input, and a strict `repo_url` field matching the intended repository.
 
 Bind the payment client to the expected network, asset, recipient, and 30,000-atomic cap. Reject any changed challenge. Never reveal wallet secrets, seed phrases, API keys, or payment signatures.
 
-Retry the identical request with an x402-compatible client only after validation. After a transport timeout, reconcile wallet activity before retrying so one audit is not paid twice.
+Standard x402 authorizes the resource URL, not the POST body. Verify the advisory normalized-body SHA-256, preserve the exact validated JSON body on the signed retry, and reject any body change. After a transport timeout, reconcile wallet activity before retrying so one audit is not paid twice.
 
 ## Use the result
 

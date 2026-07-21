@@ -17,7 +17,10 @@ Use FlakeVerdict as a read-only retry gate. It inspects public GitHub Actions ev
 Construct the exact resource as:
 
 ```text
-GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/flake?run_url=<URL_ENCODED_CANONICAL_RUN_URL>[&attempt=<POSITIVE_INTEGER>]
+POST https://bountyverdict-agent-production.mimirslab.workers.dev/api/github-actions-flake-retry-gate
+Content-Type: application/json
+
+{"run_url":"<CANONICAL_RUN_URL>","attempt":<OPTIONAL_POSITIVE_INTEGER>}
 ```
 
 Do not send credentials, private-repository URLs, pasted logs, or arbitrary text.
@@ -27,14 +30,14 @@ Do not send credentials, private-repository URLs, pasted logs, or arbitrary text
 Make the exact request without payment first. Require all of these before authorizing payment:
 
 - HTTP `402` using x402 v2 and the `exact` scheme;
-- exact service name `FlakeVerdict` and Bazaar method `GET`;
-- exact production origin and exact resource URL constructed above, including the selected input and no extra query parameters;
+- exact service name `FlakeVerdict` and Bazaar method `POST` with a strict JSON body;
+- exact production origin and exact resource URL constructed above, with no query parameters;
 - Base mainnet network `eip155:8453`;
 - canonical Base USDC asset `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`;
 - exact recipient `0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614`;
 - an amount no greater than `70000` atomic units (0.07 USDC).
 
-Bind the payment client to that exact origin, network, asset, recipient, service, method, resource, and 70,000-atomic cap. Reject any redirect, changed challenge, additional payment option, or mismatch. Never reveal wallet secrets, seed phrases, API keys, private keys, or payment signatures. After a timeout or ambiguous response, reconcile the wallet and settlement state before considering another identical request; never pay blindly twice.
+Bind the payment client to that exact origin, network, asset, recipient, service, method, resource, and 70,000-atomic cap. Standard x402 authorizes the resource URL rather than the POST body, so verify the advisory normalized-body SHA-256 and preserve the exact validated JSON on the signed retry. Reject any redirect, changed challenge, body change, additional payment option, or mismatch. Never reveal wallet secrets, seed phrases, API keys, private keys, or payment signatures. After a timeout or ambiguous response, reconcile the wallet and settlement state before considering another identical request; never pay blindly twice.
 
 ## Apply the retry gate
 

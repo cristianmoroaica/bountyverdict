@@ -28,7 +28,8 @@
 - Portfolio size: 2 to 10 unique public GitHub issue URLs
 - Verdicts: AVOID, CAUTION, VIABLE
 - Free HarnessVerdict sample: https://bountyverdict-agent-production.mimirslab.workers.dev/api/harness/sample
-- Paid HarnessVerdict: GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/harness?repo_url=<PUBLIC_GITHUB_REPOSITORY_URL>
+- Paid HarnessVerdict: POST https://bountyverdict-agent-production.mimirslab.workers.dev/api/repository-agent-instructions-audit with {"repo_url":"<PUBLIC_GITHUB_REPOSITORY_URL>"}
+- Deprecated HarnessVerdict transport: GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/harness?repo_url=<PUBLIC_GITHUB_REPOSITORY_URL>
 - HarnessVerdict price: $0.03 USDC per successful commit-pinned audit
 - Harness verdicts: READY, REVIEW, REPAIR
 - Free SkillVerdict sample: https://bountyverdict-agent-production.mimirslab.workers.dev/api/skill/sample
@@ -36,11 +37,13 @@
 - SkillVerdict price: $0.06 USDC per successful commit-pinned pre-install audit
 - Skill verdicts: LOW_RISK, REVIEW, BLOCK
 - Free RunVerdict sample: https://bountyverdict-agent-production.mimirslab.workers.dev/api/run/sample
-- Paid RunVerdict: GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/run?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>
+- Paid RunVerdict: POST https://bountyverdict-agent-production.mimirslab.workers.dev/api/github-actions-run-diagnosis with {"run_url":"<PUBLIC_GITHUB_ACTIONS_RUN_URL>"}
+- Deprecated RunVerdict transport: GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/run?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>
 - RunVerdict price: $0.04 USDC per bounded exact-attempt diagnosis
 - Run verdicts: PASS, WAIT, RETRY, FIX, INVESTIGATE
 - Free FlakeVerdict sample: https://bountyverdict-agent-production.mimirslab.workers.dev/api/flake/sample
-- Paid FlakeVerdict: GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/flake?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>&attempt=<OPTIONAL_EXACT_ATTEMPT>
+- Paid FlakeVerdict: POST https://bountyverdict-agent-production.mimirslab.workers.dev/api/github-actions-flake-retry-gate with {"run_url":"<PUBLIC_GITHUB_ACTIONS_RUN_URL>","attempt":<OPTIONAL_EXACT_ATTEMPT>}
+- Deprecated FlakeVerdict transport: GET https://bountyverdict-agent-production.mimirslab.workers.dev/api/flake?run_url=<PUBLIC_GITHUB_ACTIONS_RUN_URL>&attempt=<OPTIONAL_EXACT_ATTEMPT>
 - FlakeVerdict price: $0.07 USDC per bounded historical retry decision
 - Flake verdicts: CONFIRMED_FLAKE, LIKELY_FLAKE, RECURRING_FAILURE, NEW_FAILURE, INCONCLUSIVE, NOT_FAILED
 - Free MCPDriftVerdict sample: https://bountyverdict-agent-production.mimirslab.workers.dev/api/mcp-drift/sample

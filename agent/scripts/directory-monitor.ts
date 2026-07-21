@@ -195,10 +195,10 @@ const index402Listings = Object.freeze([
 const x402ScanResources = Object.freeze([
   { product: "single", url: `${productionOrigin}/api/verdict`, method: "GET" },
   { product: "portfolio", url: `${productionOrigin}/api/portfolio`, method: "POST" },
-  { product: "harness", url: `${productionOrigin}/api/harness`, method: "GET" },
+  { product: "harness", url: `${productionOrigin}/api/repository-agent-instructions-audit`, method: "POST" },
   { product: "skill", url: `${productionOrigin}/api/skill`, method: "GET" },
-  { product: "run", url: `${productionOrigin}/api/run`, method: "GET" },
-  { product: "flake", url: `${productionOrigin}/api/flake`, method: "GET" },
+  { product: "run", url: `${productionOrigin}/api/github-actions-run-diagnosis`, method: "POST" },
+  { product: "flake", url: `${productionOrigin}/api/github-actions-flake-retry-gate`, method: "POST" },
   { product: "mcpdrift", url: `${productionOrigin}/api/mcp-drift`, method: "POST" },
 ] as const satisfies readonly { product: ProductKey; url: string; method: "GET" | "POST" }[]);
 const x402ScoutIds = Object.freeze([
@@ -211,10 +211,10 @@ const x402ScoutIds = Object.freeze([
 const agent402BuyerQueries = Object.freeze([
   { product: "single", path: "/api/verdict", query: "check whether github bounty issue is still open claimed or worth coding" },
   { product: "portfolio", path: "/api/portfolio", query: "compare and rank github bounty issues to choose the best candidate" },
-  { product: "harness", path: "/api/harness", query: "audit repository coding agent instructions AGENTS.md CLAUDE.md" },
+  { product: "harness", path: "/api/repository-agent-instructions-audit", query: "audit repository coding agent instructions AGENTS.md CLAUDE.md" },
   { product: "skill", path: "/api/skill", query: "security audit an agent skill before installation" },
-  { product: "run", path: "/api/run", query: "diagnose failed github actions workflow run root cause" },
-  { product: "flake", path: "/api/flake", query: "decide whether failed github actions run is flaky and should retry" },
+  { product: "run", path: "/api/github-actions-run-diagnosis", query: "diagnose failed github actions workflow run root cause" },
+  { product: "flake", path: "/api/github-actions-flake-retry-gate", query: "decide whether failed github actions run is flaky and should retry" },
   { product: "mcpdrift", path: "/api/mcp-drift", query: "check MCP tools list schema drift compatibility breaking change" },
 ]);
 const skillsShBuyerQueries = Object.freeze([

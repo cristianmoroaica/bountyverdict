@@ -17,6 +17,7 @@ import {
   assertFreshFunnelCollector,
   captureTrustedFunnelBaseline,
   captureTrustedMcpBaseline,
+  trustedBuyerCandidateDiscoveryDelta,
   trustedMcpDelta,
   trustedBoundaryFingerprint,
   trustedFunnelBaseline,
@@ -65,10 +66,39 @@ test("captures an immutable epoch baseline while excluding owner automation", ()
   assert.equal(baseline.epoch_id, 2);
   assert.equal(baseline.counters.external_402_challenges, 1);
   assert.equal(baseline.counters.external_discovery_requests, 1);
+  assert.equal(baseline.buyer_candidate_discovery_totals.requests, 0);
   assert.equal(baseline.external_by_product.single.challenges_402, 1);
   assert.equal(baseline.funnel_collector_heartbeat_at, state.collector_heartbeat_at);
   assert.equal(baseline.by_channel.owner_automation.challenges_402, 1);
   assert.deepEqual(trustedFunnelBaseline(baseline), baseline);
+});
+
+test("trusted buyer-candidate discovery deltas preserve acquisition while excluding health refreshes", () => {
+  const state = createFunnelSnapshot("2026-07-21T17:00:00Z");
+  const baseline = captureTrustedFunnelBaseline(
+    state,
+    "2026-07-21T17:00:00Z",
+    "A sufficiently descriptive buyer discovery boundary reason.",
+    2,
+  );
+  const values = [
+    event("/openapi.json", 200, "Agent402/1.0"),
+    event("/.well-known/x402", 200, "Agent402/1.0"),
+    event("/openapi.json", 200, "x402-observer/1.0"),
+    event("/agent-manifest.json", 200, "OpenDexter/1.0"),
+    event("/llms.txt", 200, "curl/8.14.1"),
+  ].map(classifyDiscoveryTailEvent);
+  assert.ok(values.every(Boolean));
+  for (const value of values) recordDiscoveryObservation(state, value!);
+
+  const delta = trustedBuyerCandidateDiscoveryDelta(state, baseline);
+  assert.equal(state.discovery_totals.requests, 5);
+  assert.equal(delta.requests, 1);
+  assert.equal(delta.unsigned_successes, 1);
+  const future = structuredClone(baseline);
+  future.buyer_candidate_discovery_totals.requests = 2;
+  future.buyer_candidate_discovery_totals.unsigned_successes = 2;
+  assert.throws(() => trustedBuyerCandidateDiscoveryDelta(state, future), /internally inconsistent/);
 });
 
 test("captures exact bounded MCP epoch dimensions and computes monotonic deltas", () => {
@@ -162,8 +192,10 @@ test("loads legacy epoch-one baselines and rejects malformed records", () => {
   ) as any;
   delete baseline.epoch_id;
   delete baseline.mcp;
+  delete baseline.buyer_candidate_discovery_totals;
   assert.equal(trustedFunnelBaseline(baseline)?.epoch_id, 1);
   assert.equal(trustedFunnelBaseline(baseline)?.mcp, undefined);
+  assert.equal(trustedFunnelBaseline(baseline)?.buyer_candidate_discovery_totals.requests, 0);
   assert.equal(trustedFunnelBaseline({ ...baseline, schema_version: 2 }), null);
   assert.equal(
     trustedFunnelBaseline({ ...baseline, funnel_collector_heartbeat_at: "not-a-date" })?.funnel_collector_heartbeat_at,

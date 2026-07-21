@@ -110,22 +110,29 @@ test("turns CDP merchant activity changes into reconciliation signals, never rev
 });
 
 test("resets CDP quality deltas when a product migrates to a new canonical resource URL", () => {
-  const migrated = { ...merchantResource, resource: "https://example.test/api/bounty-preflight" };
-  const snapshot = normalizeCdpMerchantQuality(
-    migrated,
-    migrated.resource,
-    "2026-07-21T00:02:00.000Z",
-    {
-      resource: merchantResource.resource,
-      reported_calls_30d: 99,
-      reported_unique_payers_30d: 12,
-      last_called_at: "2026-07-21T00:01:00.000Z",
-    },
-  );
-  assert.equal(snapshot.delta_calls_30d, null);
-  assert.equal(snapshot.delta_unique_payers_30d, null);
-  assert.equal(snapshot.call_recency_advanced, false);
-  assert.equal(snapshot.requires_settlement_reconciliation, false);
+  for (const [legacyPath, canonicalPath] of [
+    ["/api/verdict", "/api/bounty-preflight"],
+    ["/api/harness", "/api/repository-agent-instructions-audit"],
+    ["/api/run", "/api/github-actions-run-diagnosis"],
+    ["/api/flake", "/api/github-actions-flake-retry-gate"],
+  ]) {
+    const migrated = { ...merchantResource, resource: `https://example.test${canonicalPath}` };
+    const snapshot = normalizeCdpMerchantQuality(
+      migrated,
+      migrated.resource,
+      "2026-07-21T00:02:00.000Z",
+      {
+        resource: `https://example.test${legacyPath}`,
+        reported_calls_30d: 99,
+        reported_unique_payers_30d: 12,
+        last_called_at: "2026-07-21T00:01:00.000Z",
+      },
+    );
+    assert.equal(snapshot.delta_calls_30d, null);
+    assert.equal(snapshot.delta_unique_payers_30d, null);
+    assert.equal(snapshot.call_recency_advanced, false);
+    assert.equal(snapshot.requires_settlement_reconciliation, false);
+  }
 });
 
 test("accepts newly indexed CDP resources while quality counters are pending", () => {

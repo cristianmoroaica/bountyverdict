@@ -76,9 +76,15 @@ test("public bounty samples exactly match the real evidence snapshots advertised
   });
 });
 
-test("HarnessVerdict GET declaration passes Bazaar schema and protocol validation", () => {
+test("HarnessVerdict canonical POST declaration is a strict JSON body", () => {
   const extension = harnessDiscoveryExtension.bazaar;
-  assert.equal(extension.info.input.method, "GET");
+  const bodySchema = extension.schema.properties.input.properties.body;
+  assert.equal(extension.info.input.method, "POST");
+  assert.equal(extension.info.input.bodyType, "json");
+  assert.deepEqual(extension.info.input.body, { repo_url: "https://github.com/openai/codex" });
+  assert.deepEqual(bodySchema.required, ["repo_url"]);
+  assert.deepEqual(Object.keys(bodySchema.properties), ["repo_url"]);
+  assert.equal(bodySchema.additionalProperties, false);
   assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
   assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
 });
@@ -90,26 +96,40 @@ test("SkillVerdict GET declaration passes Bazaar schema and protocol validation"
   assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
 });
 
-test("RunVerdict GET declaration passes Bazaar schema and protocol validation", () => {
+test("RunVerdict canonical POST declaration is a strict JSON body", () => {
   const extension = runDiscoveryExtension.bazaar;
-  assert.equal(extension.info.input.method, "GET");
+  const bodySchema = extension.schema.properties.input.properties.body;
+  assert.equal(extension.info.input.method, "POST");
+  assert.equal(extension.info.input.bodyType, "json");
+  assert.deepEqual(extension.info.input.body, {
+    run_url: "https://github.com/openai/codex/actions/runs/29728148711",
+  });
+  assert.deepEqual(bodySchema.required, ["run_url"]);
+  assert.deepEqual(Object.keys(bodySchema.properties), ["run_url"]);
+  assert.equal(bodySchema.additionalProperties, false);
   assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
   assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
 });
 
-test("FlakeVerdict GET declaration passes Bazaar schema and protocol validation", () => {
+test("FlakeVerdict canonical POST declaration is a strict JSON body", () => {
   const extension = flakeDiscoveryExtension.bazaar;
-  assert.equal(extension.info.input.method, "GET");
+  const bodySchema = extension.schema.properties.input.properties.body;
+  assert.equal(extension.info.input.method, "POST");
+  assert.equal(extension.info.input.bodyType, "json");
+  assert.deepEqual(extension.info.input.body, {
+    run_url: "https://github.com/acme/widget/actions/runs/123456789",
+    attempt: 2,
+  });
+  assert.deepEqual(bodySchema.required, ["run_url"]);
+  assert.deepEqual(Object.keys(bodySchema.properties), ["run_url", "attempt"]);
+  assert.equal(bodySchema.additionalProperties, false);
   assert.deepEqual(validateDiscoveryExtensionSpec(extension), { valid: true });
   assert.deepEqual(validateDiscoveryExtension(extension), { valid: true });
 });
 
-test("every advertised GET example survives preflight and returns a payable crawler challenge", async () => {
+test("the remaining advertised GET example survives preflight and returns a payable crawler challenge", async () => {
   const routes = [
-    ["/api/harness", harnessDiscoveryExtension],
     ["/api/skill", skillDiscoveryExtension],
-    ["/api/run", runDiscoveryExtension],
-    ["/api/flake", flakeDiscoveryExtension],
   ] as const;
   for (const [path, declaration] of routes) {
     const input = declaration.bazaar.info.input;

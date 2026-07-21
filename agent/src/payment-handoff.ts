@@ -172,24 +172,27 @@ export function exactRestRequestForProduct(
       body = { issue_urls: requiredStringArray(normalizedArgs, "issue_urls") };
       break;
     case "harness":
-      url.searchParams.set("repo_url", requiredString(normalizedArgs, "repo_url"));
+      body = { repo_url: requiredString(normalizedArgs, "repo_url") };
       break;
     case "skill":
       url.searchParams.set("repo_url", requiredString(normalizedArgs, "repo_url"));
       url.searchParams.set("skill_path", requiredString(normalizedArgs, "skill_path"));
       break;
     case "run":
-      url.searchParams.set("run_url", requiredString(normalizedArgs, "run_url"));
+      body = { run_url: requiredString(normalizedArgs, "run_url") };
       break;
     case "flake": {
-      url.searchParams.set("run_url", requiredString(normalizedArgs, "run_url"));
+      const flakeBody: { run_url: string; attempt?: number } = {
+        run_url: requiredString(normalizedArgs, "run_url"),
+      };
       const attempt = normalizedArgs.attempt;
       if (attempt !== undefined) {
         if (typeof attempt !== "number" || !Number.isSafeInteger(attempt) || attempt < 1) {
           throw new Error("Invalid normalized attempt.");
         }
-        url.searchParams.set("attempt", String(attempt));
+        flakeBody.attempt = attempt;
       }
+      body = flakeBody;
       break;
     }
     case "mcpdrift":
