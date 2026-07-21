@@ -299,7 +299,7 @@ async function mcpRepositoryStatus(): Promise<Record<string, unknown>> {
       http_status: response.status,
       submitted_at: mcpRepositorySubmittedAt,
       listed,
-      status: listed ? "listed" : response.ok ? "queued_validation" : "unexpected_response",
+      status: listed ? "listed" : response.ok || response.status === 404 ? "queued_validation" : "unexpected_response",
       title: listed ? title : null,
       measurement: "submission_and_catalog_presence_not_impressions_installs_or_purchases",
     };
