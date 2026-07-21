@@ -89,26 +89,40 @@ jobs:
           owner_curl() {
             command curl --user-agent "bountyverdict-owner-audit/1.0" "$@"
           }
-          owner_curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors "$PRODUCTION_API_URL/" | node -e '
-            let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
-              const value = JSON.parse(body);
-              const expected = [
-                ["BountyVerdict", "$0.05", "/api/verdict", "GET"],
-                ["BountyVerdict Portfolio", "$0.40", "/api/portfolio", "POST"],
-                ["HarnessVerdict", "$0.03", "/api/harness", "GET"],
-                ["SkillVerdict", "$0.06", "/api/skill", "GET"],
-                ["RunVerdict", "$0.04", "/api/run", "GET"],
-                ["FlakeVerdict", "$0.07", "/api/flake", "GET"],
-                ["MCPDriftVerdict", "$0.02", "/api/mcp-drift", "POST"],
-              ];
-              const actual = value.products?.map(({ name, price, endpoint, method }) => [name, price, endpoint, method]);
-              if (value.status !== "available" || JSON.stringify(actual) !== JSON.stringify(expected)) process.exit(1);
-              if (value.agent_manifest !== "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json" || value.agent_skill !== "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md") process.exit(1);
-              if (value.distributed_agent_manifest !== "/agent-manifest.json" || value.distributed_agent_skill !== "/SKILL.md") process.exit(1);
-              if (value.ai_catalog !== "/.well-known/ai-catalog.json") process.exit(1);
-              if (value.api_catalog !== "/.well-known/api-catalog" || value.integrations !== "/.well-known/integrations.json" || value.mcp_server_card !== "/.well-known/mcp/server-card.json") process.exit(1);
-            });
-          '
+          # A successful HTTP response can still come from the previous Worker
+          # while Cloudflare propagates a new version. Wait for the new root
+          # contract, rather than retrying only transport failures.
+          root_ready=false
+          for attempt in {1..12}; do
+            if owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/" | node -e '
+              let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
+                const value = JSON.parse(body);
+                const expected = [
+                  ["BountyVerdict", "$0.05", "/api/verdict", "GET"],
+                  ["BountyVerdict Portfolio", "$0.40", "/api/portfolio", "POST"],
+                  ["HarnessVerdict", "$0.03", "/api/harness", "GET"],
+                  ["SkillVerdict", "$0.06", "/api/skill", "GET"],
+                  ["RunVerdict", "$0.04", "/api/run", "GET"],
+                  ["FlakeVerdict", "$0.07", "/api/flake", "GET"],
+                  ["MCPDriftVerdict", "$0.02", "/api/mcp-drift", "POST"],
+                ];
+                const actual = value.products?.map(({ name, price, endpoint, method }) => [name, price, endpoint, method]);
+                if (value.status !== "available" || JSON.stringify(actual) !== JSON.stringify(expected)) process.exit(1);
+                if (value.agent_manifest !== "https://cristianmoroaica.github.io/bountyverdict/agent-manifest.json" || value.agent_skill !== "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md") process.exit(1);
+                if (value.distributed_agent_manifest !== "/agent-manifest.json" || value.distributed_agent_skill !== "/SKILL.md") process.exit(1);
+                if (value.ai_catalog !== "/.well-known/ai-catalog.json") process.exit(1);
+                if (value.api_catalog !== "/.well-known/api-catalog" || value.integrations !== "/.well-known/integrations.json" || value.mcp_server_card !== "/.well-known/mcp/server-card.json") process.exit(1);
+              });
+            '; then
+              root_ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$root_ready" != "true" ]]; then
+            echo "Production root did not converge to the deployed contract" >&2
+            exit 1
+          fi
           owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/sample" >/dev/null
           owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/portfolio/sample" >/dev/null
           owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/api/harness/sample" >/dev/null
