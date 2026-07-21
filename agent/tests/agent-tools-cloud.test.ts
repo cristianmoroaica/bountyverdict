@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   AgentToolsCloudContractDrift,
   parseAgentToolsCloudListing,
+  parseAgentToolsCloudMcpListing,
 } from "../src/agent-tools-cloud.ts";
 import { PRODUCT_CATALOG, PRODUCT_KEYS } from "../src/product-catalog.ts";
 
@@ -90,4 +91,54 @@ test("Agent Tools Cloud rejects wrong-wallet, unknown-route, and invalid probe t
     resource_samples: [null],
     resource_count: 1,
   }), options), AgentToolsCloudContractDrift);
+});
+
+const expectedMcpTools = [
+  "check_github_bounty",
+  "rank_github_bounties",
+  "audit_agent_harness",
+  "diagnose_github_actions_run",
+  "classify_github_actions_flake",
+  "check_mcp_tool_drift",
+];
+const mcpSlug = "bountyverdict-agent-decision-tools-bountyverdict-agent-production-mimirslab-work";
+const mcpEndpoint = `${productionOrigin}/mcp`;
+const mcpSearch = { count: 1, total_matched: 1, servers: [{ slug: mcpSlug }] };
+function mcpPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    slug: mcpSlug,
+    name: "BountyVerdict Agent Decision APIs",
+    homepage_url: mcpEndpoint,
+    endpoint_url: mcpEndpoint,
+    transport: "streamable-http",
+    x402_supported: 1,
+    health: "ok",
+    http_status: 200,
+    kind: "callable",
+    conformance: "pass",
+    safety_verdict: "clean",
+    quality_score: 82.25,
+    latency_ms: 388,
+    tool_count: expectedMcpTools.length,
+    tools: expectedMcpTools.map((name) => ({ name, description: `${name} task description` })),
+    health_checked: 1_784_651_291,
+    last_seen: 1_784_651_291,
+    ...overrides,
+  };
+}
+const mcpOptions = { endpointUrl: mcpEndpoint, slug: mcpSlug, expectedTools: expectedMcpTools };
+
+test("Agent Tools Cloud verifies the refreshed six-tool x402 MCP listing", () => {
+  const parsed = parseAgentToolsCloudMcpListing(mcpSearch, mcpPayload(), mcpOptions);
+  assert.equal(parsed.status, "listed");
+  assert.equal(parsed.x402_supported, true);
+  assert.equal(parsed.listed_tools, 6);
+  assert.equal(parsed.safety_verdict, "clean");
+  assert.deepEqual(parsed.tool_names, expectedMcpTools);
+});
+
+test("Agent Tools Cloud MCP parser rejects identity, tool, and payment-support drift", () => {
+  assert.throws(() => parseAgentToolsCloudMcpListing(mcpSearch, mcpPayload({ endpoint_url: "https://attacker.example/mcp" }), mcpOptions), AgentToolsCloudContractDrift);
+  assert.throws(() => parseAgentToolsCloudMcpListing(mcpSearch, mcpPayload({ tools: [], tool_count: 0 }), mcpOptions), AgentToolsCloudContractDrift);
+  assert.throws(() => parseAgentToolsCloudMcpListing(mcpSearch, mcpPayload({ x402_supported: 0 }), mcpOptions), AgentToolsCloudContractDrift);
 });

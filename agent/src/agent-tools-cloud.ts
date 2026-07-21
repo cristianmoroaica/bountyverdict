@@ -16,6 +16,12 @@ type ParseOptions = Readonly<{
   expectedResources: readonly ExpectedResource[];
 }>;
 
+type McpParseOptions = Readonly<{
+  endpointUrl: string;
+  slug: string;
+  expectedTools: readonly string[];
+}>;
+
 function contractDrift(message: string): never {
   throw new AgentToolsCloudContractDrift(message);
 }
@@ -97,5 +103,58 @@ export function parseAgentToolsCloudListing(
     checked_at_unix: detail.health_checked,
     last_seen_unix: detail.last_seen,
     measurement: "organic_catalog_health_and_resource_presence_not_impressions_purchases_or_revenue",
+  };
+}
+
+export function parseAgentToolsCloudMcpListing(
+  search: Record<string, any>,
+  detail: Record<string, any>,
+  options: McpParseOptions,
+): Record<string, unknown> {
+  const { endpointUrl, slug, expectedTools } = options;
+  if (!Number.isSafeInteger(search.count) || !Number.isSafeInteger(search.total_matched) ||
+    !Array.isArray(search.servers) || search.count !== search.servers.length ||
+    search.servers.some((server: unknown) => !server || typeof server !== "object" || Array.isArray(server))) {
+    contractDrift("Agent Tools Cloud MCP search telemetry is malformed.");
+  }
+  const matches = search.servers.filter((server: Record<string, unknown>) => server.slug === slug);
+  if (matches.length !== 1 || detail.slug !== slug || detail.endpoint_url !== endpointUrl ||
+    detail.homepage_url !== endpointUrl || detail.name !== "BountyVerdict Agent Decision APIs" ||
+    detail.transport !== "streamable-http") {
+    contractDrift("Agent Tools Cloud MCP identity telemetry drifted.");
+  }
+
+  if (!Array.isArray(detail.tools) ||
+    detail.tools.some((tool: unknown) => !tool || typeof tool !== "object" || Array.isArray(tool) ||
+      typeof (tool as Record<string, unknown>).name !== "string")) {
+    contractDrift("Agent Tools Cloud MCP tool telemetry is malformed.");
+  }
+  const toolNames = detail.tools.map((tool: Record<string, unknown>) => String(tool.name));
+  if (detail.tool_count !== toolNames.length || new Set(toolNames).size !== toolNames.length ||
+    toolNames.length !== expectedTools.length || expectedTools.some((name) => !toolNames.includes(name)) ||
+    detail.x402_supported !== 1 || detail.health !== "ok" || detail.http_status !== 200 ||
+    detail.kind !== "callable" || detail.conformance !== "pass" || detail.safety_verdict !== "clean") {
+    contractDrift("Agent Tools Cloud MCP health, safety, payment, or tool telemetry drifted.");
+  }
+
+  return {
+    listed: true,
+    status: "listed",
+    slug,
+    endpoint_url: endpointUrl,
+    transport: detail.transport,
+    x402_supported: true,
+    health: detail.health,
+    http_status: detail.http_status,
+    latency_ms: Number.isFinite(detail.latency_ms) ? detail.latency_ms : null,
+    conformance: detail.conformance,
+    safety_verdict: detail.safety_verdict,
+    quality_score: Number.isFinite(detail.quality_score) ? detail.quality_score : null,
+    expected_tools: expectedTools.length,
+    listed_tools: toolNames.length,
+    tool_names: toolNames,
+    checked_at_unix: detail.health_checked,
+    last_seen_unix: detail.last_seen,
+    measurement: "organic_mcp_catalog_health_and_tool_presence_not_impressions_calls_purchases_or_revenue",
   };
 }

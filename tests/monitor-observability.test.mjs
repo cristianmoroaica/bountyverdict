@@ -572,6 +572,10 @@ test("directory monitoring validates the organic Agent Tools Cloud placement wit
   assert.match(parser, /organic_catalog_health_and_resource_presence_not_impressions_purchases_or_revenue/);
   assert.match(parser, /typeof payment\.pay_to !== "string" \|\| payment\.pay_to\.toLowerCase\(\) !== revenueWallet\.toLowerCase\(\)/);
   assert.match(parser, /listed_partial_probe_failed/);
+  assert.match(parser, /organic_mcp_catalog_health_and_tool_presence_not_impressions_calls_purchases_or_revenue/);
+  assert.match(directory, /parseAgentToolsCloudMcpListing/);
+  assert.match(directory, /bountyverdict-agent-decision-tools-bountyverdict-agent-production-mimirslab-work/);
+  assert.match(directory, /mcp: parseAgentToolsCloudMcpListing/);
   assert.match(directory, /AgentToolsCloudContractDrift \? "contract_drift"/);
   assert.match(directory, /agent_tools_cloud: agentToolsCloud/);
   assert.match(distribution, /Agent Tools Cloud contract drift/);

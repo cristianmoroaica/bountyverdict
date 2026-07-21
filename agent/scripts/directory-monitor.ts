@@ -11,6 +11,7 @@ import {
 import {
   AgentToolsCloudContractDrift,
   parseAgentToolsCloudListing,
+  parseAgentToolsCloudMcpListing,
 } from "../src/agent-tools-cloud.ts";
 import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
 import { parseAgentSkillsInSearchPayload } from "../src/agentskills-in.ts";
@@ -60,6 +61,15 @@ const x402ScanUrl = "https://www.x402scan.com";
 const x402gleHostUrl = "https://x402gle.com/servers/bountyverdict-agent-production.mimirslab.workers.dev";
 const agentToolsCloudApi = "https://agent-tools.cloud/api/v1";
 const agentToolsCloudSlug = "bountyverdict-agent-production-mimirslab-workers-dev-bazaar";
+const agentToolsCloudMcpSlug = "bountyverdict-agent-decision-tools-bountyverdict-agent-production-mimirslab-work";
+const agentToolsCloudMcpTools = Object.freeze([
+  "check_github_bounty",
+  "rank_github_bounties",
+  "audit_agent_harness",
+  "diagnose_github_actions_run",
+  "classify_github_actions_flake",
+  "check_mcp_tool_drift",
+]);
 const revenueWallet = "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
 const monetizeYourAgentApi = "https://monetizeyouragent.fun/api/v1";
 const monetizeYourAgentSubmissionId = 234;
@@ -1800,8 +1810,10 @@ async function x402gleStatus(): Promise<Record<string, unknown>> {
 async function agentToolsCloudStatus(): Promise<Record<string, unknown>> {
   const searchUrl = `${agentToolsCloudApi}/search?q=bountyverdict&limit=100`;
   const detailUrl = `${agentToolsCloudApi}/services/${agentToolsCloudSlug}`;
+  const mcpSearchUrl = `${agentToolsCloudApi}/mcp/search?q=BountyVerdict&limit=20`;
+  const mcpDetailUrl = `${agentToolsCloudApi}/mcp/servers/${agentToolsCloudMcpSlug}`;
   try {
-    const [searchResponse, detailResponse] = await Promise.all([
+    const [searchResponse, detailResponse, mcpSearchResponse, mcpDetailResponse] = await Promise.all([
       fetch(searchUrl, {
         headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
         signal: AbortSignal.timeout(timeoutMs),
@@ -1810,29 +1822,50 @@ async function agentToolsCloudStatus(): Promise<Record<string, unknown>> {
         headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
         signal: AbortSignal.timeout(timeoutMs),
       }),
+      fetch(mcpSearchUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+      fetch(mcpDetailUrl, {
+        headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
     ]);
-    if (!searchResponse.ok || !detailResponse.ok) {
+    if (!searchResponse.ok || !detailResponse.ok || !mcpSearchResponse.ok || !mcpDetailResponse.ok) {
       return {
         url: "https://agent-tools.cloud/",
         search_url: searchUrl,
         detail_url: detailUrl,
+        mcp_search_url: mcpSearchUrl,
+        mcp_detail_url: mcpDetailUrl,
         listed: false,
         status: "unexpected_response",
         search_http_status: searchResponse.status,
         detail_http_status: detailResponse.status,
+        mcp_search_http_status: mcpSearchResponse.status,
+        mcp_detail_http_status: mcpDetailResponse.status,
       };
     }
     const search = await searchResponse.json() as Record<string, any>;
     const detail = await detailResponse.json() as Record<string, any>;
+    const mcpSearch = await mcpSearchResponse.json() as Record<string, any>;
+    const mcpDetail = await mcpDetailResponse.json() as Record<string, any>;
     return {
       url: "https://agent-tools.cloud/",
       search_url: searchUrl,
       detail_url: detailUrl,
+      mcp_search_url: mcpSearchUrl,
+      mcp_detail_url: mcpDetailUrl,
       ...parseAgentToolsCloudListing(search, detail, {
         productionOrigin,
         slug: agentToolsCloudSlug,
         revenueWallet,
         expectedResources: x402ScanResources,
+      }),
+      mcp: parseAgentToolsCloudMcpListing(mcpSearch, mcpDetail, {
+        endpointUrl: `${productionOrigin}/mcp`,
+        slug: agentToolsCloudMcpSlug,
+        expectedTools: agentToolsCloudMcpTools,
       }),
     };
   } catch (error) {
@@ -1840,6 +1873,8 @@ async function agentToolsCloudStatus(): Promise<Record<string, unknown>> {
       url: "https://agent-tools.cloud/",
       search_url: searchUrl,
       detail_url: detailUrl,
+      mcp_search_url: mcpSearchUrl,
+      mcp_detail_url: mcpDetailUrl,
       listed: false,
       status: error instanceof AgentToolsCloudContractDrift ? "contract_drift" : "request_failed",
       error: error instanceof Error ? error.message : String(error),
