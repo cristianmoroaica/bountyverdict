@@ -5,10 +5,12 @@ import { dirname, join } from "node:path";
 import {
   classifyFunnelTailEvent,
   classifyDiscoveryTailEvent,
+  classifyMcpTailEvents,
   createFunnelSnapshot,
   loadFunnelSnapshot,
   recordDiscoveryObservation,
   recordFunnelObservation,
+  recordMcpObservation,
   type FunnelSnapshot,
 } from "../src/funnel-telemetry.ts";
 
@@ -96,9 +98,11 @@ child.stdout.on("data", (chunk: string) => {
   for (const value of parser.push(chunk)) {
     const observation = classifyFunnelTailEvent(value);
     const discovery = observation ? null : classifyDiscoveryTailEvent(value);
-    if (!observation && !discovery) continue;
+    const mcp = !observation && !discovery ? classifyMcpTailEvents(value) : [];
+    if (!observation && !discovery && mcp.length === 0) continue;
     if (observation) recordFunnelObservation(snapshot, observation);
     else if (discovery) recordDiscoveryObservation(snapshot, discovery);
+    else for (const item of mcp) recordMcpObservation(snapshot, item);
     void flush().catch((error) => {
       process.stderr.write(`Funnel telemetry write failed: ${error instanceof Error ? error.message : String(error)}\n`);
     });

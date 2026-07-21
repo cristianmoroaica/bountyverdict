@@ -80,6 +80,7 @@ const payanAgentId = configuration.payanAgentId;
 const payanOfferMapInput = configuration.payanOfferMap;
 const MAX_CANARY_AGE_MS = 8 * 60 * 60 * 1000;
 const EXPECTED_PRODUCTS = ["single", "portfolio", "harness", "skill", "run", "flake", "mcpdrift"] as const;
+const MCP_PRODUCTS = EXPECTED_PRODUCTS.filter((product): product is Exclude<ProductKey, "skill"> => product !== "skill");
 const BUYER_QUERY_BENCHMARK: Readonly<Record<ProductKey, readonly string[]>> = Object.freeze({
   single: Object.freeze([
     "check GitHub bounty",
@@ -1183,6 +1184,29 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
       Object.entries(sources).filter(([source]) => source !== "owner_automation")
         .reduce((sum, [, counters]) => sum + counters.requests, 0),
     ]));
+    const externalMcpTotals = Object.fromEntries(Object.entries(state.mcp_totals).map(([stage, count]) => [
+      stage,
+      monotonicDelta(count, state.mcp_by_source.owner_automation[stage as keyof typeof state.mcp_totals], `MCP ${stage}`),
+    ]));
+    const externalMcpByProduct = Object.fromEntries(MCP_PRODUCTS.map((product) => {
+      const sources = state.mcp_by_product_source[product];
+      return [product, Object.fromEntries(Object.keys(state.mcp_totals).map((stage) => [
+        stage,
+        Object.entries(sources).filter(([source]) => source !== "owner_automation")
+          .reduce((sum, [, counters]) => sum + Number(counters[stage as keyof typeof counters] || 0), 0),
+      ]))];
+    }));
+    const mcpLearningStage = Number(externalMcpTotals.events || 0) === 0
+      ? "mcp_reach_not_observed"
+      : Number(externalMcpTotals.tools_list || 0) === 0 && Number(externalMcpTotals.payment_required || 0) === 0
+        ? "mcp_initialized_without_tool_discovery"
+        : Number(externalMcpTotals.payment_required || 0) === 0 && Number(externalMcpTotals.validation_error || 0) === 0
+          ? "mcp_catalog_discovery_only"
+          : Number(externalMcpTotals.payment_present || 0) === 0
+            ? "mcp_tool_interest_without_payment"
+            : Number(externalMcpTotals.paid_success || 0) === 0
+              ? "mcp_payment_friction"
+              : "mcp_conversion_observed";
     const currentTrustedCounters = {
       external_discovery_requests: externalDiscoveryRequests,
       external_402_challenges: externalChallenges,
@@ -1345,6 +1369,14 @@ async function funnelStatus(): Promise<Record<string, unknown>> {
         ? Math.round(effectiveTrusted.successful_signed_responses / effectiveTrusted.signed_payment_attempts * 1_000) / 10
         : null,
       learning_stage: trustedLearningStage,
+      mcp_external: externalMcpTotals,
+      mcp_external_by_product: externalMcpByProduct,
+      mcp_learning_stage: mcpLearningStage,
+      mcp_by_source: state.mcp_by_source,
+      mcp_by_client_class: state.mcp_by_client_class,
+      mcp_by_channel: state.mcp_by_channel,
+      mcp_by_day: state.mcp_by_day,
+      mcp_by_hour: state.mcp_by_hour,
       owner_automation_requests: owner.requests,
       by_product: state.by_product,
       by_source: state.by_source,
@@ -1448,6 +1480,7 @@ function renderMonitorNote(report: Record<string, any>): string {
 - **CDP Bazaar activity deltas:** ${cdpMerchantQualityAvailable ? (cdpReconciliationProducts.length ? `${cdpReconciliationProducts.join(", ")} changed and require settlement reconciliation` : "no counter or call-recency advance from the owner-contaminated baseline") : "baseline pending the next audited marketplace observation"} (never revenue by itself)
 - **GitHub repository reach (rolling 14 days):** ${githubTraffic.available ? `${Number(githubTraffic.views?.count || 0)} views / ${Number(githubTraffic.views?.uniques || 0)} unique; ${Number(githubTraffic.clones?.count || 0)} clones / ${Number(githubTraffic.clones?.uniques || 0)} unique` : `unavailable (${githubTraffic.error || "not captured"})`}
 - **Agent edge funnel:** ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external discovery hits; ${Number(funnel.trusted_external_402_challenges || 0)} trusted 402 challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts; ${Number(funnel.trusted_successful_signed_responses || 0)} signed successes in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}` : `capture unavailable (${funnel.error || "not started"})`}
+- **MCP agent funnel:** ${funnel.available ? `${Number(funnel.mcp_external?.initialize || 0)} initializations; ${Number(funnel.mcp_external?.tools_list || 0)} tool-list requests; ${Number(funnel.mcp_external?.payment_required || 0)} valid unpaid tool calls; ${Number(funnel.mcp_external?.payment_present || 0)} payment presentations; ${Number(funnel.mcp_external?.paid_success || 0)} paid successes` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner automation excluded)
 - **Measurement boundary:** ${funnel.trusted_measurement_eligible === false ? `draining owner-triggered downstream probes; ${Number(funnel.provisional_external_discovery_requests || 0)} discovery and ${Number(funnel.provisional_external_402_challenges || 0)} challenge signals are excluded until a stable new epoch activates` : `epoch ${Number(funnel.trusted_epoch_id || 1)} eligible`}
 - **Current funnel diagnosis:** ${funnel.learning_stage || "unavailable"}
 - **Current acquisition experiment:** ${experiment.status || "unavailable"}${experiment.started_at ? ` (started ${experiment.started_at}; ends ${experiment.ends_at})` : " (clock starts on first verified directory placement)"}
@@ -1565,6 +1598,7 @@ ${EXPECTED_PRODUCTS.map((product) => {
 - Agentic Market automatic endpoints: ${report.marketplaces?.agentic_market?.endpoint_count ?? "unavailable"} / 7 (CDP Bazaar mirror; reported quality counters excluded from purchase and revenue accounting)
 - Edge funnel capture: ${funnel.available ? `${Number(funnel.trusted_external_402_challenges || 0)} trusted external challenges; ${Number(funnel.trusted_signed_payment_attempts || 0)} signed attempts in epoch ${Number(funnel.trusted_epoch_id || 1)} since ${funnel.trusted_capture_started_at || "the clean boundary"}; ${Number(funnel.external_402_challenges || 0)} older/lifetime external-or-unattributed challenges retained but excluded from rates` : "unavailable"} (aggregate HTTP telemetry only; onchain ledger remains authoritative)
 - Discovery-surface capture: ${funnel.available ? `${Number(funnel.trusted_external_discovery_requests || 0)} trusted external since the clean boundary; ${Number(funnel.external_discovery_requests || 0)} lifetime external` : "unavailable"} (homepage, OpenAPI, llms.txt, samples, and common agent-convention probes)
+- MCP-native capture: ${funnel.available ? `${Number(funnel.mcp_external?.initialize || 0)} initialize, ${Number(funnel.mcp_external?.tools_list || 0)} tools/list, ${Number(funnel.mcp_external?.tool_not_found || 0)} unknown-tool calls, ${Number(funnel.mcp_external?.validation_error || 0)} invalid calls, ${Number(funnel.mcp_external?.payment_required || 0)} unpaid valid calls, ${Number(funnel.mcp_external?.payment_present || 0)} payment presentations, ${Number(funnel.mcp_external?.paid_success || 0)} paid successes, ${Number(funnel.mcp_external?.paid_error || 0)} paid errors` : "unavailable"} (${funnel.mcp_learning_stage || "not started"}; owner probes excluded)
 - External discovery surfaces observed: ${externalDiscoverySurfaces.length ? externalDiscoverySurfaces.map(([surface, count]) => `${surface} (${Number(count)})`).join(", ") : "none yet"}
 - Enhanced learning dimensions active since: ${funnel.enhanced_capture_started_at || "unavailable"}
 - Cross-dimensional product/channel/input/payment cohorts active since: ${funnel.cohort_capture_started_at || "unavailable"}
@@ -1584,6 +1618,17 @@ ${EXPECTED_PRODUCTS.map((product) => {
 }).join("\n")}
 
 Input readiness, channel, client class, response preference, x402 header generation, hourly and daily trends, product×source aggregates, and coarse product×channel×client×input×payment×response cohorts are retained in the private machine-readable state. The immutable clean boundary excludes older owner-probe contamination from conversion rates without fabricating a retroactive attribution; lifetime totals remain available and explicitly labeled. No raw request content or visitor identifier is retained.
+
+### External MCP tool-call learning by product
+
+| Product | Valid unpaid calls | Invalid calls | Payment presented | Paid successes | Paid errors |
+|---|---:|---:|---:|---:|---:|
+${MCP_PRODUCTS.map((product) => {
+  const row = funnel.mcp_external_by_product?.[product] || {};
+  return `| ${PRODUCT_CATALOG[product].service} | ${Number(row.payment_required || 0)} | ${Number(row.validation_error || 0)} | ${Number(row.payment_present || 0)} | ${Number(row.paid_success || 0)} | ${Number(row.paid_error || 0)} |`;
+}).join("\n")}
+
+MCP telemetry is aggregate and privacy-preserving: it retains only stage, product, broad source/client/referral class, and bounded hour/day counts. Tool arguments, JSON-RPC payloads, payment payloads, payer addresses, IPs, and full user-agent strings are discarded. Onchain settlement attribution remains authoritative for purchases and revenue.
 - Experiment status: ${experiment.status || "unavailable"}
 - Experiment baseline: 8 total installs, 2 router installs, 1 SkillVerdict workflow install, 0 genuine purchases
 - Experiment delta: ${Number(experiment.delta?.installs?.total || 0)} total installs, ${Number(experiment.delta?.installs?.router || 0)} router installs, ${Number(experiment.delta?.installs?.skillverdict || 0)} SkillVerdict workflow installs, ${Number(experiment.delta?.genuine_purchases || 0)} genuine purchases

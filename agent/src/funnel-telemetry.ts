@@ -77,6 +77,16 @@ export const FUNNEL_DISCOVERY_SURFACES = Object.freeze([
   "skill_md_probe",
   "agent_manifest_probe",
 ] as const);
+export const MCP_FUNNEL_STAGES = Object.freeze([
+  "initialize",
+  "tools_list",
+  "tool_not_found",
+  "validation_error",
+  "payment_required",
+  "payment_present",
+  "paid_success",
+  "paid_error",
+] as const);
 
 export type FunnelSourceCategory = typeof FUNNEL_SOURCE_CATEGORIES[number];
 export type FunnelClientClass = typeof FUNNEL_CLIENT_CLASSES[number];
@@ -85,6 +95,7 @@ export type FunnelInputProfile = typeof FUNNEL_INPUT_PROFILES[number];
 export type FunnelPaymentCarrier = typeof FUNNEL_PAYMENT_CARRIERS[number];
 export type FunnelResponsePreference = typeof FUNNEL_RESPONSE_PREFERENCES[number];
 export type FunnelDiscoverySurface = typeof FUNNEL_DISCOVERY_SURFACES[number];
+export type McpFunnelStage = typeof MCP_FUNNEL_STAGES[number];
 export type FunnelOutcome =
   | "challenge_402"
   | "signed_success"
@@ -117,6 +128,17 @@ export type FunnelDiscoveryObservation = {
   outcome: FunnelOutcome;
   signed_request: false;
 };
+
+export type McpFunnelObservation = {
+  observed_at: string;
+  stage: McpFunnelStage;
+  product: Exclude<ProductKey, "skill"> | null;
+  source: FunnelSourceCategory;
+  client_class: FunnelClientClass;
+  channel: FunnelChannel;
+};
+
+export type McpFunnelCounters = Record<McpFunnelStage, number> & { events: number };
 
 export type FunnelCounters = {
   requests: number;
@@ -158,6 +180,14 @@ export type FunnelSnapshot = {
   by_discovery_cohort: Record<string, FunnelCounters>;
   discovery_by_day: Record<string, FunnelCounters>;
   discovery_by_hour: Record<string, FunnelCounters>;
+  mcp_totals: McpFunnelCounters;
+  mcp_by_product: Record<Exclude<ProductKey, "skill">, McpFunnelCounters>;
+  mcp_by_product_source: Record<Exclude<ProductKey, "skill">, Record<FunnelSourceCategory, McpFunnelCounters>>;
+  mcp_by_source: Record<FunnelSourceCategory, McpFunnelCounters>;
+  mcp_by_client_class: Record<FunnelClientClass, McpFunnelCounters>;
+  mcp_by_channel: Record<FunnelChannel, McpFunnelCounters>;
+  mcp_by_day: Record<string, McpFunnelCounters>;
+  mcp_by_hour: Record<string, McpFunnelCounters>;
 };
 
 type TailEvent = {
@@ -171,7 +201,10 @@ type TailEvent = {
     };
     response?: { status?: unknown };
   };
+  logs?: unknown;
 };
+
+const MCP_PRODUCTS = PRODUCT_KEYS.filter((product): product is Exclude<ProductKey, "skill"> => product !== "skill");
 
 const PRODUCT_BY_PATH = new Map<string, ProductKey>(
   PRODUCT_KEYS.map((product) => [PRODUCT_CATALOG[product].path, product] as const),
@@ -219,6 +252,24 @@ function emptyCounters(): FunnelCounters {
   };
 }
 
+function emptyMcpCounters(): McpFunnelCounters {
+  return {
+    events: 0,
+    initialize: 0,
+    tools_list: 0,
+    tool_not_found: 0,
+    validation_error: 0,
+    payment_required: 0,
+    payment_present: 0,
+    paid_success: 0,
+    paid_error: 0,
+  };
+}
+
+function mcpCountersRecord<K extends string>(keys: readonly K[]): Record<K, McpFunnelCounters> {
+  return Object.fromEntries(keys.map((key) => [key, emptyMcpCounters()])) as Record<K, McpFunnelCounters>;
+}
+
 function countersRecord<K extends string>(keys: readonly K[]): Record<K, FunnelCounters> {
   return Object.fromEntries(keys.map((key) => [key, emptyCounters()])) as Record<K, FunnelCounters>;
 }
@@ -235,6 +286,13 @@ function discoverySurfaceSourceRecord(): Record<FunnelDiscoverySurface, Record<F
     surface,
     countersRecord(FUNNEL_SOURCE_CATEGORIES),
   ])) as Record<FunnelDiscoverySurface, Record<FunnelSourceCategory, FunnelCounters>>;
+}
+
+function mcpProductSourceRecord(): Record<Exclude<ProductKey, "skill">, Record<FunnelSourceCategory, McpFunnelCounters>> {
+  return Object.fromEntries(MCP_PRODUCTS.map((product) => [
+    product,
+    mcpCountersRecord(FUNNEL_SOURCE_CATEGORIES),
+  ])) as Record<Exclude<ProductKey, "skill">, Record<FunnelSourceCategory, McpFunnelCounters>>;
 }
 
 function headersRecord(value: unknown): Record<string, string> {
@@ -437,6 +495,74 @@ export function classifyDiscoveryTailEvent(value: unknown): FunnelDiscoveryObser
   };
 }
 
+function exactMcpLogEvent(value: unknown): {
+  stage: McpFunnelStage;
+  product: Exclude<ProductKey, "skill"> | null;
+  source: "owner_automation" | "external";
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (keys.join("|") !== "product|schema_version|source|stage|type" ||
+    record.type !== "bountyverdict_mcp_funnel" || record.schema_version !== 1 ||
+    !MCP_FUNNEL_STAGES.includes(record.stage as McpFunnelStage) ||
+    (record.source !== "owner_automation" && record.source !== "external")) return null;
+  const stage = record.stage as McpFunnelStage;
+  const product = record.product;
+  if (stage === "initialize" || stage === "tools_list" || stage === "tool_not_found") {
+    if (product !== null) return null;
+  } else if (!MCP_PRODUCTS.includes(product as Exclude<ProductKey, "skill">)) return null;
+  return { stage, product: product as Exclude<ProductKey, "skill"> | null, source: record.source };
+}
+
+function mcpLogMessages(logs: unknown): string[] {
+  if (!Array.isArray(logs)) return [];
+  const messages: string[] = [];
+  for (const entry of logs) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const message = (entry as { message?: unknown }).message;
+    if (typeof message === "string" && message.length <= 1024) messages.push(message);
+    else if (Array.isArray(message) && message.length === 1 && typeof message[0] === "string" && message[0].length <= 1024) {
+      messages.push(message[0]);
+    }
+  }
+  return messages;
+}
+
+export function classifyMcpTailEvents(value: unknown): McpFunnelObservation[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const tail = value as TailEvent;
+  if (tail.scriptName !== "bountyverdict-agent-production") return [];
+  const request = tail.event?.request;
+  if (request?.method !== "POST" || typeof request.url !== "string") return [];
+  let url: URL;
+  try { url = new URL(request.url); } catch { return []; }
+  if (url.protocol !== "https:" || url.host !== PRODUCTION_HOST || url.pathname !== "/mcp") return [];
+  const headers = headersRecord(request.headers);
+  const client = clientClass(headers["user-agent"] || "", false);
+  const classifiedSource = sourceCategory(client);
+  const timestamp = typeof tail.eventTimestamp === "number" && Number.isFinite(tail.eventTimestamp)
+    ? new Date(tail.eventTimestamp).toISOString()
+    : new Date().toISOString();
+  const observations: McpFunnelObservation[] = [];
+  for (const message of mcpLogMessages(tail.logs)) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(message); } catch { continue; }
+    const event = exactMcpLogEvent(parsed);
+    if (!event) continue;
+    if ((event.source === "owner_automation") !== (client === "owner_automation")) continue;
+    observations.push({
+      observed_at: timestamp,
+      stage: event.stage,
+      product: event.product,
+      source: event.source === "owner_automation" ? "owner_automation" : classifiedSource,
+      client_class: client,
+      channel: channelCategory(headers, client),
+    });
+  }
+  return observations;
+}
+
 export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnapshot {
   return {
     schema_version: FUNNEL_SCHEMA_VERSION,
@@ -444,7 +570,7 @@ export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnap
     enhanced_capture_started_at: now,
     cohort_capture_started_at: now,
     updated_at: now,
-    privacy: "Aggregate paid-route and coarse cohort counts only; raw URLs, query values, bodies, headers, payment payloads, IP addresses, geolocation, visitor IDs, and full user-agent strings are discarded.",
+    privacy: "Aggregate REST, discovery, and MCP funnel counts only; raw URLs, query values, tool arguments, bodies, headers, payment payloads, payer addresses, IP addresses, geolocation, visitor IDs, and full user-agent strings are discarded.",
     totals: emptyCounters(),
     by_product: countersRecord(PRODUCT_KEYS),
     by_source: countersRecord(FUNNEL_SOURCE_CATEGORIES),
@@ -466,6 +592,14 @@ export function createFunnelSnapshot(now = new Date().toISOString()): FunnelSnap
     by_discovery_cohort: {},
     discovery_by_day: {},
     discovery_by_hour: {},
+    mcp_totals: emptyMcpCounters(),
+    mcp_by_product: mcpCountersRecord(MCP_PRODUCTS),
+    mcp_by_product_source: mcpProductSourceRecord(),
+    mcp_by_source: mcpCountersRecord(FUNNEL_SOURCE_CATEGORIES),
+    mcp_by_client_class: mcpCountersRecord(FUNNEL_CLIENT_CLASSES),
+    mcp_by_channel: mcpCountersRecord(FUNNEL_CHANNELS),
+    mcp_by_day: {},
+    mcp_by_hour: {},
   };
 }
 
@@ -548,6 +682,30 @@ export function recordDiscoveryObservation(snapshot: FunnelSnapshot, observation
   return snapshot;
 }
 
+function incrementMcp(counters: McpFunnelCounters, stage: McpFunnelStage): void {
+  counters.events += 1;
+  counters[stage] += 1;
+}
+
+export function recordMcpObservation(snapshot: FunnelSnapshot, observation: McpFunnelObservation): FunnelSnapshot {
+  incrementMcp(snapshot.mcp_totals, observation.stage);
+  if (observation.product) incrementMcp(snapshot.mcp_by_product[observation.product], observation.stage);
+  if (observation.product) incrementMcp(snapshot.mcp_by_product_source[observation.product][observation.source], observation.stage);
+  incrementMcp(snapshot.mcp_by_source[observation.source], observation.stage);
+  incrementMcp(snapshot.mcp_by_client_class[observation.client_class], observation.stage);
+  incrementMcp(snapshot.mcp_by_channel[observation.channel], observation.stage);
+  const day = observation.observed_at.slice(0, 10);
+  const hour = observation.observed_at.slice(0, 13);
+  snapshot.mcp_by_day[day] ||= emptyMcpCounters();
+  snapshot.mcp_by_hour[hour] ||= emptyMcpCounters();
+  incrementMcp(snapshot.mcp_by_day[day], observation.stage);
+  incrementMcp(snapshot.mcp_by_hour[hour], observation.stage);
+  for (const oldDay of Object.keys(snapshot.mcp_by_day).sort().slice(0, -90)) delete snapshot.mcp_by_day[oldDay];
+  for (const oldHour of Object.keys(snapshot.mcp_by_hour).sort().slice(0, -168)) delete snapshot.mcp_by_hour[oldHour];
+  snapshot.updated_at = observation.observed_at;
+  return snapshot;
+}
+
 function countersValid(counters: unknown): counters is FunnelCounters {
   if (!counters || typeof counters !== "object" || Array.isArray(counters)) return false;
   return COUNTER_KEYS.every((key) => Number.isSafeInteger((counters as Record<string, unknown>)[key]) &&
@@ -558,6 +716,19 @@ function keyedCountersValid<K extends string>(value: unknown, keys: readonly K[]
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   return keys.every((key) => countersValid(record[key]));
+}
+
+function mcpCountersValid(counters: unknown): counters is McpFunnelCounters {
+  if (!counters || typeof counters !== "object" || Array.isArray(counters)) return false;
+  const record = counters as Record<string, unknown>;
+  return ["events", ...MCP_FUNNEL_STAGES].every((key) => Number.isSafeInteger(record[key]) && Number(record[key]) >= 0) &&
+    Number(record.events) === MCP_FUNNEL_STAGES.reduce((sum, stage) => sum + Number(record[stage]), 0);
+}
+
+function keyedMcpCountersValid<K extends string>(value: unknown, keys: readonly K[]): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return keys.every((key) => mcpCountersValid(record[key]));
 }
 
 export function isFunnelSnapshot(value: unknown): value is FunnelSnapshot {
@@ -578,7 +749,14 @@ export function isFunnelSnapshot(value: unknown): value is FunnelSnapshot {
     !keyedCountersValid(snapshot.by_discovery_surface, FUNNEL_DISCOVERY_SURFACES) ||
     !keyedCountersValid(snapshot.by_discovery_source, FUNNEL_SOURCE_CATEGORIES) ||
     !keyedCountersValid(snapshot.by_discovery_client_class, FUNNEL_CLIENT_CLASSES) ||
-    !keyedCountersValid(snapshot.by_discovery_channel, FUNNEL_CHANNELS)) return false;
+    !keyedCountersValid(snapshot.by_discovery_channel, FUNNEL_CHANNELS) ||
+    !mcpCountersValid(snapshot.mcp_totals) ||
+    !keyedMcpCountersValid(snapshot.mcp_by_product, MCP_PRODUCTS) ||
+    !keyedMcpCountersValid(snapshot.mcp_by_source, FUNNEL_SOURCE_CATEGORIES) ||
+    !keyedMcpCountersValid(snapshot.mcp_by_client_class, FUNNEL_CLIENT_CLASSES) ||
+    !keyedMcpCountersValid(snapshot.mcp_by_channel, FUNNEL_CHANNELS)) return false;
+  if (!snapshot.mcp_by_product_source || typeof snapshot.mcp_by_product_source !== "object" ||
+    !MCP_PRODUCTS.every((product) => keyedMcpCountersValid(snapshot.mcp_by_product_source?.[product], FUNNEL_SOURCE_CATEGORIES))) return false;
   if (!snapshot.by_discovery_surface_source || typeof snapshot.by_discovery_surface_source !== "object" ||
     !FUNNEL_DISCOVERY_SURFACES.every((surface) =>
       keyedCountersValid(snapshot.by_discovery_surface_source?.[surface], FUNNEL_SOURCE_CATEGORIES))) return false;
@@ -590,10 +768,14 @@ export function isFunnelSnapshot(value: unknown): value is FunnelSnapshot {
   if (!cohortRecordValid(snapshot.by_cohort, 6) || !cohortRecordValid(snapshot.by_discovery_cohort, 4)) return false;
   const bucketValid = (buckets: unknown, pattern: RegExp) => Boolean(buckets && typeof buckets === "object" && !Array.isArray(buckets) &&
     Object.entries(buckets).every(([bucket, counters]) => pattern.test(bucket) && countersValid(counters)));
+  const mcpBucketValid = (buckets: unknown, pattern: RegExp) => Boolean(buckets && typeof buckets === "object" && !Array.isArray(buckets) &&
+    Object.entries(buckets).every(([bucket, counters]) => pattern.test(bucket) && mcpCountersValid(counters)));
   return bucketValid(snapshot.by_day, /^\d{4}-\d{2}-\d{2}$/) &&
     bucketValid(snapshot.discovery_by_day, /^\d{4}-\d{2}-\d{2}$/) &&
     bucketValid(snapshot.by_hour, /^\d{4}-\d{2}-\d{2}T\d{2}$/) &&
-    bucketValid(snapshot.discovery_by_hour, /^\d{4}-\d{2}-\d{2}T\d{2}$/);
+    bucketValid(snapshot.discovery_by_hour, /^\d{4}-\d{2}-\d{2}T\d{2}$/) &&
+    mcpBucketValid(snapshot.mcp_by_day, /^\d{4}-\d{2}-\d{2}$/) &&
+    mcpBucketValid(snapshot.mcp_by_hour, /^\d{4}-\d{2}-\d{2}T\d{2}$/);
 }
 
 type LegacySnapshot = {
@@ -634,6 +816,14 @@ export function loadFunnelSnapshot(value: unknown, now = new Date().toISOString(
       discovery_by_day: existing.discovery_by_day || {},
       discovery_by_hour: existing.discovery_by_hour || {},
       by_hour: existing.by_hour || {},
+      mcp_totals: existing.mcp_totals || emptyMcpCounters(),
+      mcp_by_product: existing.mcp_by_product || mcpCountersRecord(MCP_PRODUCTS),
+      mcp_by_product_source: existing.mcp_by_product_source || mcpProductSourceRecord(),
+      mcp_by_source: existing.mcp_by_source || mcpCountersRecord(FUNNEL_SOURCE_CATEGORIES),
+      mcp_by_client_class: existing.mcp_by_client_class || mcpCountersRecord(FUNNEL_CLIENT_CLASSES),
+      mcp_by_channel: existing.mcp_by_channel || mcpCountersRecord(FUNNEL_CHANNELS),
+      mcp_by_day: existing.mcp_by_day || {},
+      mcp_by_hour: existing.mcp_by_hour || {},
     };
     if (isFunnelSnapshot(upgraded)) return upgraded;
   }

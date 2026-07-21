@@ -2,6 +2,7 @@ import { createPublicClient, http, parseAbiItem, type Address } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import {
   OWNER_CONTROLLED_CANARY_PAYER,
+  serializeRevenueSummary,
   summarizeRevenue,
   type SettlementTransfer,
 } from "../src/revenue.ts";
@@ -77,26 +78,5 @@ console.log(JSON.stringify({
   wallet,
   usdc_contract: USDC[network],
   scanned_blocks: { from: startBlock.toString(), to: latestBlock.toString() },
-  ...summary,
-  recognized_transfers: summary.recognized_transfers.map((transfer) => ({
-    ...transfer,
-    amount_atomic: transfer.amount.toString(),
-    amount: undefined,
-  })),
-  canary_transfer_count: summary.canary_transfers.length,
-  canary_transfers: summary.canary_transfers.map((transfer) => ({
-    ...transfer,
-    amount_atomic: transfer.amount.toString(),
-    amount: undefined,
-  })),
-  unrecognized_transfers: summary.unrecognized_transfers.map((transfer) => ({
-    ...transfer,
-    amount_atomic: transfer.amount.toString(),
-    amount: undefined,
-  })),
-  excluded_non_revenue_transfers: summary.excluded_transfers.map((transfer) => ({
-    ...transfer,
-    amount_atomic: transfer.amount.toString(),
-    amount: undefined,
-  })),
+  ...serializeRevenueSummary(summary),
 }, null, 2));

@@ -3,11 +3,13 @@ import test from "node:test";
 import {
   classifyFunnelTailEvent,
   classifyDiscoveryTailEvent,
+  classifyMcpTailEvents,
   createFunnelSnapshot,
   isFunnelSnapshot,
   loadFunnelSnapshot,
   recordDiscoveryObservation,
   recordFunnelObservation,
+  recordMcpObservation,
 } from "../src/funnel-telemetry.ts";
 
 function event(path: string, status: number, headers: Record<string, string> = {}, method = "GET") {
@@ -49,6 +51,52 @@ test("classifies an external directory challenge without retaining raw request d
   });
   const serialized = JSON.stringify(observation);
   assert.doesNotMatch(serialized, /192\.0\.2\.10|must-never-persist|github\.com|Agent402/);
+});
+
+test("learns MCP conversion stages without retaining tool arguments or request identity", () => {
+  const value = event("/mcp?private=discard", 200, {
+    "user-agent": "Codex/99 private-build",
+    referer: "https://github.com/private/repository?token=secret",
+  }, "POST");
+  Object.assign(value, {
+    logs: [
+      { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "payment_required", product: "single", source: "external" })] },
+      { message: JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "validation_error", product: "mcpdrift", source: "external" }) },
+      { message: ["private raw console output", { secret: true }] },
+    ],
+  });
+  const observations = classifyMcpTailEvents(value);
+  assert.deepEqual(observations.map(({ stage, product, source, client_class, channel }) => ({ stage, product, source, client_class, channel })), [
+    { stage: "payment_required", product: "single", source: "automated_client", client_class: "agent_runtime", channel: "github" },
+    { stage: "validation_error", product: "mcpdrift", source: "automated_client", client_class: "agent_runtime", channel: "github" },
+  ]);
+  const snapshot = createFunnelSnapshot("2026-07-20T19:00:00.000Z");
+  for (const observation of observations) recordMcpObservation(snapshot, observation);
+  assert.equal(snapshot.mcp_totals.events, 2);
+  assert.equal(snapshot.mcp_totals.payment_required, 1);
+  assert.equal(snapshot.mcp_totals.validation_error, 1);
+  assert.equal(snapshot.mcp_by_product.single.payment_required, 1);
+  assert.equal(snapshot.mcp_by_product.mcpdrift.validation_error, 1);
+  assert.equal(snapshot.mcp_by_product_source.single.automated_client.payment_required, 1);
+  assert.equal(snapshot.mcp_by_source.automated_client.events, 2);
+  assert.equal(snapshot.mcp_by_client_class.agent_runtime.events, 2);
+  assert.equal(snapshot.mcp_by_channel.github.events, 2);
+  assert.equal(snapshot.mcp_by_day["2026-07-20"].events, 2);
+  assert.equal(snapshot.mcp_by_hour["2026-07-20T20"].events, 2);
+  const serialized = JSON.stringify(snapshot);
+  assert.doesNotMatch(serialized, /private|repository|token|secret|Codex|private-build/);
+  assert.equal(isFunnelSnapshot(snapshot), true);
+});
+
+test("rejects malformed, forged, and identity-inconsistent MCP log events", () => {
+  const value = event("/mcp", 200, { "user-agent": "bountyverdict-owner-audit/1" }, "POST");
+  Object.assign(value, { logs: [
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "paid_success", product: "single", source: "external" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "initialize", product: "single", source: "owner_automation" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "paid_success", product: "skill", source: "owner_automation" })] },
+    { message: [JSON.stringify({ type: "bountyverdict_mcp_funnel", schema_version: 1, stage: "tools_list", product: null, source: "owner_automation", raw: "forbidden" })] },
+  ] });
+  assert.deepEqual(classifyMcpTailEvents(value), []);
 });
 
 test("records signed successes as funnel evidence rather than purchase proof", () => {

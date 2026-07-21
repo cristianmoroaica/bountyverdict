@@ -31,6 +31,16 @@ test("origin manifest publishes six exact products without changing SkillVerdict
   }
   assert.equal(manifest.payment.pay_to, "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614");
   assert.equal(manifest.reliability.mutates_external_systems, false);
+  assert.equal(manifest.mcp.url, `${origin}/mcp`);
+  assert.equal(manifest.mcp.transport, "streamable-http");
+  assert.deepEqual(manifest.mcp.tools.map(({ name }) => name), [
+    "check_github_bounty",
+    "rank_github_bounties",
+    "audit_agent_harness",
+    "diagnose_github_actions_run",
+    "classify_github_actions_flake",
+    "check_mcp_tool_drift",
+  ]);
 });
 
 test("origin skill is a truthful six-product payment-safe routing surface", () => {
@@ -44,6 +54,7 @@ test("origin skill is a truthful six-product payment-safe routing surface", () =
   assert.match(markdown, /Never join it into a shell string or raise the cap silently/);
   assert.match(markdown, /network `eip155:8453` \(Base mainnet\)/);
   assert.match(markdown, /0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614/);
+  assert.match(markdown, /Remote MCP server: https:\/\/bountyverdict-agent-production\.mimirslab\.workers\.dev\/mcp/);
 });
 
 test("origin skill uses the runtime testnet instead of inventing mainnet", () => {
@@ -74,6 +85,7 @@ test("Worker serves origin-native manifest and skill with exact content types", 
   assert.equal(root.agent_skill, "https://cristianmoroaica.github.io/bountyverdict/skills/route-github-agent-checks/SKILL.md");
   assert.equal(root.distributed_agent_manifest, "/agent-manifest.json");
   assert.equal(root.distributed_agent_skill, "/SKILL.md");
+  assert.equal(root.mcp.endpoint, "/mcp");
 });
 
 test("origin discovery rejects non-origin or non-HTTPS identities", () => {

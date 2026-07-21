@@ -10,6 +10,14 @@ const NETWORK_LABELS = Object.freeze({
 const DISTRIBUTED_PRODUCTS = Object.freeze([
   "single", "portfolio", "harness", "run", "flake", "mcpdrift",
 ] as const satisfies readonly ProductKey[]);
+const MCP_TOOL_BY_PRODUCT = Object.freeze({
+  single: "check_github_bounty",
+  portfolio: "rank_github_bounties",
+  harness: "audit_agent_harness",
+  run: "diagnose_github_actions_run",
+  flake: "classify_github_actions_flake",
+  mcpdrift: "check_mcp_tool_drift",
+} as const satisfies Record<typeof DISTRIBUTED_PRODUCTS[number], string>);
 
 const PRODUCT_GUIDANCE = Object.freeze({
   single: Object.freeze({
@@ -123,6 +131,19 @@ export function createOriginAgentManifest(originInput: string, network: string, 
         task_skill: `${SITE}/skills/${guidance.skill}/SKILL.md`,
       };
     }),
+    mcp: {
+      transport: "streamable-http",
+      protocol_version: "2025-11-25",
+      stateless: true,
+      url: `${origin}/mcp`,
+      payment: "x402 v2 exact USDC on Base",
+      tools: DISTRIBUTED_PRODUCTS.map((product) => ({
+        name: MCP_TOOL_BY_PRODUCT[product],
+        product,
+        price_usdc: PRODUCT_CATALOG[product].priceUsd.slice(1),
+        amount_atomic_usdc: String(PRODUCT_CATALOG[product].amountAtomic),
+      })),
+    },
     distribution_scope: {
       excluded_products: ["SkillVerdict"],
       reason: "This surface is intentionally limited to the six independently distributed contracts. The canonical OpenAPI and x402 inventory remain the complete seven-product sources.",
@@ -162,6 +183,8 @@ Use the narrowest contract below before an autonomous agent spends coding time, 
 
 This discovery skill never signs, pays, executes repository code, mutates GitHub, fetches MCP catalog URLs, or invokes MCP tools.
 
+Agents with MCP 2025-11-25 Streamable HTTP and x402 support may connect directly to \`${origin}/mcp\`. It exposes the same six products as paid tools, validates semantic input before requesting payment, and excludes SkillVerdict. Use \`tools/list\` to inspect exact schemas and prices.
+
 ## Safe calling sequence
 
 1. Validate the complete canonical public input against ${origin}/openapi.json.
@@ -179,6 +202,7 @@ ${products}
 - OpenAPI: ${origin}/openapi.json
 - x402 resources: ${origin}/.well-known/x402
 - Agent guide: ${origin}/llms.txt
+- Remote MCP server: ${origin}/mcp
 
 SkillVerdict is intentionally absent because this surface covers only the six independently distributed contracts. The canonical OpenAPI and x402 inventory remain the complete seven-product sources.
 `;

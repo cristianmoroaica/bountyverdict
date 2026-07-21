@@ -11,6 +11,7 @@ import {
   RUN_PAYMENT_ATOMIC,
   MCP_DRIFT_PAYMENT_ATOMIC,
   summarizeRevenue,
+  serializeRevenueSummary,
 } from "../src/revenue.ts";
 
 const CUSTOMER_PAYER = "0x1111111111111111111111111111111111111111";
@@ -142,4 +143,20 @@ test("revenue progress stops at zero remaining after the target", () => {
   assert.equal(summary.recognized_usdc, "1000");
   assert.equal(summary.remaining_usdc, "0");
   assert.equal(summary.progress_percent, 100);
+});
+
+test("standalone revenue serialization removes every bigint including excluded transfers", () => {
+  const excludedHash = KNOWN_NON_REVENUE_TX_HASHES[0];
+  const summary = summarizeRevenue([{
+    from: CUSTOMER_PAYER,
+    amount: SINGLE_PAYMENT_ATOMIC,
+    transaction_hash: excludedHash,
+    log_index: 7,
+    block_number: 48_900_000n,
+  }]);
+  const serialized = serializeRevenueSummary(summary);
+  assert.doesNotThrow(() => JSON.stringify(serialized));
+  assert.equal(serialized.excluded_non_revenue_transfers[0]?.amount_atomic, "50000");
+  assert.equal(serialized.excluded_non_revenue_transfers[0]?.block_number, "48900000");
+  assert.equal("excluded_transfers" in serialized, false);
 });

@@ -42,9 +42,11 @@ Then ask, for example:
 
 Task-specific skills are the least-privilege path. Install all seven only when needed with `npx skills add cristianmoroaica/bountyverdict --skill '*' -y`.
 
+MCP-compatible agents can instead connect to the production Streamable HTTP server at `https://bountyverdict-agent-production.mimirslab.workers.dev/mcp`. It exposes six real paid tools matching the independently distributed products; SkillVerdict remains excluded from this channel. Tool schemas are discoverable with `tools/list`, semantically invalid inputs are rejected before payment, and valid calls return an exact x402 USDC requirement for the selected tool. The publishable registry contract is [`server.json`](server.json) under `io.github.cristianmoroaica/bountyverdict`.
+
 ## Inspect before paying
 
-Every product has a free sample, a machine-readable OpenAPI contract, a declared price, and a successful-result `service_reuse` rule. Invalid inputs and upstream failures are not settled. Start with the [agent page](https://cristianmoroaica.github.io/bountyverdict/agents.html), [`agent-manifest.json`](agent-manifest.json), or the production [`openapi.json`](https://bountyverdict-agent-production.mimirslab.workers.dev/openapi.json).
+Every product has a free sample, a machine-readable OpenAPI contract, a declared price, and a successful-result `service_reuse` rule. Invalid inputs and upstream failures are not settled. Start with the [agent page](https://cristianmoroaica.github.io/bountyverdict/agents.html), [`agent-manifest.json`](agent-manifest.json), the production [`openapi.json`](https://bountyverdict-agent-production.mimirslab.workers.dev/openapi.json), or the remote MCP server above.
 
 The seven contracts are continuously checked in production. Coinbase Bazaar currently merchant-indexes six resources. Six existing non-SkillVerdict products are also available through exact-schema the402 listings, either per call or through a $1.05 monthly bundle of up to 20 combined requests. Owner-funded proofs are excluded from customer revenue.
 

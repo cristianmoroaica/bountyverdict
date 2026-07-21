@@ -88,6 +88,8 @@ test("free self-evaluation surfaces advertise the paid contract", () => {
   assert.match(llms, /Escrow marketplace/);
   assert.match(llms, /services\/svc_5e36dabc8b434e95\/purchase/);
   assert.match(llms, /SkillVerdict is intentionally excluded/);
+  assert.match(llms, /Remote MCP server: https:\/\/agent\.example\/mcp/);
+  assert.match(llms, /io\.github\.cristianmoroaica\/bountyverdict/);
   assert.match(llms, /plans\/plan_ec6c49878dc34636\/subscribe/);
   assert.match(llms, /up to 20 combined requests/);
   assert.match(llms, /NEAR Agent Market/);

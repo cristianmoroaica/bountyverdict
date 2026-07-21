@@ -156,6 +156,48 @@ jobs:
               if (!body.includes(`${process.env.PRODUCTION_API_URL}/agent-manifest.json`) || !body.includes("network `eip155:8453` (Base mainnet)")) process.exit(1);
             });
           '
+          node <<'NODE'
+          const api = process.env.PRODUCTION_API_URL;
+          const headers = {
+            Accept: "application/json, text/event-stream",
+            "Content-Type": "application/json",
+            "MCP-Protocol-Version": "2025-11-25",
+            "User-Agent": "bountyverdict-owner-audit/1.0",
+          };
+          async function rpc(id, method, params = {}) {
+            const response = await fetch(`${api}/mcp`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+            });
+            if (!response.ok) throw new Error(`MCP ${method} returned ${response.status}`);
+            return response.json();
+          }
+          const initialized = await rpc(1, "initialize", {
+            protocolVersion: "2025-11-25",
+            capabilities: {},
+            clientInfo: { name: "bountyverdict-release-check", version: "1.0.0" },
+          });
+          if (initialized.result?.protocolVersion !== "2025-11-25" || initialized.result?.serverInfo?.name !== "BountyVerdict") process.exit(1);
+          const listed = await rpc(2, "tools/list");
+          const expectedNames = ["check_github_bounty", "rank_github_bounties", "audit_agent_harness", "diagnose_github_actions_run", "classify_github_actions_flake", "check_mcp_tool_drift"];
+          if (JSON.stringify(listed.result?.tools?.map(({ name }) => name)) !== JSON.stringify(expectedNames)) process.exit(1);
+          const calls = [
+            ["check_github_bounty", { issue_url: "https://github.com/owner/repo/issues/1" }, "50000"],
+            ["rank_github_bounties", { issue_urls: ["https://github.com/owner/repo/issues/1", "https://github.com/owner/repo/issues/2"] }, "400000"],
+            ["audit_agent_harness", { repo_url: "https://github.com/owner/repo" }, "30000"],
+            ["diagnose_github_actions_run", { run_url: "https://github.com/owner/repo/actions/runs/1" }, "40000"],
+            ["classify_github_actions_flake", { run_url: "https://github.com/owner/repo/actions/runs/1", attempt: 1 }, "70000"],
+            ["check_mcp_tool_drift", { contract_version: "mcp-drift/1", subject: { server_id: "release-check" }, annotation_source_trust: "trusted", baseline: { protocol_version: "2025-11-25", complete: true, tools: [] }, current: { protocol_version: "2025-11-25", complete: true, tools: [] } }, "20000"],
+          ];
+          for (const [name, args, amount] of calls) {
+            const called = await rpc(3, "tools/call", { name, arguments: args });
+            const challenge = called.result?.structuredContent;
+            if (!called.result?.isError || JSON.stringify(challenge) !== called.result?.content?.[0]?.text) process.exit(1);
+            if (challenge?.accepts?.[0]?.amount !== amount || challenge?.accepts?.[0]?.network !== "eip155:8453") process.exit(1);
+            if (challenge?.resource?.url !== `mcp://tool/${name}` || challenge?.extensions?.bazaar?.info?.input?.toolName !== name) process.exit(1);
+          }
+          NODE
           owner_curl --fail --silent --show-error "$PRODUCTION_API_URL/openapi.json" | node -e '
             let body = ""; process.stdin.on("data", (chunk) => body += chunk); process.stdin.on("end", () => {
               const spec = JSON.parse(body);

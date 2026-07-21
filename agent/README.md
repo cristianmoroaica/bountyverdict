@@ -17,6 +17,8 @@ A paid, deterministic decision suite for autonomous coding agents. It checks pub
 - Discovery: x402 Bazaar extension with a strict input schema and realistic output example, plus `/.well-known/x402` with an exact seven-route paid-resource allowlist
 - Failure behavior: invalid inputs, GitHub failures, and handler errors are not settled
 
+The same six independently distributed non-SkillVerdict products are executable as paid MCP tools at `POST /mcp` using MCP 2025-11-25 Streamable HTTP. The server is stateless, read-only, publishes exact schemas through `tools/list`, and uses x402 v2 MCP payment metadata with the same prices and Base USDC payee as the REST contracts. Payment authorizes the fixed-price tool resource rather than cryptographically binding its arguments, so each challenge includes an advisory normalized-argument SHA-256 and instructs callers to preserve the exact normalized arguments on retry.
+
 `GET /` returns all product contracts without payment. Free representative results are available from every product sample route, including `/api/mcp-drift/sample`. Every unpaid 402 JSON body also returns the exact method, URL, validated body when applicable, atomic price cap, and a safe Agentic Wallet argument vector. Consumers must execute the vector directly and must not join it into a shell string.
 
 FlakeVerdict is a read-only retry gate for completed public GitHub Actions failures. It compares the selected attempt with other attempts of the same run, same-SHA outcomes, and up to 12 earlier comparable workflow runs, scanning no more than 8 selected failed-job logs or 4 MiB of log data. It never executes repository code and never triggers, reruns, cancels, approves, or otherwise mutates CI. Only a current `CONFIRMED_FLAKE` may recommend one retry; all other failed outcomes require investigation or repair rather than an automatic retry.
@@ -49,6 +51,16 @@ Inspect the portfolio challenge and its POST body schema:
 curl -i -X POST 'http://127.0.0.1:8787/api/portfolio' \
   -H 'Content-Type: application/json' \
   --data '{"issue_urls":["https://github.com/godotengine/godot/issues/70796","https://github.com/typeorm/typeorm/issues/3357"]}'
+```
+
+Inspect the remote MCP tool catalog without paying:
+
+```bash
+curl -sS 'http://127.0.0.1:8787/mcp' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -H 'MCP-Protocol-Version: 2025-11-25' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
 The buyer harness inspects the challenge without paying by default:
@@ -102,7 +114,7 @@ Use `NETWORK=sepolia` for testnet. The report recognizes exact $0.02, $0.03, $0.
 
 The production origin publishes a canonical machine-readable router at `/agent-manifest.json` and a compact agent workflow at `/SKILL.md`. They describe the six independently distributed non-SkillVerdict products with exact methods, inputs, prices, samples, task skills, and x402 safety gates. SkillVerdict is deliberately absent while its earned-placement experiment is frozen; the complete seven-route payment inventory remains authoritative at `/.well-known/x402` and `/openapi.json`.
 
-The production monitor verifies all free routes, all seven exact mainnet payment challenges, Coinbase Bazaar merchant visibility, Agent402 listing health, Agent Tools Cloud's organically discovered resource/health/payment metadata, disclosed unbranded buyer-query benchmarks, on-chain Base USDC revenue, the402 catalog/jobs/earnings, 402 Index presence, privacy-safe aggregate discovery and paid-route arrivals, and the freshness of the latest authenticated functional-canary pass in one run. Catalog presence and health are never treated as impressions, purchases, or revenue. Benchmarks measure retrieval robustness, not marketplace search volume or impressions. Edge telemetry classifies discovery surface, product, coarse source/channel and client class, input readiness, response preference, payment-header generation, outcome, and hourly/daily trends. It discards raw URLs, query values, request bodies, headers, payment payloads, IP addresses, geolocation, and full user-agent strings:
+The production monitor verifies all free routes, all seven exact mainnet payment challenges, the six-tool MCP contract, Coinbase Bazaar merchant visibility, Agent402 listing health, Agent Tools Cloud's organically discovered resource/health/payment metadata, disclosed unbranded buyer-query benchmarks, on-chain Base USDC revenue, the402 catalog/jobs/earnings, 402 Index presence, privacy-safe aggregate discovery and paid-route arrivals, and the freshness of the latest authenticated functional-canary pass in one run. Catalog presence and health are never treated as impressions, purchases, or revenue. Benchmarks measure retrieval robustness, not marketplace search volume or impressions. Edge telemetry classifies discovery surface, product, coarse source/channel and client class, input readiness, response preference, payment-header generation, outcome, and hourly/daily trends. MCP telemetry separately counts initialization, tool discovery, unknown tools, invalid inputs, payment requirements, payment presentation, and paid success/failure by product and broad client/referral class. It discards raw URLs, query values, tool arguments, request bodies, headers, payment payloads, payer addresses, IP addresses, geolocation, and full user-agent strings:
 
 ```bash
 systemctl --user start bountyverdict-distribution-monitor.service

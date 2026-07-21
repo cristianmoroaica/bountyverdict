@@ -48,6 +48,33 @@ export interface RevenueSummary {
   excluded_transfers: SettlementTransfer[];
 }
 
+function serializeTransfer(transfer: SettlementTransfer) {
+  const { amount, block_number, ...rest } = transfer;
+  return {
+    ...rest,
+    amount_atomic: amount.toString(),
+    ...(block_number === undefined ? {} : { block_number: block_number.toString() }),
+  };
+}
+
+export function serializeRevenueSummary(summary: RevenueSummary) {
+  const {
+    recognized_transfers,
+    canary_transfers,
+    unrecognized_transfers,
+    excluded_transfers,
+    ...totals
+  } = summary;
+  return {
+    ...totals,
+    recognized_transfers: recognized_transfers.map(serializeTransfer),
+    canary_transfer_count: canary_transfers.length,
+    canary_transfers: canary_transfers.map(serializeTransfer),
+    unrecognized_transfers: unrecognized_transfers.map(serializeTransfer),
+    excluded_non_revenue_transfers: excluded_transfers.map(serializeTransfer),
+  };
+}
+
 function formatUsdc(atomic: bigint): string {
   const whole = atomic / 1_000_000n;
   const fraction = (atomic % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");

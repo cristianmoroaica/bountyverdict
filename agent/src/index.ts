@@ -1,12 +1,8 @@
-import { createFacilitatorConfig } from "@coinbase/x402";
 import {
-  HTTPFacilitatorClient,
-  type FacilitatorClient,
   type HTTPRequestContext,
   type RouteConfig,
 } from "@x402/core/server";
-import { ExactEvmScheme } from "@x402/evm/exact/server";
-import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
+import { paymentMiddleware } from "@x402/hono";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { parseIssueUrl } from "../../analysis.js";
 import { CheckError, checkGithubIssue } from "./check.ts";
@@ -65,6 +61,11 @@ import {
   evaluateAndBidThe402Request,
   parseThe402RequestCreated,
 } from "./the402-bidder.ts";
+import {
+  createX402ServerContext,
+  TESTNET_X402_NETWORK,
+} from "./x402-resource-server.ts";
+import { handleMcpRequest } from "./mcp-server.ts";
 
 interface Env {
   PAY_TO_ADDRESS?: string;
@@ -111,9 +112,7 @@ const SKILL_ENDPOINT = PRODUCT_CATALOG.skill.path;
 const RUN_ENDPOINT = PRODUCT_CATALOG.run.path;
 const FLAKE_ENDPOINT = PRODUCT_CATALOG.flake.path;
 const MCP_DRIFT_ENDPOINT = PRODUCT_CATALOG.mcpdrift.path;
-const TESTNET_NETWORK = "eip155:84532";
-const TESTNET_FACILITATOR = "https://x402.org/facilitator";
-const CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402";
+const TESTNET_NETWORK = TESTNET_X402_NETWORK;
 const PRODUCT_URL = "https://cristianmoroaica.github.io/bountyverdict/";
 const ICON_URL = `${PRODUCT_URL}favicon.svg`;
 const MANIFEST_URL = `${PRODUCT_URL}agent-manifest.json`;
@@ -281,50 +280,10 @@ async function unpaidDecisionBody(preview: UnpaidDecisionPreview, context: HTTPR
 
 const middlewareCache = new Map<string, MiddlewareHandler>();
 
-function requireAddress(value: string | undefined): `0x${string}` {
-  if (!value || !/^0x[a-fA-F0-9]{40}$/.test(value)) {
-    throw new Error("PAY_TO_ADDRESS must be a public 20-byte EVM address.");
-  }
-  return value as `0x${string}`;
-}
-
 function buildPaymentMiddleware(env: Env): MiddlewareHandler {
-  const payTo = requireAddress(env.PAY_TO_ADDRESS);
-  const network = env.X402_NETWORK || TESTNET_NETWORK;
-  const facilitatorUrl = env.X402_FACILITATOR_URL || TESTNET_FACILITATOR;
-  const usingCdp = facilitatorUrl === CDP_FACILITATOR;
-  if (usingCdp && (!env.CDP_API_KEY_ID || !env.CDP_API_KEY_SECRET)) {
-    throw new Error("CDP facilitator requires CDP_API_KEY_ID and CDP_API_KEY_SECRET.");
-  }
-
-  const key = [payTo.toLowerCase(), network, facilitatorUrl, usingCdp].join("|");
+  const { payTo, network, cacheKey: key, resourceServer } = createX402ServerContext(env);
   const cached = middlewareCache.get(key);
   if (cached) return cached;
-
-  const facilitatorConfig = usingCdp
-    ? createFacilitatorConfig(env.CDP_API_KEY_ID, env.CDP_API_KEY_SECRET)
-    : { url: facilitatorUrl };
-  const httpFacilitator = new HTTPFacilitatorClient(facilitatorConfig);
-  const facilitatorClient: FacilitatorClient = {
-    // The economic contract is pinned and independently verified in CI and by
-    // post-deploy canaries. Returning it locally keeps an unpaid 402 challenge
-    // independent from a regionally unreliable /supported request. Paid
-    // verification and settlement remain delegated to the authenticated CDP
-    // facilitator (or the explicitly configured test facilitator).
-    getSupported: async () => ({
-      kinds: [{
-        x402Version: 2,
-        scheme: "exact",
-        network: network as `${string}:${string}`,
-      }],
-      extensions: ["bazaar"],
-      signers: {},
-    }),
-    verify: (payload, requirements) => httpFacilitator.verify(payload, requirements),
-    settle: (payload, requirements) => httpFacilitator.settle(payload, requirements),
-  };
-  const resourceServer = new x402ResourceServer(facilitatorClient)
-    .register(network as `${string}:${string}`, new ExactEvmScheme());
 
   const routeConfig: RouteConfig = {
     accepts: {
@@ -610,6 +569,13 @@ app.get("/", (c) =>
     agent_skill: SKILL_URL,
     distributed_agent_manifest: "/agent-manifest.json",
     distributed_agent_skill: "/SKILL.md",
+    mcp: {
+      endpoint: "/mcp",
+      transport: "streamable-http",
+      protocol_version: "2025-11-25",
+      paid_tools: 6,
+      registry_name: "io.github.cristianmoroaica/bountyverdict",
+    },
     install_skill: "npx skills add cristianmoroaica/bountyverdict --skill route-github-agent-checks -y",
     human_checker: PRODUCT_URL,
   }),
@@ -669,6 +635,8 @@ app.get("/llms.txt", (c) => {
   const origin = new URL(c.req.url).origin;
   return c.text(createLlmsText(origin), 200, { "Content-Type": "text/plain; charset=utf-8" });
 });
+
+app.all("/mcp", (c) => handleMcpRequest(c.req.raw, c.env));
 
 app.post("/api/the402/webhook", async (c) => {
   c.header("Cache-Control", "no-store");
