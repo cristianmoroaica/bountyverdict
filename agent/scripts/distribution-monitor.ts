@@ -49,6 +49,7 @@ const execFileAsync = promisify(execFile);
 const GITHUB_REPOSITORY = "cristianmoroaica/bountyverdict";
 const MCP_REGISTRY_NAME = "io.github.cristianmoroaica/bountyverdict";
 const MCP_REGISTRY_VERSION = "1.1.0";
+const MCP_REGISTRY_TIMEOUT_MS = 45_000;
 const ONE_MCP_PACKAGE = "@1mcp/agent@0.34.3";
 const QT_MCP_REGISTRY = "https://qtccache.qt.io/mcp/registry.json";
 const GLAMA_MCP_CONNECTOR = `https://glama.ai/mcp/connectors/${MCP_REGISTRY_NAME}`;
@@ -276,7 +277,11 @@ async function requireJsonObject(path: string): Promise<Record<string, any>> {
 
 async function mcpRegistryStatus(): Promise<Record<string, unknown>> {
   const endpoint = `${api}/mcp`;
-  const response = await monitoredFetchWithNetworkRetry(`https://registry.modelcontextprotocol.io/v0.1/servers?search=${encodeURIComponent(MCP_REGISTRY_NAME)}`);
+  const response = await monitoredFetch(
+    `https://registry.modelcontextprotocol.io/v0.1/servers?search=${encodeURIComponent(MCP_REGISTRY_NAME)}`,
+    undefined,
+    MCP_REGISTRY_TIMEOUT_MS,
+  );
   if (!response.ok) throw new Error(`MCP Registry returned HTTP ${response.status}.`);
   const body = await response.json() as { servers?: Array<{ server?: { name?: unknown; version?: unknown; remotes?: unknown } }> };
   if (!Array.isArray(body.servers) || body.servers.length > 100) throw new Error("MCP Registry response is malformed or unbounded.");

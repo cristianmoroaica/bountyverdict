@@ -243,6 +243,13 @@ test("directory PR monitoring uses authenticated GitHub reads instead of exhaust
   assert.doesNotMatch(directory, /fetch\(`https:\/\/api\.github\.com\/repos\/\$\{owner\}\/\$\{repo\}\/pulls\/\$\{pull\}`/);
 });
 
+test("official MCP Registry monitoring tolerates its observed slow response without unbounded retries", async () => {
+  const distribution = await readFile(new URL("../agent/scripts/distribution-monitor.ts", import.meta.url), "utf8");
+  assert.match(distribution, /const MCP_REGISTRY_TIMEOUT_MS = 45_000/);
+  assert.match(distribution, /MCP_REGISTRY_TIMEOUT_MS,\n\s*\)/);
+  assert.doesNotMatch(distribution, /monitoredFetchWithNetworkRetry\(`https:\/\/registry\.modelcontextprotocol\.io/);
+});
+
 test("directory monitoring tracks Kilo review and exact secret-free remote contract without claiming demand", async () => {
   const [directory, distribution] = await Promise.all([
     readFile(directoryMonitorUrl, "utf8"),
