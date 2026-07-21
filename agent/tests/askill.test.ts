@@ -1,0 +1,69 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  ASKILL_FILE_PATH,
+  ASKILL_INSTALL_REF,
+  ASKILL_OWNER,
+  ASKILL_PATH,
+  ASKILL_REPO,
+  ASKILL_SKILL_NAME,
+  parseAskillSearchPayload,
+} from "../src/askill.ts";
+
+const exactEntry = {
+  id: 703721,
+  installRef: ASKILL_INSTALL_REF,
+  name: ASKILL_SKILL_NAME,
+  skillName: ASKILL_SKILL_NAME,
+  description: "Route GitHub decisions.",
+  tags: [],
+  stars: 0,
+  favoriteCount: 0,
+  aiScore: null,
+  llmScore: null,
+  owner: ASKILL_OWNER,
+  repoOwner: ASKILL_OWNER,
+  repo: ASKILL_REPO,
+  repoName: ASKILL_REPO,
+  path: ASKILL_PATH,
+  filePath: ASKILL_FILE_PATH,
+  updatedAt: "2026-07-21T10:29:35.000Z",
+  lastPushed: "2026-07-21T10:29:35.000Z",
+  nameUniqueInRepo: true,
+  source: "submit",
+  publishedSlug: null,
+};
+
+const payload = (data: unknown[]) => ({
+  data,
+  pagination: { page: 1, limit: 20, total: 261140, hasMore: false },
+});
+
+test("recognizes only the exact askill adapter listing", () => {
+  assert.deepEqual(parseAskillSearchPayload(payload([exactEntry])), {
+    listed: true,
+    listed_skills: 1,
+    expected_skills: 1,
+    catalog_total: 261140,
+    entry_id: 703721,
+    listing_url: "https://askill.sh/skills/703721",
+    install_source: ASKILL_INSTALL_REF,
+    favorites: 0,
+    repository_stars: 0,
+    ai_score: null,
+    llm_score: null,
+    tags: [],
+    updated_at: "2026-07-21T10:29:35.000Z",
+    status: "listed",
+  });
+  assert.equal(parseAskillSearchPayload(payload([])).status, "not_indexed");
+  assert.equal(parseAskillSearchPayload(payload([{ ...exactEntry, filePath: "SKILL.md" }])).status, "contract_drift");
+});
+
+test("rejects duplicate, malformed, and unbounded askill telemetry", () => {
+  assert.throws(() => parseAskillSearchPayload(payload([exactEntry, exactEntry])), /duplicated/);
+  assert.throws(() => parseAskillSearchPayload({ data: "private", pagination: payload([]).pagination }), /malformed/);
+  assert.throws(() => parseAskillSearchPayload({ data: [], pagination: { page: 1, limit: 101, total: 0, hasMore: false } }), /unbounded/);
+  assert.throws(() => parseAskillSearchPayload(payload([{ ...exactEntry, favoriteCount: -1 }])), /favorite/);
+  assert.throws(() => parseAskillSearchPayload(payload([{ ...exactEntry, tags: new Array(51).fill("tag") }])), /tags/);
+});

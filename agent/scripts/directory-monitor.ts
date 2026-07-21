@@ -15,6 +15,7 @@ import {
 import { PRODUCT_CATALOG, type ProductKey } from "../src/product-catalog.ts";
 import { parseAgentSkillsInSearchPayload } from "../src/agentskills-in.ts";
 import { parseSkillsMdSearchPayload } from "../src/skillsmd.ts";
+import { parseAskillSearchPayload } from "../src/askill.ts";
 import {
   parseAgentFinderCatalogEntry,
   parseAgentFinderRegistryLatest,
@@ -70,6 +71,8 @@ const skillsMdSearchUrl = "https://skillsmd.dev/api/search?q=route-github-agent-
 const skillsMdRegistryUrl = "https://skillsmd.dev/";
 const skillsMdSubmissionId = "e68e968f-d03d-4808-b36b-5fd3b42b6489";
 const skillsMdSubmittedAt = "2026-07-21T10:26:21Z";
+const askillSearchUrl = "https://askill.sh/api/v1/skills?q=route-github-agent-decisions&owner=cristianmoroaica&repo=bountyverdict-mcp-skill&limit=20";
+const askillSubmittedAt = "2026-07-21T10:42:45.083Z";
 const githubSkillReleaseTag = "v1.0.3";
 const mcpRepositoryUrl = "https://mcprepository.com/cristianmoroaica/bountyverdict";
 const mcpRepositorySubmittedAt = "2026-07-21T03:31:45Z";
@@ -2005,6 +2008,57 @@ async function skillsMdStatus(
   }
 }
 
+async function askillStatus(
+  previousStatus: Record<string, any>,
+  observedAt: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await fetch(askillSearchUrl, {
+      headers: { "User-Agent": "bountyverdict-directory-monitor/1.0" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return {
+        url: "https://askill.sh/",
+        search_url: askillSearchUrl,
+        http_status: response.status,
+        listed: false,
+        listed_skills: 0,
+        expected_skills: 1,
+        status: "catalog_unavailable",
+        submission: { submitted_at: askillSubmittedAt, indexed: true },
+        exposed_at: previousStatus.exposed_at || askillSubmittedAt,
+        catalog_error: `askill search returned HTTP ${response.status}.`,
+        measurement: "exact_catalog_presence_and_public_favorites_not_impressions_installs_tool_calls_purchases_or_revenue",
+      };
+    }
+    const catalog = parseAskillSearchPayload(await response.json());
+    const listed = catalog.listed === true;
+    return {
+      url: listed ? catalog.listing_url : "https://askill.sh/",
+      search_url: askillSearchUrl,
+      http_status: response.status,
+      ...catalog,
+      submission: { submitted_at: askillSubmittedAt, indexed: true },
+      exposed_at: listed ? previousStatus.exposed_at || askillSubmittedAt : null,
+      measurement: "exact_catalog_presence_and_public_favorites_not_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  } catch (error) {
+    return {
+      url: "https://askill.sh/",
+      search_url: askillSearchUrl,
+      listed: false,
+      listed_skills: 0,
+      expected_skills: 1,
+      status: "catalog_request_failed",
+      submission: { submitted_at: askillSubmittedAt, indexed: true },
+      exposed_at: previousStatus.exposed_at || askillSubmittedAt,
+      error: error instanceof Error ? error.message : String(error),
+      measurement: "exact_catalog_presence_and_public_favorites_not_impressions_installs_tool_calls_purchases_or_revenue",
+    };
+  }
+}
+
 async function githubSkillStatus(previousStatus: Record<string, any>, observedAt: string): Promise<Record<string, unknown>> {
   try {
     const hour = Math.floor(Date.parse(observedAt) / (60 * 60 * 1000));
@@ -2171,6 +2225,7 @@ const [
   githubSkill,
   agentSkillsIn,
   skillsMd,
+  askill,
 ] = await Promise.all([
   skillsShStatus(),
   agentToolStatus(),
@@ -2206,6 +2261,7 @@ const [
   githubSkillStatus(previous.github_skill || {}, new Date().toISOString()),
   agentSkillsInStatus(previous.agent_skills_in || {}, new Date().toISOString()),
   skillsMdStatus(previous.skills_md || {}, new Date().toISOString()),
+  askillStatus(previous.askill || {}, new Date().toISOString()),
 ]);
 if (Number(x402scan.listed_resources || 0) > 0) {
   x402scan.exposed_at = previous.x402scan?.exposed_at || new Date().toISOString();
@@ -2260,6 +2316,7 @@ const state = {
   agentskill,
   agent_skills_in: agentSkillsIn,
   skills_md: skillsMd,
+  askill,
   github_skill: githubSkill,
   security_directory_pr: securityDirectoryPr,
   x402_directory_pr: x402DirectoryPr,
