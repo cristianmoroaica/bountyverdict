@@ -9,6 +9,8 @@ export const SETTLEMENT_CANARY_ASSET =
   "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 export const SETTLEMENT_CANARY_PAYEE =
   "0x4aa55988fA032FBbB8DDEf496b0f194FEc62D614";
+export const SETTLEMENT_CANARY_USER_AGENT =
+  "bountyverdict-settlement-canary/1.0";
 
 export const SETTLEMENT_CANARY_PRODUCTS = [
   "single",
@@ -597,8 +599,15 @@ export async function runSettlementCanary(
   const requestInit = (): RequestInit => ({
     method: fixture.method,
     headers: fixture.body
-      ? { Accept: "application/json", "Content-Type": "application/json" }
-      : { Accept: "application/json" },
+      ? {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": SETTLEMENT_CANARY_USER_AGENT,
+        }
+      : {
+          Accept: "application/json",
+          "User-Agent": SETTLEMENT_CANARY_USER_AGENT,
+        },
     body: fixture.body,
     redirect: "error",
     signal: AbortSignal.timeout(timeoutMs),

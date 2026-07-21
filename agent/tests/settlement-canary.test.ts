@@ -6,6 +6,7 @@ import {
   SETTLEMENT_CANARY_ORIGIN,
   SETTLEMENT_CANARY_PAYEE,
   SETTLEMENT_CANARY_PRODUCTS,
+  SETTLEMENT_CANARY_USER_AGENT,
   assertSettlementCanarySpacing,
   decodeAndValidatePaymentRequired,
   decodeAndValidateSettlement,
@@ -302,6 +303,9 @@ test("orchestration authorizes once, sends once, forbids redirects, and validate
   assert.equal(calls.length, 2);
   assert.ok(calls.every(call => call.input === getSettlementCanaryFixture("single").url));
   assert.ok(calls.every(call => call.init.redirect === "error"));
+  assert.ok(calls.every(call =>
+    new Headers(call.init.headers).get("user-agent") === SETTLEMENT_CANARY_USER_AGENT
+  ));
   assert.equal(new Headers(calls[0].init.headers).has("payment-signature"), false);
   assert.equal(new Headers(calls[1].init.headers).get("payment-signature"), "not-persisted");
   assert.equal(JSON.stringify(result).includes("not-persisted"), false);
